@@ -1,9 +1,9 @@
 import AppKit
 
-/// The three menu bar states (spec "Menu bar icon"), drawn in code as
-/// template images so macOS tints them for light and dark bars. An outline
-/// means off and a filled shape means on, as in Caffeine; lid mode is a
-/// small robot on a closed lid.
+/// The three menu bar states, drawn in code as template images so macOS
+/// tints them for light and dark bars: a pilot light. Off is the flame's
+/// outline (unlit); screen on is the flame filled; lid closed is a small low
+/// flame on the closed lid: turned down, never out.
 enum MenuBarIcon: Equatable, CaseIterable {
     case off
     case awake
@@ -38,21 +38,35 @@ enum MenuBarIcon: Equatable, CaseIterable {
         NSColor.black.set()
         switch icon {
         case .off:
-            stroke(NSBezierPath(roundedRect: NSRect(x: 4.2, y: 4.8, width: 15.6, height: 11.2), xRadius: 1.6, yRadius: 1.6), width: 1.7)
-            line(from: NSPoint(x: 2.5, y: 19.2), to: NSPoint(x: 21.5, y: 19.2), width: 1.7)
+            stroke(flame(), width: 1.7)
         case .awake:
-            let screen = NSBezierPath(roundedRect: NSRect(x: 4.2, y: 4.8, width: 15.6, height: 11.2), xRadius: 1.6, yRadius: 1.6)
-            screen.fill()
-            stroke(screen, width: 1.7)
-            line(from: NSPoint(x: 2.5, y: 19.2), to: NSPoint(x: 21.5, y: 19.2), width: 1.7)
+            flame().fill()
         case .lid:
-            stroke(NSBezierPath(roundedRect: NSRect(x: 6, y: 7, width: 12, height: 8.6), xRadius: 2.6, yRadius: 2.6), width: 1.7)
-            line(from: NSPoint(x: 12, y: 7), to: NSPoint(x: 12, y: 4.6), width: 1.7)
-            dot(NSPoint(x: 12, y: 3.9), radius: 1)
-            dot(NSPoint(x: 9.6, y: 11.3), radius: 1.3)
-            dot(NSPoint(x: 14.4, y: 11.3), radius: 1.3)
+            let small = flame()
+            // Move the flame's bottom point to the origin, scale, then put
+            // that point at (12, 17.4) just above the lid.
+            var m = AffineTransform(translationByX: -12, byY: -18.8)
+            m.append(AffineTransform(scale: 0.6))
+            m.append(AffineTransform(translationByX: 12, byY: 17.4))
+            small.transform(using: m)
+            small.fill()
             line(from: NSPoint(x: 2.5, y: 19.4), to: NSPoint(x: 21.5, y: 19.4), width: 2.2)
         }
+    }
+
+    /// The flame, in 24-unit y-down coordinates: pointed top, round bottom
+    /// through (12, 18.8).
+    private static func flame() -> NSBezierPath {
+        let p = NSBezierPath()
+        p.move(to: NSPoint(x: 12, y: 2.6))
+        p.curve(to: NSPoint(x: 17.4, y: 13.4), controlPoint1: NSPoint(x: 13.8, y: 6), controlPoint2: NSPoint(x: 17.4, y: 8.6))
+        // Round bottom: from the right side, down through (12, 18.8), to the left side.
+        p.appendArc(withCenter: NSPoint(x: 12, y: 13.4), radius: 5.4, startAngle: 0, endAngle: 180, clockwise: false)
+        p.curve(to: NSPoint(x: 9.6, y: 7.6), controlPoint1: NSPoint(x: 6.6, y: 10.6), controlPoint2: NSPoint(x: 8.2, y: 8.8))
+        p.curve(to: NSPoint(x: 11.6, y: 11.4), controlPoint1: NSPoint(x: 9.8, y: 9.6), controlPoint2: NSPoint(x: 10.6, y: 10.8))
+        p.curve(to: NSPoint(x: 12, y: 2.6), controlPoint1: NSPoint(x: 11, y: 8.6), controlPoint2: NSPoint(x: 11.3, y: 5.4))
+        p.close()
+        return p
     }
 
     private static func stroke(_ path: NSBezierPath, width: CGFloat) {
@@ -68,9 +82,5 @@ enum MenuBarIcon: Equatable, CaseIterable {
         p.lineWidth = width
         p.lineCapStyle = .round
         p.stroke()
-    }
-
-    private static func dot(_ center: NSPoint, radius: CGFloat) {
-        NSBezierPath(ovalIn: NSRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)).fill()
     }
 }
