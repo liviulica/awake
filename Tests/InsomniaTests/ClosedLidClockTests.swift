@@ -128,6 +128,125 @@ final class ClosedLidClockTests: XCTestCase {
         XCTAssertEqual(m.session, running)
     }
 
+    // MARK: Self-healing and the unknown lid (review round 1)
+
+    /// R10: an unknown lid (a desktop, an unreadable reading) never pauses,
+    /// so the session runs on the wall clock and always ends.
+    func testStartWithAnUnknownLidRuns() async throws {
+        h.clamshell.closed = nil
+        let m = h.makeManager(closedLidClock: true)
+        await m.start(duration: 3600)
+        XCTAssertNil(m.session?.pausedRemaining)
+        XCTAssertEqual(m.session?.endsAt, h.clock.now.addingTimeInterval(3600))
+    }
+
+    /// A close that never reached the clock is caught by the next tick.
+    func testALeaseTickWithTheLidClosedResumesTheClock() async throws {
+        h.clamshell.closed = false
+        let m = h.makeManager(closedLidClock: true)
+        await m.start(duration: 3600)
+        h.clock.advance(60)
+        h.clamshell.closed = true
+        await m.renewLeaseIfPaused()
+        XCTAssertNil(m.session?.pausedRemaining)
+        XCTAssertEqual(m.session?.endsAt, h.clock.now.addingTimeInterval(3600))
+        XCTAssertEqual(try h.store.loadSession(), m.session, "running on disk too")
+    }
+
+    func testALeaseTickWithAnUnknownLidResumesTheClock() async throws {
+        h.clamshell.closed = false
+        let m = h.makeManager(closedLidClock: true)
+        await m.start(duration: 3600)
+        h.clamshell.closed = nil
+        await m.renewLeaseIfPaused()
+        XCTAssertNil(m.session?.pausedRemaining)
+        XCTAssertEqual(m.session?.endsAt, h.clock.now.addingTimeInterval(3600))
+    }
+
+    /// "Enter, then close the lid": the close lands while the start waits
+    /// on `disablesleep 1` (the administrator prompt), when no lid event
+    /// reaches a session that is not active yet. The start settles on the
+    /// lid as it reads once sleep is disabled.
+    func testALidCloseDuringTheStartWindowEndsUpRunning() async throws {
+        h.clamshell.closed = false
+        let gate = AsyncGate()
+        h.guardFake.sleepGate = gate
+        let m = h.makeManager(closedLidClock: true)
+        let start = Task { await m.start(duration: 3600) }
+        await gate.waitUntilStarted()
+        h.clock.advance(280)
+        h.clamshell.closed = true
+        await gate.open()
+        await start.value
+        XCTAssertNil(m.session?.pausedRemaining)
+        XCTAssertEqual(m.session?.endsAt, h.clock.now.addingTimeInterval(3600))
+        XCTAssertEqual(try h.store.loadSession(), m.session, "running on disk too")
+    }
+
+    /// A prompt that outlasts most of the lease: a session still paused
+    /// after the start gets a fresh lease, not the one written before it.
+    func testAStartStillPausedAfterALongPromptHasAFreshLease() async throws {
+        h.clamshell.closed = false
+        let gate = AsyncGate()
+        h.guardFake.sleepGate = gate
+        let m = h.makeManager(closedLidClock: true)
+        let start = Task { await m.start(duration: 3600) }
+        await gate.waitUntilStarted()
+        h.clock.advance(280)
+        await gate.open()
+        await start.value
+        XCTAssertEqual(m.session?.pausedRemaining, 3600)
+        XCTAssertEqual(m.session?.endsAt, h.clock.now.addingTimeInterval(SessionMath.pauseLease))
+        XCTAssertEqual(try h.store.loadSession(), m.session)
+    }
+
+    /// A lid close whose write fails (here the agent cannot be confirmed)
+    /// leaves the session paused; the next tick heals it.
+    func testAFailedLidCloseHealsOnTheNextTick() async throws {
+        h.clamshell.closed = false
+        let m = h.makeManager(closedLidClock: true)
+        await m.start(duration: 3600)
+        h.clamshell.closed = true
+        h.backstop.failArm = true
+        await m.lidClosedClock()
+        XCTAssertEqual(m.session?.pausedRemaining, 3600, "the failed write changed nothing")
+        h.backstop.failArm = false
+        h.clock.advance(60)
+        await m.renewLeaseIfPaused()
+        XCTAssertNil(m.session?.pausedRemaining)
+        XCTAssertEqual(m.session?.endsAt, h.clock.now.addingTimeInterval(3600))
+    }
+
+    /// The same for a close refused because the recovery lock is busy.
+    func testALidCloseRefusedByABusyLockHealsOnTheNextTick() async throws {
+        h.clamshell.closed = false
+        let m = h.makeManager(closedLidClock: true)
+        await m.start(duration: 3600)
+        h.clamshell.closed = true
+        let held = try XCTUnwrap(try RecoveryLock(url: h.home.paths.recoveryLock).tryAcquire())
+        await m.lidClosedClock()
+        XCTAssertEqual(m.session?.pausedRemaining, 3600, "refused: nothing changed")
+        held.release()
+        await m.renewLeaseIfPaused()
+        XCTAssertNil(m.session?.pausedRemaining)
+        XCTAssertEqual(m.session?.endsAt, h.clock.now.addingTimeInterval(3600))
+    }
+
+    func testReconcileResumesAPausedSessionWhenTheLidIsUnknown() async throws {
+        var s = Session(startedAt: h.clock.now, endsAt: h.clock.now.addingTimeInterval(SessionMath.pauseLease))
+        s.pausedRemaining = 1800
+        try h.store.saveSession(s)
+        var state = RuntimeState.clean
+        state.sleepDisabledByUs = true
+        try h.store.saveState(state)
+        h.guardFake.sleepDisabled = true
+        h.clamshell.closed = nil
+        let m = h.makeManager(closedLidClock: true)
+        await m.reconcile()
+        XCTAssertNil(m.session?.pausedRemaining)
+        XCTAssertEqual(m.session?.endsAt, h.clock.now.addingTimeInterval(1800))
+    }
+
     /// The deadline timer firing on a paused session renews the lease
     /// rather than ending it (real clock, so the Timer actually fires).
     func testAnExpiringLeaseIsRenewedNotEnded() async throws {

@@ -1225,9 +1225,10 @@ final class SessionManager {
         // The person wants the Mac awake now.
         closedLidSleepOwed = false
         let now = clock()
-        // With the closed-lid clock, a start with the lid open (or unknown)
-        // waits for the lid to close: paused, with a lease for `endsAt`.
-        let new = closedLidClock && clamshell() != true
+        // With the closed-lid clock, a start with the lid known open waits
+        // for the lid to close: paused, with a lease for `endsAt`. Closed or
+        // unknown: the clock runs. Settled again once sleep is disabled.
+        let new = closedLidClock && clamshell() == false
             ? SessionMath.newPausedSession(now: now, duration: duration, maxDuration: config.maxDuration)
             : SessionMath.newSession(now: now, duration: duration, maxDuration: config.maxDuration)
         // What was on disk before this attempt, read under the lock. A
@@ -1292,20 +1293,41 @@ final class SessionManager {
             Log.info("start abandoned after disabling sleep: end requested meanwhile; journal left for it")
             return
         }
+        let started = settledAfterStart(new)
 
-        session = new
+        session = started
         lastError = nil
         countdownPaused = clamshell() == true
         foreignSleepWarning = nil
-        Log.info(new.isPaused
-            ? "session started paused (lid open) with \(Int(new.closedLidRemaining(at: now)))s of closed-lid time, lease until \(iso(new.endsAt)) (\(Int(duration))s requested)"
-            : "session started until \(iso(new.endsAt)) (\(Int(duration))s requested)")
-        await armDeadline(new.endsAt)
+        Log.info(started.isPaused
+            ? "session started paused (lid open) with \(Int(started.closedLidRemaining(at: now)))s of closed-lid time, lease until \(iso(started.endsAt)) (\(Int(duration))s requested)"
+            : "session started until \(iso(started.endsAt)) (\(Int(duration))s requested)")
+        await armDeadline(started.endsAt)
         syncLeaseTimer()
         applyAppNapInJournal()
         // Every observer lives in AppServices.
         services?.start(for: self)
         // PR3: schedule "5 minutes left" notification.
+    }
+
+    /// The lid may have moved while the start waited (the administrator
+    /// prompt can take minutes), and no lid event reaches a session that is
+    /// not active yet. Still under the start's lock with the agent armed:
+    /// the clock follows the lid as it reads now, and a paused session gets
+    /// a fresh lease. A failed write keeps what is on disk; the deadline and
+    /// the lease tick settle it from there.
+    private func settledAfterStart(_ new: Session) -> Session {
+        guard closedLidClock else { return new }
+        let now = clock()
+        let settled = SessionMath.leaseRenewed(SessionMath.followingLid(new, lidClosed: clamshell(), now: now), now: now)
+        guard settled != new else { return new }
+        do {
+            try store.saveSession(settled)
+        } catch {
+            Log.error("start: could not update the lid timer: \(error.localizedDescription)")
+            return new
+        }
+        return settled
     }
 
     func extend(by extra: TimeInterval) async {
@@ -2755,8 +2777,7 @@ final class SessionManager {
             var kept = s
             if closedLidClock {
                 let now = clock()
-                let adjusted = lidClosed == true ? SessionMath.resumed(s, now: now)
-                    : (lidClosed == false ? SessionMath.paused(s, now: now) : s)
+                let adjusted = SessionMath.followingLid(s, lidClosed: lidClosed, now: now)
                 if adjusted != s {
                     do {
                         try store.saveSession(adjusted)
@@ -3006,33 +3027,35 @@ final class SessionManager {
 
     // MARK: Closed-lid clock
 
-    /// Lid closed: the closed-lid clock runs (spec "Lid mode"). Skipped when
-    /// the lid reads open again by the time this runs: the hooks run after
-    /// the lid transactions, so a close and an open can cross, and the
-    /// clock follows the lid as it is.
+    /// Lid closed: the closed-lid clock runs (spec "Lid mode"). The hooks
+    /// run after the lid transactions, so a close and an open can cross:
+    /// both follow the lid as it reads when their write runs, never the
+    /// event that queued them.
     func lidClosedClock() async {
-        guard clamshell() != false else { return }
-        await moveClock("lid closed") { SessionMath.resumed($0, now: $1) }
+        await moveClock("lid closed") { [clamshell] in SessionMath.followingLid($0, lidClosed: clamshell(), now: $1) }
     }
 
-    /// Lid opened: the clock pauses on what is left. Skipped when the lid
-    /// reads closed again by the time this runs.
+    /// Lid opened: the clock pauses on what is left (lid known open only).
     func lidOpenedClock() async {
-        guard clamshell() != true else { return }
-        await moveClock("lid opened") { SessionMath.paused($0, now: $1) }
+        await moveClock("lid opened") { [clamshell] in SessionMath.followingLid($0, lidClosed: clamshell(), now: $1) }
     }
 
-    /// Keeps a paused session's lease ahead of now. The lease timer and the
-    /// deadline timer (when a lease runs out) call it.
+    /// The lease tick: the lease timer and the deadline timer (when a lease
+    /// runs out) call it. Follows the lid first, so a close that never
+    /// reached the clock (no event during a start, a refused or failed
+    /// write) is caught within a minute and the session always ends; a
+    /// session still paused gets its lease moved ahead of now.
     func renewLeaseIfPaused() async {
         guard session?.isPaused == true else { return }
-        await moveClock("lease", logged: false) { SessionMath.leaseRenewed($0, now: $1) }
+        await moveClock("lease") { [clamshell] in
+            SessionMath.leaseRenewed(SessionMath.followingLid($0, lidClosed: clamshell(), now: $1), now: $1)
+        }
     }
 
     /// One session.json write under the recovery lock, like an extend: the
-    /// agent is confirmed loaded before the deadline on disk moves. Lease
-    /// renewals (every minute) are not `logged`.
-    private func moveClock(_ why: String, logged: Bool = true, _ change: @escaping @MainActor @Sendable (Session, Date) -> Session) async {
+    /// agent is confirmed loaded before the deadline on disk moves. Logged
+    /// when the clock pauses or runs, not for each lease renewal.
+    private func moveClock(_ why: String, _ change: @escaping @MainActor @Sendable (Session, Date) -> Session) async {
         guard closedLidClock, session != nil else { return }
         let ticket = endTicket
         _ = await exclusive("closed-lid clock (\(why))") {
@@ -3056,7 +3079,7 @@ final class SessionManager {
                 return
             }
             self.session = updated
-            if logged {
+            if updated.isPaused != current.isPaused {
                 Log.info(updated.isPaused
                     ? "closed-lid clock paused (\(why)) with \(Int(updated.closedLidRemaining(at: self.clock())))s left"
                     : "closed-lid clock running (\(why)) until \(self.iso(updated.endsAt))")

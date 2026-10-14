@@ -43,8 +43,14 @@ struct Session: Codable, Equatable, Sendable {
     /// `remaining` never exceeds this span, the shape always has room for the
     /// value. An extension widens the span and can promote the shape, which
     /// is a one-off change at a user action, never a per-tick one.
-    /// A paused session's `endsAt` is only the lease, so the closed-lid time
-    /// left counts too: the shape always has room for what is shown.
+    ///
+    /// Only meaningful for a wall-clock (running) session. A paused
+    /// session's `endsAt` is a lease, so `endsAt - startedAt` grows with
+    /// every renewal and the shape can drift while paused; the closed-lid
+    /// time left is taken into account only so that the value always fits.
+    /// Its one consumer (`SessionManager.countdownText`, the old menu bar
+    /// pill) is retired with the old UI in Task 10, which formats
+    /// `closedLidRemaining` itself.
     var countdownShape: CountdownShape {
         CountdownShape(initialDuration: max(endsAt.timeIntervalSince(startedAt), pausedRemaining ?? 0))
     }

@@ -50,6 +50,14 @@ enum SessionMath {
         return r
     }
 
+    /// The closed-lid clock as the lid reads: paused only when the lid is
+    /// known open, running when it is closed or unknown (a desktop, or a
+    /// reading that failed), so a session whose lid cannot be read runs on
+    /// the wall clock and always ends.
+    static func followingLid(_ s: Session, lidClosed: Bool?, now: Date) -> Session {
+        lidClosed == false ? paused(s, now: now) : resumed(s, now: now)
+    }
+
     /// A paused session's lease, moved to `pauseLease` from `now`. A running
     /// session is returned unchanged.
     static func leaseRenewed(_ s: Session, now: Date) -> Session {
