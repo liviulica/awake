@@ -19,6 +19,35 @@ final class ReachabilityTrackerTests: XCTestCase {
     }
 }
 
+final class CaptivePortalProbeTests: XCTestCase {
+    private let page = "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>"
+
+    func testAppleSuccessPageIsOnline() {
+        XCTAssertTrue(CaptivePortalProbe.isSuccess(statusCode: 200, host: "captive.apple.com", body: page))
+    }
+
+    func testAnotherHostIsAPortal() {
+        XCTAssertFalse(CaptivePortalProbe.isSuccess(statusCode: 200, host: "login.hotel.example", body: page))
+    }
+
+    func testAPortalPageMentioningSuccessIsNotOnline() {
+        XCTAssertFalse(CaptivePortalProbe.isSuccess(statusCode: 200, host: "captive.apple.com", body: "Successfully logged in"))
+    }
+
+    func testARedirectIsNotOnline() {
+        XCTAssertFalse(CaptivePortalProbe.isSuccess(statusCode: 302, host: "captive.apple.com", body: page))
+    }
+}
+
+/// Answers once `gate` opens, so a test can stop the driver mid-probe.
+final class GatedProbe: ReachabilityProbing, @unchecked Sendable {
+    let gate = AsyncGate()
+    func isInternetReachable() async -> Bool {
+        await gate.wait()
+        return false
+    }
+}
+
 final class FakeProbe: ReachabilityProbing, @unchecked Sendable {
     private let lock = NSLock()
     private var results: [Bool]

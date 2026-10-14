@@ -12,6 +12,17 @@ protocol ReachabilityProbing: Sendable {
 struct CaptivePortalProbe: ReachabilityProbing {
     static let url = URL(string: "http://captive.apple.com/hotspot-detect.html")!
     static let timeout: TimeInterval = 5
+    static let host = "captive.apple.com"
+    /// Apple's own probe agent: nothing that identifies this app or the Mac.
+    static let userAgent = "CaptiveNetworkSupport/1.0 wispr"
+    /// The marker in Apple's success page.
+    static let successMarker = "<TITLE>Success</TITLE>"
+
+    /// Whether an answer means the internet is there. A redirect, or a final
+    /// host other than Apple's, is a captive portal, not "online".
+    static func isSuccess(statusCode: Int, host: String?, body: String) -> Bool {
+        statusCode == 200 && host == Self.host && body.contains(successMarker)
+    }
 
     func isInternetReachable() async -> Bool {
         let config = URLSessionConfiguration.ephemeral
@@ -20,12 +31,13 @@ struct CaptivePortalProbe: ReachabilityProbing {
         config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         config.httpCookieStorage = nil
         config.waitsForConnectivity = false
+        config.httpAdditionalHeaders = ["User-Agent": Self.userAgent]
         let session = URLSession(configuration: config)
         defer { session.finishTasksAndInvalidate() }
         do {
             let (data, response) = try await session.data(from: Self.url)
-            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return false }
-            return String(decoding: data, as: UTF8.self).contains("Success")
+            guard let http = response as? HTTPURLResponse else { return false }
+            return Self.isSuccess(statusCode: http.statusCode, host: http.url?.host, body: String(decoding: data, as: UTF8.self))
         } catch {
             return false
         }

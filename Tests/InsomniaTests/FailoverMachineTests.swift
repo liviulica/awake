@@ -376,6 +376,41 @@ final class NetworkFailoverDriverTests: XCTestCase {
         XCTAssertEqual(n.lastGap, 20)
     }
 
+    func testStartArmsTheProbeTimerAndStopClearsIt() async {
+        let clock = FakeClock(Date(timeIntervalSince1970: 1_800_000_000))
+        let n = driver(keychain: FakeKeychainStore(), joiner: RecordingHotspotJoiner(), notifier: RecordingNotifier(),
+                       clock: clock)
+        await n.start()
+        XCTAssertNotNil(n.probeTimer)
+        n.stop()
+        XCTAssertNil(n.probeTimer)
+    }
+
+    func testStopDuringAProbeDoesNotRearmTheProbe() async {
+        let clock = FakeClock(Date(timeIntervalSince1970: 1_800_000_000))
+        let probe = GatedProbe()
+        let n = driver(keychain: FakeKeychainStore(), joiner: RecordingHotspotJoiner(), notifier: RecordingNotifier(),
+                       clock: clock, probe: probe)
+        let tick = Task { await n.probeTick() }
+        await probe.gate.waitUntilStarted()
+        n.stop()
+        await probe.gate.open()
+        await tick.value
+        XCTAssertNil(n.probeTimer, "a probe that finished after stop() re-armed itself")
+    }
+
+    func testANewOutageIsDetectedAfterARecovery() async {
+        let clock = FakeClock(Date(timeIntervalSince1970: 1_800_000_000))
+        let n = driver(keychain: FakeKeychainStore(), joiner: RecordingHotspotJoiner(), notifier: RecordingNotifier(),
+                       clock: clock, probe: FakeProbe([false, false, false, true, false]))
+        for _ in 0..<3 { await n.probeTick() }
+        XCTAssertTrue(n.machine.inOutage)
+        await n.simulate(satisfied: true)
+        XCTAssertFalse(n.machine.inOutage, "path recovery with the internet back")
+        for _ in 0..<3 { await n.probeTick() }
+        XCTAssertTrue(n.machine.inOutage, "three fresh failures start a new outage")
+    }
+
     func testPathBackWithoutInternetDoesNotEndTheOutage() async {
         let clock = FakeClock(Date(timeIntervalSince1970: 1_800_000_000))
         let n = driver(keychain: FakeKeychainStore(), joiner: RecordingHotspotJoiner(), notifier: RecordingNotifier(),

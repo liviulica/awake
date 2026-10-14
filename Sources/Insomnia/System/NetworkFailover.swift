@@ -964,6 +964,8 @@ final class NetworkFailover {
             // An outage the probe started has no path update to end it.
             await process(satisfied: true, internetReachable: true)
         }
+        // stop() may have run while the outage was being started or ended.
+        guard self.epoch == epoch, !Task.isCancelled else { return }
         scheduleProbe(after: ok ? Self.probeInterval : Self.probeRetryInterval)
     }
 
@@ -1014,6 +1016,8 @@ final class NetworkFailover {
                 await joinHotspot()
             case let .recovered(start, gap):
                 self.outage += 1
+                // The next outage needs its own three failures.
+                tracker = ReachabilityTracker()
                 cancelTimer()
                 notifiedThisOutage = []
                 await recovered(start: start, gap: gap)
