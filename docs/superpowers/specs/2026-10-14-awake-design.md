@@ -37,11 +37,11 @@ Template images drawn in code (like Insomnia's eye today), so macOS tints them f
 
 | State | Icon | Text beside it |
 |---|---|---|
-| Off | Laptop outline, blank screen | none |
-| Awake mode | Laptop with the screen filled in | remaining time, only when timed |
-| Lid mode | A thick line (the closed lid) with a small robot head above it: rounded head, antenna, two filled eyes | remaining time, always |
+| Off | A flame's outline (an unlit pilot light) | none |
+| Awake mode (screen) | The flame, filled | remaining time, only when timed |
+| Lid mode | A small low flame on a thick line (the closed lid): turned down, never out | remaining time, always |
 
-Mockups: (private mockup) (option "Robot head").
+The "Pilot light" family (decided 2026-10-14; it replaced an earlier laptop-and-robot set). The working name may become **Ember**; the icons fit either name. Mockups: (private mockup) (family "Pilot light").
 
 ### Interaction
 

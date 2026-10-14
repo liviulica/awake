@@ -2421,6 +2421,103 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
+### Task 12b: Pilot light icons (user decision 2026-10-14)
+
+The person picked the "Pilot light" family from the icon sketches ((private mockup)): no laptop, one flame. Off = the flame's outline (unlit), screen on = the flame filled, lid closed = a small low flame on the closed lid ("turned down, never out"). This replaces the shapes Task 8 drew; the `MenuBarIcon` API (`.off/.awake/.lid`, `image(_:)`, `draw(_:)`, 18 pt template) does not change, so nothing else moves.
+
+**Files:**
+- Modify: `Sources/Insomnia/UI/MenuBarIcon.swift` (the three `draw` cases, the type's doc comment)
+- Test: `Tests/InsomniaTests/MenuBarIconTests.swift`
+
+**Interfaces:** unchanged (`enum MenuBarIcon: Equatable, CaseIterable { case off, awake, lid }`, `static let size`, `@MainActor static func image(_:)`, `static func draw(_:)`).
+
+Shapes (24×24 viewBox, y down). The flame path, in SVG terms:
+`M12 2.6 C13.8 6 17.4 8.6 17.4 13.4 A5.4 5.4 0 0 1 6.6 13.4 C6.6 10.6 8.2 8.8 9.6 7.6 C9.8 9.6 10.6 10.8 11.6 11.4 C11 8.6 11.3 5.4 12 2.6 Z`
+(the arc is the round bottom of the flame, through (12, 18.8)).
+- off: the flame, stroked 1.7, round joins, not filled.
+- awake: the flame, filled.
+- lid: the flame filled, scaled 0.6 about its bottom point and moved so its bottom (y 18.8) sits at y 17.4; plus the closed-lid line from (2.5, 19.4) to (21.5, 19.4), width 2.2, round caps.
+
+- [ ] **Step 1: Write the failing test**
+
+Add to `MenuBarIconTests`:
+```swift
+    /// The flame's round bottom is drawn below its centre (the arc goes
+    /// through y 18.8), and the lid icon's flame is small: ink near the
+    /// top only for the full flame.
+    func testPilotLightShapes() {
+        let awake = Self.bitmap(MenuBarIcon.image(.awake))
+        // 36 px render = 1.5 px per unit; bitmap y 0 is the top.
+        XCTAssertGreaterThan(awake.colorAt(x: 18, y: 25)?.alphaComponent ?? 0, 0.5, "inside the flame's round bottom")
+        XCTAssertGreaterThan(awake.colorAt(x: 18, y: 6)?.alphaComponent ?? 0, 0.3, "the full flame reaches near the top")
+        let lid = Self.bitmap(MenuBarIcon.image(.lid))
+        XCTAssertLessThan(lid.colorAt(x: 18, y: 6)?.alphaComponent ?? 1, 0.1, "the pilot flame is low")
+        XCTAssertGreaterThan(lid.colorAt(x: 18, y: 29)?.alphaComponent ?? 0, 0.5, "the closed lid line")
+        let off = Self.bitmap(MenuBarIcon.image(.off))
+        XCTAssertLessThan(off.colorAt(x: 18, y: 19)?.alphaComponent ?? 1, 0.2, "off is an outline: its middle is empty")
+    }
+```
+(`bitmap(_:)` already exists in the file as a private helper; make it `static` internal-to-the-class if needed.)
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `swift test --filter MenuBarIconTests/testPilotLightShapes`
+Expected: FAIL (the laptop shapes have no ink at (18, 6) for awake, and the robot head reaches y 6).
+
+- [ ] **Step 3: Implement**
+
+In `MenuBarIcon.swift`, replace the doc comment's description with: "The three menu bar states, drawn in code as template images: a pilot light. Off is the flame's outline (unlit); screen on is the flame filled; lid closed is a small low flame on the closed lid: turned down, never out." Then:
+```swift
+    /// The flame, in 24-unit y-down coordinates: pointed top, round bottom
+    /// through (12, 18.8).
+    private static func flame() -> NSBezierPath {
+        let p = NSBezierPath()
+        p.move(to: NSPoint(x: 12, y: 2.6))
+        p.curve(to: NSPoint(x: 17.4, y: 13.4), controlPoint1: NSPoint(x: 13.8, y: 6), controlPoint2: NSPoint(x: 17.4, y: 8.6))
+        // Round bottom: from the right side, down through (12, 18.8), to the left side.
+        p.appendArc(withCenter: NSPoint(x: 12, y: 13.4), radius: 5.4, startAngle: 0, endAngle: 180, clockwise: false)
+        p.curve(to: NSPoint(x: 9.6, y: 7.6), controlPoint1: NSPoint(x: 6.6, y: 10.6), controlPoint2: NSPoint(x: 8.2, y: 8.8))
+        p.curve(to: NSPoint(x: 11.6, y: 11.4), controlPoint1: NSPoint(x: 9.8, y: 9.6), controlPoint2: NSPoint(x: 10.6, y: 10.8))
+        p.curve(to: NSPoint(x: 12, y: 2.6), controlPoint1: NSPoint(x: 11, y: 8.6), controlPoint2: NSPoint(x: 11.3, y: 5.4))
+        p.close()
+        return p
+    }
+```
+and the `draw` cases:
+```swift
+        case .off:
+            stroke(flame(), width: 1.7)
+        case .awake:
+            flame().fill()
+        case .lid:
+            let small = flame()
+            // Move the flame's bottom point to the origin, scale, then put
+            // that point at (12, 17.4) just above the lid.
+            var m = AffineTransform(translationByX: -12, byY: -18.8)
+            m.append(AffineTransform(scale: 0.6))
+            m.append(AffineTransform(translationByX: 12, byY: 17.4))
+            small.transform(using: m)
+            small.fill()
+            line(from: NSPoint(x: 2.5, y: 19.4), to: NSPoint(x: 21.5, y: 19.4), width: 2.2)
+```
+If the arc renders upward instead of through the bottom (the test's first assertion fails), flip `clockwise:` — the y-down flipped image context is what decides it, and the test pins the result. Remove the now-unused laptop/robot helpers if nothing else uses them (`dot`, the rounded rects).
+
+Accessibility descriptions stay as they are.
+
+- [ ] **Step 4: Run**
+
+Run: `swift test --filter MenuBarIconTests` and `swift build -c release -Xswiftc -warnings-as-errors`.
+Expected: PASS (the existing "awake has more ink than off" and "three distinct images" tests still hold).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add -A && git commit -m "Menu bar icons: pilot light (unlit, lit, low flame on the closed lid)
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
 ### Task 13: Backstop ends a session when the app has been gone for 2 minutes
 
 Decision 10 applies.
@@ -3073,6 +3170,61 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
+### Task 16b: End-to-end smoke test (user request 2026-10-14)
+
+A script builds the real `Awake.app` in its **test build** (the existing lid-simulation build, `INSOMNIA_LID_SIMULATION=1` to `scripts/build-app.sh`, gated out of release builds by `scripts/check-lid-simulation-gate.sh`), launches it in a throwaway `AWAKE_HOME`, drives it through a test-only control channel, and checks real effects. It runs locally and in CI.
+
+**Requirements:**
+- **Control channel, test build only.** Under the same compile-time flag as `LidSimulationBuild` (and nowhere else), the app polls `$AWAKE_HOME/test-control` every 0.5 s; each line is one command, consumed and deleted: `awake-on`, `awake-on <seconds>`, `awake-off`, `lid-start <seconds>`, `lid-extend <seconds>`, `lid-end`, `quit`. Lid open/close is driven by the existing `simulate-lid` file (`scripts/simulate-lid.sh`).
+- **No root in the test build.** The test build injects a simulated sleep guard (`SleepGuarding` that records `disablesleep 1/0` and low power into `$AWAKE_HOME/test-sleepguard.log` and keeps the bit in memory) instead of `PmsetSleepGuard`, and a recovery-agent stand-in that reports armed without launchctl. The IOPM assertion (screen mode) stays **real**.
+- **Status file.** After every state change the test build writes `$AWAKE_HOME/test-status.json`: `{"awakeOn": Bool, "awakeEndsAt": String?, "lidActive": Bool, "lidPaused": Bool?, "lidRemaining": Number?, "lidHoldActive": Bool, "icon": "off"|"awake"|"lid", "title": String}`.
+- **`scripts/smoke-test.sh`** (bash 3.2, ShellCheck clean): builds the test build into a temp dir; starts it with `AWAKE_HOME` set; waits for "launched" in the log; then runs these checks, each with a 10 s deadline, printing `PASS`/`FAIL <reason>` per step and exiting non-zero on any failure:
+  1. idle: status icon `off`; `pmset -g assertions` has no "Awake mode".
+  2. `awake-on`: icon `awake`; `pmset -g assertions` shows "Awake mode".
+  3. `awake-off`: icon `off`; assertion gone.
+  4. `lid-start 600` with the simulated lid **open**: `lidActive`, `lidPaused` true, icon `lid`, `lidHoldActive` true (assertion held), `session.json` has `pausedRemaining` 600, sleep-guard log shows `disablesleep 1`.
+  5. simulate lid **closed**: `lidPaused` false, `lidHoldActive` false (assertion released), `session.json` `endsAt` about now+600.
+  6. simulate lid **open**: paused again, remaining ≤ 600.
+  7. `lid-end`: icon `off`, no `session.json`, sleep-guard log ends with `disablesleep 0`, assertion gone.
+  8. `quit`: the process exits within 10 s; no "Awake mode" assertion remains.
+  Always kills the app and removes the temp home on exit (trap).
+- **CI:** a new job in `.github/workflows/ci.yml` (from Task 17) on `macos-26` runs `scripts/smoke-test.sh` on pull requests.
+- **Swift tests** for the command parser and the status-file encoder (pure functions), in `Tests/InsomniaTests/TestControlTests.swift`.
+- **The gate:** `scripts/check-lid-simulation-gate.sh` (and its test) must also prove the control channel is absent from a release build (grep the release binary for the `test-control` string, like it does for the simulation marker).
+
+- [ ] Steps: write the parser/encoder tests (fail), implement them; add the test-build wiring (injected guard, control loop, status writer) behind the flag; write `scripts/smoke-test.sh`; run it locally until all 8 steps pass; extend the gate; add the CI job; ShellCheck; release build with warnings as errors; commit ("Tests: end-to-end smoke test of the real app (test build only)").
+
+---
+
+### Task 16c: Real-sleep check on a real Mac (user request 2026-10-14)
+
+`scripts/real-sleep-check.sh`: a guided, interactive check for the person's own Mac that proves the lid-closed promise with macOS's own sleep log. Not run in CI; part of Task 18's checklist.
+
+**Requirements:**
+- Preconditions it verifies and explains if missing: Awake installed (`~/Applications/Awake.app`), running, `/etc/sudoers.d/awake` present, no lid session active, on power or battery above the end floor.
+- Guided steps, printed one at a time with the exact menu clicks:
+  1. "Start Keep awake with lid closed → Custom… → 3m, enter your password." The script waits for `session started` in `~/Library/Logs/Awake/awake.log`.
+  2. "Close the lid now and leave it closed for at least 5 minutes, then open it and press Enter."
+- After Enter it reads, for the window since the session started: Awake's log (lid closed/opened lines, `session end (timer)`, closed-lid sleep requested) and `log show --style compact --predicate 'process == "powerd" AND eventMessage CONTAINS "Entering Sleep"'`.
+- Verdict, PASS only if all hold: (a) no "Entering Sleep" between the lid close and the session's timer end; (b) the session ended by `timer` about 3 minutes after the close (± 70 s: the clock counts closed time only); (c) an "Entering Sleep" within 60 s after that end. Each prints with its timestamps; any miss prints FAIL with what was seen.
+- ShellCheck clean, bash 3.2. A `--dry-run` flag parses saved log excerpts from `Tests/Fixtures/real-sleep/` instead of the live logs, and a Swift test runs it against a passing and a failing fixture.
+
+- [ ] Steps: write fixtures + the dry-run test (fail); write the script; dry-run test passes; ShellCheck; add item "4c. Run scripts/real-sleep-check.sh" to Task 18's checklist; commit ("Tests: guided real-sleep check for a real Mac").
+
+---
+
+### Task 16d: Make the timing-flaky tests reliable (user request 2026-10-14)
+
+Known flaky under load (ledger): `PowerMonitorTests.testUnreadableBatteryIsRecheckedWhileStarted`, `ClosedLidSleepTests.testRepeatWaitsForALiveCommand` and the `ClosedLidSleepTests` negative assertions that use fixed 200-300 ms sleeps, `RecoveryScriptTests.testInstallMovesNeitherBundleWhenCodesignDoesNotAnswerDuringTheRepair`, `RecoveryScriptTests.testUninstallRestoresAppNapViaBackstopThenRemoves`, `ClosedLidClockTests` / `MenuBarTests` cases that wait on real timers.
+
+**Requirements:**
+- Replace wall-clock waits with deterministic synchronisation: injected clocks (`FakeClock`), `AsyncGate`s, or polling with a generous deadline and an exact end condition — never a fixed sleep followed by a negative assertion. For script tests whose limits are seconds, make the limit a patched constant in the fixture rather than a wall-clock race.
+- No production behaviour changes; if a seam is needed in production code it must be an injected default that the live path does not change.
+- **Proof:** a `scripts/stress-tests.sh` that runs each listed class 10 times in a row while 4 `yes > /dev/null` load processes run (killed on exit), and fails on any failure. Record its output in the report. All runs pass.
+
+- [ ] Steps: run the stress script first to reproduce (record failures); fix each test; re-run the stress script until clean; fast set; commit ("Tests: make timing-sensitive tests deterministic").
+
+---
 ### Task 17: Repository: CI, fast tests, README, LICENSE, Insomnia-only automation
 
 **Files:**
@@ -3221,6 +3373,41 @@ git push
 gh pr create --repo liviulica/awake --base main --head phase-1 --title "Awake phase 1" --body-file /tmp/awake-pr.md
 ```
 Enable Actions for the repo first only if the user wants CI on the PR (`gh api -X PUT repos/liviulica/awake/actions/permissions -F enabled=true`).
+
+---
+
+---
+
+### Task 19: Awake's own MIT license (user request 2026-10-14)
+
+**Requirements:** `LICENSE` starts with Awake's own MIT notice — `MIT License`, `Copyright (c) 2026 Liviu Lica`, the standard MIT permission text — followed by a "Portions" section that keeps Insomnia's MIT notice verbatim (`Copyright (c) 2026 Krish Garg` and its text) and the Caffeine notice from Task 17. README's license section says "MIT. Awake is a fork of Insomnia (MIT, Krish Garg) and borrows its one-click idea from Caffeine (MIT)." `Package.swift` and any `About` text name the license consistently. If the person has not said otherwise, the copyright holder is Liviu Lica (the alternative they may pick is "Charging Pixels").
+
+- [ ] Steps: edit LICENSE and README; `swift build`; commit ("License: Awake's MIT notice, with Insomnia's and Caffeine's kept").
+
+---
+
+### Task 20: Prepare the repository to be public (user request 2026-10-14)
+
+**Requirements (an audit with a written result, then fixes):**
+1. **Secrets:** install `gitleaks` (brew) and run `gitleaks git --redact` over the full history and `gitleaks dir` over the working tree. Any finding stops the task and is reported.
+2. **Personal data in history:** list commit author/committer emails (`git log --all --format='%ae %ce' | sort -u`). Commits authored by `826835+liviulica@users.noreply.github.com` are rewritten to `826835+liviulica@users.noreply.github.com` **only if the person approved it** (ledger); then set this repo's `user.email` to the no-reply address. Insomnia's upstream commits are never rewritten.
+3. **Personal data in files:** grep the tree for `~`, `liviulica`, `employer`, `private-artifact-links`, `.superpowers`; replace local paths with `~/…`, keep design docs (`docs/superpowers/`) but replace private artifact links with "(private mockup)".
+4. **Insomnia-only leftovers:** `SECURITY.md` (contact becomes GitHub private vulnerability reporting), `CONTRIBUTING.md`, `.github/ISSUE_TEMPLATE/*`, `.github/pull_request_template.md`, `docs/releasing.md`, `docs/release-validation.md`, `docs/install.md` (still describes the four-command rule and Insomnia releases): rewrite for Awake or delete where they only describe Insomnia's release process.
+5. **README for strangers:** what it is, screenshots placeholder list, "build from source" install (no signed release yet), what the installer changes (three-line sudoers, LaunchAgent), the one network request, uninstall, credits, license.
+6. **Repo metadata (applied in Task 21):** description, topics (`macos`, `menu-bar`, `caffeinate`, `sleep`, `ai-agents`), homepage none.
+- Output: `docs/public-readiness.md` listing every check, what was found, and what was changed; nothing that the person must decide is left implicit — open decisions are listed at the top.
+
+- [ ] Steps: run the audit; write `docs/public-readiness.md`; make the fixes; history rewrite only if approved; fast tests + release build; commit.
+
+---
+
+### Task 21: Make the repository public (user request 2026-10-14)
+
+**Stops for the person first.** The controller shows the person `docs/public-readiness.md`'s open decisions and asks for the go-ahead (changing visibility is outward-facing and hard to undo once forked or indexed).
+
+**Requirements:** after the go-ahead: push `main` and `phase-1` (force-push only if Task 20 rewrote history, and only before the flip); merge state as the person decides (merging is the person's action); `gh repo edit liviulica/awake --visibility public --accept-visibility-change-consequences`; set description and topics; enable Actions (`gh api -X PUT repos/liviulica/awake/actions/permissions -F enabled=true`); enable private vulnerability reporting (`gh api -X PUT repos/liviulica/awake/private-vulnerability-reporting`); confirm with `gh repo view --json visibility`.
+
+- [ ] Steps: ask; apply; verify; report the public URL.
 
 ---
 
