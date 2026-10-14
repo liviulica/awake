@@ -58,6 +58,17 @@ final class PlaceholderStatus: StatusSource {
 /// Pure formatting for the menu's status block, kept out of the views so
 /// it can be tested.
 enum StatusLines {
+    /// The thermal state as the menu shows it (spec "Interaction").
+    static func thermal(_ state: ProcessInfo.ThermalState) -> String {
+        switch state {
+        case .nominal: "Temperature: normal"
+        case .fair: "Temperature: warm"
+        case .serious: "Temperature: hot"
+        case .critical: "Temperature: critical"
+        @unknown default: "Temperature: unknown"
+        }
+    }
+
     /// "Lid: closed · 4.1 W · Wi-Fi: iPhone". Unknown parts are omitted.
     static func machine(lidClosed: Bool, watts: Double?, wifiSSID: String?, batteryPercent: Int?, isCharging: Bool) -> String {
         var parts: [String] = ["Lid: \(lidClosed ? "closed" : "open")"]

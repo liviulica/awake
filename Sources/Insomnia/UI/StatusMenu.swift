@@ -23,6 +23,15 @@ enum StatusMenu {
             /// save the item was built for, its save ID included, so a
             /// later one is not dropped.
             case stopWaitingForOutput(SavedAudioOutput)
+            /// Left-click's action from the menu: Awake mode on or off.
+            case toggleAwake(isOn: Bool)
+            /// Turn Awake mode on for this long; nil is "until I turn it off".
+            case awakeFor(TimeInterval?)
+            /// Start a lid session for this long; nil asks for a custom duration.
+            case startLid(TimeInterval?)
+            case extendLid(TimeInterval)
+            case endLid
+            case submenu([Item])
         }
 
         let title: String
@@ -31,6 +40,41 @@ enum StatusMenu {
 
     static let settingsTitle = "Settings\u{2026}"
     static let quitTitle = "Quit Awake"
+
+    static let awakeDurations: [TimeInterval?] = [nil, 3600, 7200, 14400]
+    static let lidDurations: [TimeInterval] = [3600, 7200, 14400, 28800]
+
+    /// The controls above the status block (spec "Interaction"). During a
+    /// lid session only its own controls show: Awake mode is off then.
+    /// `lidRemaining` is the closed-lid time left (`Session.closedLidRemaining`).
+    static func controlItems(awakeOn: Bool, awakeEndsAt: Date?, lidRemaining: TimeInterval?, lidPaused: Bool, now: Date) -> [Item] {
+        if let lid = lidRemaining {
+            let left = "Lid closed mode \u{00B7} \(Countdown.short(lid)) left"
+            return [
+                Item(title: lidPaused ? left + " \u{00B7} paused while the lid is open" : left, kind: .info),
+                Item(title: "Add 1 hour", kind: .extendLid(3600)),
+                Item(title: "End now", kind: .endLid),
+            ]
+        }
+        var toggle = "Keep awake"
+        if awakeOn, let end = awakeEndsAt {
+            toggle += " \u{00B7} \(Countdown.short(end.timeIntervalSince(now))) left"
+        }
+        let awake = awakeDurations.map { Item(title: durationTitle($0), kind: .awakeFor($0)) }
+        let lid = lidDurations.map { Item(title: durationTitle($0), kind: .startLid($0)) }
+            + [Item(title: "Custom\u{2026}", kind: .startLid(nil))]
+        return [
+            Item(title: toggle, kind: .toggleAwake(isOn: awakeOn)),
+            Item(title: "Keep awake for", kind: .submenu(awake)),
+            Item(title: "Keep awake with lid closed", kind: .submenu(lid)),
+        ]
+    }
+
+    static func durationTitle(_ duration: TimeInterval?) -> String {
+        guard let duration else { return "Until I turn it off" }
+        let hours = Int(duration / 3600)
+        return hours == 1 ? "1 hour" : "\(hours) hours"
+    }
 
     /// Disabled status lines, a separator, then Settings… and Quit. Empty
     /// lines are dropped, and the separator only appears when something
@@ -46,7 +90,11 @@ enum StatusMenu {
     /// `outputsWaiting` are output devices still muted from a lid close
     /// because they were not connected to get their volume back; each gets
     /// a line and an item to stop waiting for it.
+    /// `controls` come first, followed by a separator; `thermal` is the
+    /// temperature line, right after the machine line.
     static func items(
+        controls: [Item] = [],
+        thermal: String? = nil,
         sessionActive: Bool,
         sleepHeld: Bool,
         machine: String?,
@@ -60,12 +108,19 @@ enum StatusMenu {
         outputsWaiting: [SavedAudioOutput] = [],
         lidSimulationBuild: Bool = false
     ) -> [Item] {
-        var out: [Item] = []
+        var out: [Item] = controls
+        if !controls.isEmpty {
+            out.append(Item(title: "", kind: .separator))
+        }
+        let statusStart = out.count
         if let held = SleepHeldLine.line(sessionActive: sessionActive, sleepHeld: sleepHeld) {
             out.append(Item(title: held.text, kind: held.isWarning ? .warning : .info))
         }
         if let machine = present(machine) {
             out.append(Item(title: machine, kind: .info))
+        }
+        if let thermal = present(thermal) {
+            out.append(Item(title: thermal, kind: .info))
         }
         if let actions = present(actions) {
             out.append(Item(title: actions, kind: .info))
@@ -106,7 +161,7 @@ enum StatusMenu {
             out.append(Item(title: "\u{26A0} \(SessionManager.stillMutedLine(waiting))", kind: .warning))
             out.append(Item(title: "Stop waiting for \(waiting.label)", kind: .stopWaitingForOutput(waiting)))
         }
-        if !out.isEmpty {
+        if out.count > statusStart {
             out.append(Item(title: "", kind: .separator))
         }
         out.append(Item(title: settingsTitle, kind: .settings))
@@ -129,8 +184,26 @@ enum StatusMenu {
         settings: Selector,
         quit: Selector,
         relaunchBrowser: Selector,
-        stopWaitingForOutput: Selector
+        stopWaitingForOutput: Selector,
+        toggleAwake: Selector? = nil,
+        awakeFor: Selector? = nil,
+        startLid: Selector? = nil,
+        extendLid: Selector? = nil,
+        endLid: Selector? = nil
     ) -> NSMenu {
+        let selectors = Selectors(settings: settings, quit: quit, relaunchBrowser: relaunchBrowser,
+                                  stopWaitingForOutput: stopWaitingForOutput, toggleAwake: toggleAwake,
+                                  awakeFor: awakeFor, startLid: startLid, extendLid: extendLid, endLid: endLid)
+        return build(items, target: target, selectors: selectors)
+    }
+
+    private struct Selectors {
+        let settings, quit, relaunchBrowser, stopWaitingForOutput: Selector
+        let toggleAwake, awakeFor, startLid, extendLid, endLid: Selector?
+    }
+
+    @MainActor
+    private static func build(_ items: [Item], target: AnyObject?, selectors s: Selectors) -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
         let lineFont = NSFont.menuFont(ofSize: NSFont.smallSystemFontSize)
@@ -150,21 +223,53 @@ enum StatusMenu {
                 entry.attributedTitle = NSAttributedString(string: item.title, attributes: attributes)
                 menu.addItem(entry)
             case .settings:
-                menu.addItem(action(title: item.title, selector: settings, key: ",", target: target))
+                menu.addItem(action(title: item.title, selector: s.settings, key: ",", target: target))
             case .quit:
-                menu.addItem(action(title: item.title, selector: quit, key: "q", target: target))
+                menu.addItem(action(title: item.title, selector: s.quit, key: "q", target: target))
             case let .relaunchBrowser(browser):
-                let entry = action(title: item.title, selector: relaunchBrowser, key: "", target: target)
+                let entry = action(title: item.title, selector: s.relaunchBrowser, key: "", target: target)
                 entry.representedObject = browser
                 menu.addItem(entry)
             case let .stopWaitingForOutput(waiting):
-                let entry = action(title: item.title, selector: stopWaitingForOutput, key: "", target: target)
+                let entry = action(title: item.title, selector: s.stopWaitingForOutput, key: "", target: target)
                 entry.representedObject = waiting
+                menu.addItem(entry)
+            case let .toggleAwake(isOn):
+                let entry = optionalAction(item.title, s.toggleAwake, target)
+                entry.state = isOn ? .on : .off
+                menu.addItem(entry)
+            case let .awakeFor(duration):
+                let entry = optionalAction(item.title, s.awakeFor, target)
+                entry.representedObject = duration.map { NSNumber(value: $0) }
+                menu.addItem(entry)
+            case let .startLid(duration):
+                let entry = optionalAction(item.title, s.startLid, target)
+                entry.representedObject = duration.map { NSNumber(value: $0) }
+                menu.addItem(entry)
+            case let .extendLid(duration):
+                let entry = optionalAction(item.title, s.extendLid, target)
+                entry.representedObject = NSNumber(value: duration)
+                menu.addItem(entry)
+            case .endLid:
+                menu.addItem(optionalAction(item.title, s.endLid, target))
+            case let .submenu(children):
+                let entry = NSMenuItem(title: item.title, action: nil, keyEquivalent: "")
+                entry.submenu = build(children, target: target, selectors: s)
                 menu.addItem(entry)
             }
         }
         return menu
     }
+
+    /// An action item, disabled when the caller wired no selector for it.
+    @MainActor
+    private static func optionalAction(_ title: String, _ selector: Selector?, _ target: AnyObject?) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: selector, keyEquivalent: "")
+        item.target = target
+        item.isEnabled = selector != nil
+        return item
+    }
+
 
     @MainActor
     private static func action(title: String, selector: Selector, key: String, target: AnyObject?) -> NSMenuItem {
