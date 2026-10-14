@@ -32,7 +32,7 @@ Each is called out again in the task that implements it.
 
 1. **Executable renamed to `Awake`** (not only the display name): `install.sh`/`uninstall.sh` find the app with `pgrep -x <executable>`, and keeping `Insomnia` would match a running Insomnia.
 2. **Relaunch during a lid session never prompts.** Reconcile keeps a valid session only if `SleepDisabled` still reads 1; otherwise it ends the session with a notification. (Insomnia re-ran `disablesleep 1` at launch, which would now raise the password prompt at login.)
-3. **A lid session supersedes Awake mode.** Starting a lid session turns Awake mode off (its display assertion would otherwise stop `LidActions` from sleeping the panel on lid close, `DisplayPower.swift:23`); ending the lid session leaves everything off.
+3. **Lid mode includes screen mode (progression off → screen → lid; spec revision 2026-10-14).** During a lid session the Awake assertion is held while the lid is open and released while it is closed (a held display assertion would stop `LidActions` from sleeping the panel, `DisplayPower.swift:23`). Starting a lid session folds a running Awake mode into it; ending the lid session leaves everything off.
 4. **A cancelled password prompt** ends the start with a new `EndReason.startCancelled`: no notification, no error line.
 5. **osascript gets 300 s** (a person typing a password), not the 20 s pmset limit.
 6. **`Config.maxDuration` is clamped to 24h on load** and the Settings session section (pill presets) is removed. Extensions keep Insomnia's rule: never past `now + 24h`.
@@ -40,13 +40,15 @@ Each is called out again in the task that implements it.
 8. **`dockerFrozen` stays in the journal** so recovery of an Insomnia-era journal still clears it; only the rule that sets it goes.
 9. **App icon (Finder, notifications) stays the eye** in phase 1.
 10. **Backstop app check:** `pgrep -x Awake`; a pgrep timeout counts as "running" (never end a session on a guess).
+11. **Closed-lid clock (spec revision 2026-10-14).** The lid timer counts only closed-lid time; a paused session keeps `pausedRemaining` plus a 5-minute `endsAt` lease renewed every minute (Task 6b). `SessionManager(closedLidClock:)` defaults to `true`; the test `Harness` defaults to `false` so Insomnia's existing tests keep their wall-clock meaning.
 
 ## Review Focus
 
 1. **A password prompt left open until it times out (300 s)** must fail the start cleanly ("Session not started" with a readable reason), never leave sleep disabled, and never count as a cancel. Test: Task 11, `testAdminTimeoutFailsTheStartAndRestoresSleep`.
 2. **Relaunching the app during a lid session while sleep is still disabled** must keep the session with no prompt. Test: Task 11, `testReconcileKeepsSessionWithoutPromptWhenSleepStillDisabled`.
 3. **The app crashing with the lid closed** must have sleep restored by the backstop within about 3 minutes, and a briefly restarted app must reset the clock. Tests: Task 13.
-4. **Awake mode on, then a lid session starts and ends** must leave the Mac with normal sleep and Awake mode off (not silently re-enabled). Test: Task 10, `testLidSessionStartTurnsAwakeModeOff`.
+4. **Awake mode on, then a lid session starts, the lid closes and opens, and the session ends** must hold the screen only while the lid is open, and leave the Mac with normal sleep and nothing held at the end (Awake mode not silently re-enabled). Tests: Task 7 `testLidSessionHoldsOnlyWhileTheLidIsOpen`, Task 10 `testLidSessionFoldsAwakeModeInAndLeavesNothingHeld`.
+6. **The lid opened for hours during a lid session** must never end it by the clock, and an app crash while paused must still restore sleep within about 5 minutes. Tests: Task 6b `testAPausedSessionIsNeverEndedByTheClock`, and the lease is what Task 13's backstop reads.
 5. **Wi-Fi connected but no internet (captive portal, ISP down)** must move to the hotspot, and must not switch back to a home network that still has no internet. Tests: Task 14 `testProbeFailuresStartAnOutage`, Task 15 `testSwitchBackRejoinsHotspotWhenHomeHasNoInternet`.
 
 ---
@@ -536,9 +538,311 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
+### Task 6b: The lid timer counts closed-lid time only
+
+Decision 11 applies. A lid session's timer runs only while the lid is closed. While the lid is open the session is **paused**: `session.json` carries `pausedRemaining` (the closed-lid seconds left) and a short **lease** for `endsAt`, renewed every minute, so the recovery agent and reconcile (which only read `endsAt`) keep treating it as valid while the app runs, and recover it within minutes if the app dies.
+
+**Files:**
+- Modify: `Sources/Insomnia/Model/Session.swift` (`pausedRemaining`, `isPaused`, `closedLidRemaining(at:)`), `Sources/Insomnia/Core/SessionMath.swift` (`pauseLease`, `newPausedSession`, `paused`, `resumed`, `leaseRenewed`, paused-aware `extended`), `Sources/Insomnia/Core/SessionManager.swift` (init flag `closedLidClock`, start, deadline callback, lease timer, `lidClosedClock()`, `lidOpenedClock()`, `renewLeaseIfPaused()`, reconcile, `refreshCountdown`, `stopTimers`), `Sources/Insomnia/Core/LidActions.swift:133,145` (call the clock hooks next to `pauseCountdown`/`resumeCountdown`), `Tests/InsomniaTests/TestSupport.swift` (`Harness.makeManager(closedLidClock: Bool = false)`)
+- Test: new `Tests/InsomniaTests/ClosedLidClockTests.swift`; `StoreTests.swift` (old session.json decodes); `RecoveryScriptTests.swift` (a paused session file is valid for the backstop)
+
+**Interfaces:**
+- Produces:
+  - `Session.pausedRemaining: TimeInterval?` (Codable, optional: Insomnia-era files decode with nil), `var isPaused: Bool`, `func closedLidRemaining(at now: Date) -> TimeInterval`
+  - `SessionMath.pauseLease: TimeInterval = 300`, `static func newPausedSession(now:duration:maxDuration:) -> Session`, `static func paused(_:now:) -> Session`, `static func resumed(_:now:) -> Session`, `static func leaseRenewed(_:now:) -> Session`
+  - `SessionManager.init(..., closedLidClock: Bool = true, ...)`; `func lidClosedClock() async`, `func lidOpenedClock() async`, `func renewLeaseIfPaused() async` (internal; LidActions and tests call them)
+- Consumed later: Task 9 (`controlItems` gets `lidRemaining:` and `lidPaused:`), Task 10 (presentation and the Awake hold read `session.isPaused` / `closedLidRemaining`).
+
+**Rules:**
+- Start with the lid open (or unknown): `newPausedSession` — `pausedRemaining = clamp(duration)`, `endsAt = now + pauseLease`. Start with the lid closed: today's `newSession`.
+- Lid closes: `resumed` — `endsAt = now + pausedRemaining`, `pausedRemaining = nil`; arm the deadline; stop the lease timer.
+- Lid opens: `paused` — `pausedRemaining = max(0, endsAt - now)`, `endsAt = now + pauseLease`; start the lease timer (every 60 s: `leaseRenewed`, save, re-arm).
+- The deadline timer, when it fires on a paused session, renews the lease instead of ending it.
+- Extend while paused adds to `pausedRemaining`, capped at `maxDuration` (24 h of closed time). Extend while running keeps today's rule.
+- Reconcile, for a valid session: lid closed and paused -> `resumed`; lid open and running -> `paused`; paused -> start the lease timer.
+- Every write goes through `exclusive` and `store.saveSession`, like `performExtend` (arm the backstop first).
+- The countdown text and the "5 minutes left" reminder use `closedLidRemaining`; the reminder is only scheduled while running (the lid is closed then, so it rarely shows; that is fine).
+- `closedLidClock: false` keeps Insomnia's wall-clock behaviour exactly; `Harness.makeManager` passes `false` by default so the existing tests keep their meaning, and the new tests pass `true`. (This flag is also where a later "separate screen and lid" setting would plug in.)
+
+- [ ] **Step 1: Write the failing tests**
+
+`Tests/InsomniaTests/ClosedLidClockTests.swift`:
+```swift
+import XCTest
+@testable import Insomnia
+
+@MainActor
+final class ClosedLidClockTests: XCTestCase {
+    private var h: Harness!
+
+    override func setUp() async throws {
+        h = Harness()
+    }
+
+    func testStartWithTheLidOpenIsPausedWithALease() async throws {
+        h.clamshell.closed = false
+        let m = h.makeManager(closedLidClock: true)
+        await m.start(duration: 3600)
+        let s = try XCTUnwrap(m.session)
+        XCTAssertEqual(s.pausedRemaining, 3600)
+        XCTAssertEqual(s.endsAt, h.clock.now.addingTimeInterval(SessionMath.pauseLease))
+        XCTAssertEqual(try h.store.loadSession(), s, "the paused state is on disk")
+    }
+
+    func testClosingTheLidStartsTheClockAndOpeningPausesIt() async throws {
+        h.clamshell.closed = false
+        let m = h.makeManager(closedLidClock: true)
+        await m.start(duration: 3600)
+        h.clamshell.closed = true
+        await m.lidClosedClock()
+        XCTAssertNil(m.session?.pausedRemaining)
+        XCTAssertEqual(m.session?.endsAt, h.clock.now.addingTimeInterval(3600))
+        h.clock.advance(600)
+        h.clamshell.closed = false
+        await m.lidOpenedClock()
+        XCTAssertEqual(m.session?.pausedRemaining, 3000)
+        XCTAssertEqual(m.session?.endsAt, h.clock.now.addingTimeInterval(SessionMath.pauseLease))
+    }
+
+    func testAPausedSessionIsNeverEndedByTheClock() async throws {
+        h.clamshell.closed = false
+        let m = h.makeManager(closedLidClock: true)
+        await m.start(duration: 3600)
+        for _ in 0..<10 {
+            h.clock.advance(60)
+            await m.renewLeaseIfPaused()
+        }
+        XCTAssertNotNil(m.session)
+        XCTAssertEqual(m.session?.pausedRemaining, 3600, "open-lid time does not count")
+        XCTAssertEqual(m.session?.endsAt, h.clock.now.addingTimeInterval(SessionMath.pauseLease))
+    }
+
+    func testExtendWhilePausedAddsClosedTimeUpTo24Hours() async throws {
+        h.clamshell.closed = false
+        let m = h.makeManager(closedLidClock: true)
+        await m.start(duration: 23 * 3600)
+        await m.extend(by: 3600)
+        XCTAssertEqual(m.session?.pausedRemaining, 24 * 3600)
+        await m.extend(by: 3600)
+        XCTAssertEqual(m.session?.pausedRemaining, 24 * 3600, "capped at 24 h of closed time")
+    }
+
+    func testReconcileResumesAPausedSessionWhenTheLidIsClosed() async throws {
+        var s = Session(startedAt: h.clock.now, endsAt: h.clock.now.addingTimeInterval(SessionMath.pauseLease))
+        s.pausedRemaining = 1800
+        try h.store.saveSession(s)
+        var state = RuntimeState.clean
+        state.sleepDisabledByUs = true
+        try h.store.saveState(state)
+        h.guardFake.sleepDisabled = true
+        h.clamshell.closed = true
+        let m = h.makeManager(closedLidClock: true)
+        await m.reconcile()
+        XCTAssertNil(m.session?.pausedRemaining)
+        XCTAssertEqual(m.session?.endsAt, h.clock.now.addingTimeInterval(1800))
+    }
+
+    func testWallClockModeIsUnchanged() async throws {
+        h.clamshell.closed = false
+        let m = h.makeManager()
+        await m.start(duration: 3600)
+        XCTAssertNil(m.session?.pausedRemaining)
+        XCTAssertEqual(m.session?.endsAt, h.clock.now.addingTimeInterval(3600))
+    }
+}
+```
+`StoreTests.swift`: decode `{"startedAt":"2026-10-14T10:00:00Z","endsAt":"2026-10-14T12:00:00Z","extensions":[]}` and assert `pausedRemaining == nil`.
+`RecoveryScriptTests.swift`: next to `testValidFutureSessionIsNoOpWithoutForce`, a session file written with an extra `"pausedRemaining": 1800` and `endsAt` 4 minutes ahead is left alone (status 0, no `sudo` call; if Task 13 has landed, set pgrep mode `0` and expect only the pgrep call).
+(Task 11 changes reconcile to read `isSleepDisabled` instead of re-running `disablesleep 1`; this task lands first, so `testReconcileResumesAPausedSessionWhenTheLidIsClosed` sets `h.guardFake.sleepDisabled = true` and works either way.)
+
+- [ ] **Step 2: Run to verify failure**
+
+Run: `swift build --build-tests`
+Expected: compile errors (`pausedRemaining`, `closedLidClock:`, `lidClosedClock`).
+
+- [ ] **Step 3: Session and SessionMath**
+
+`Session.swift`, add:
+```swift
+    /// Closed-lid seconds left while the lid is open (spec "Lid mode"): the
+    /// timer counts only closed-lid time. nil while the clock runs. While
+    /// set, `endsAt` is a short lease (`SessionMath.pauseLease`) the app
+    /// renews, so recovery still finds a deadline if the app dies.
+    var pausedRemaining: TimeInterval?
+
+    var isPaused: Bool { pausedRemaining != nil }
+
+    /// Closed-lid time left: the paused amount, or the time to `endsAt`.
+    func closedLidRemaining(at now: Date) -> TimeInterval {
+        pausedRemaining ?? remaining(at: now)
+    }
+```
+and an `init` parameter `pausedRemaining: TimeInterval? = nil`. Synthesized `Codable` decodes a missing key as nil for an `Optional`; keep it synthesized.
+
+`SessionMath.swift`, add:
+```swift
+    /// How far ahead a paused session's `endsAt` lease reaches. Renewed
+    /// every minute while the app runs; if the app dies the session expires
+    /// within this window and the recovery agent restores sleep.
+    static let pauseLease: TimeInterval = 300
+
+    static func newPausedSession(now: Date, duration: TimeInterval, maxDuration: TimeInterval) -> Session {
+        Session(startedAt: now, endsAt: now.addingTimeInterval(pauseLease), pausedRemaining: clamp(duration, maxDuration: maxDuration))
+    }
+
+    /// Lid opened: stop the clock and keep what was left.
+    static func paused(_ s: Session, now: Date) -> Session {
+        guard !s.isPaused else { return s }
+        var p = s
+        p.pausedRemaining = s.remaining(at: now)
+        p.endsAt = now.addingTimeInterval(pauseLease)
+        return p
+    }
+
+    /// Lid closed: run the clock on what was left.
+    static func resumed(_ s: Session, now: Date) -> Session {
+        guard let left = s.pausedRemaining else { return s }
+        var r = s
+        r.pausedRemaining = nil
+        r.endsAt = now.addingTimeInterval(left)
+        return r
+    }
+
+    static func leaseRenewed(_ s: Session, now: Date) -> Session {
+        guard s.isPaused else { return s }
+        var r = s
+        r.endsAt = now.addingTimeInterval(pauseLease)
+        return r
+    }
+```
+In `extended(_:by:now:maxDuration:)`, before the existing body:
+```swift
+        if let left = session.pausedRemaining {
+            var s = session
+            let newLeft = min(left + max(extra, 0), max(maxDuration, minimumDuration))
+            s.extensions.append(newLeft - left)
+            s.pausedRemaining = newLeft
+            return s
+        }
+```
+
+- [ ] **Step 4: SessionManager**
+
+Add `@ObservationIgnored private let closedLidClock: Bool` (init parameter `closedLidClock: Bool = true`, assigned in init) and `@ObservationIgnored private var leaseTimer: Timer?`.
+
+In `performStart`, where the session is built (`SessionMath.newSession(now:duration:maxDuration:)`, around `:1195`):
+```swift
+        let new = closedLidClock && clamshell() != true
+            ? SessionMath.newPausedSession(now: now, duration: duration, maxDuration: config.maxDuration)
+            : SessionMath.newSession(now: now, duration: duration, maxDuration: config.maxDuration)
+```
+and after the session is confirmed (where `armDeadline` is called), `syncLeaseTimer()`.
+
+In `armDeadline`, the timer callback becomes:
+```swift
+            Task { @MainActor in
+                guard let self, let s = self.session, s.isExpired(at: self.clock()) else { return }
+                if s.isPaused {
+                    await self.renewLeaseIfPaused()
+                } else {
+                    await self.end(reason: .timer)
+                }
+            }
+```
+Add:
+```swift
+    /// Lid closed: the closed-lid clock runs (spec "Lid mode").
+    func lidClosedClock() async {
+        await moveClock("lid closed") { SessionMath.resumed($0, now: $1) }
+    }
+
+    /// Lid opened: the clock pauses on what is left.
+    func lidOpenedClock() async {
+        await moveClock("lid opened") { SessionMath.paused($0, now: $1) }
+    }
+
+    /// Keeps a paused session's lease ahead of now. The lease timer calls it.
+    func renewLeaseIfPaused() async {
+        await moveClock("lease") { SessionMath.leaseRenewed($0, now: $1) }
+    }
+
+    private func moveClock(_ why: String, _ change: @escaping @MainActor (Session, Date) -> Session) async {
+        guard closedLidClock, session != nil else { return }
+        let ticket = endTicket
+        _ = await exclusive("closed-lid clock (\(why))") {
+            guard let current = self.session, self.endTicket == ticket else { return }
+            let updated = change(current, self.clock())
+            guard updated != current else { return }
+            do {
+                try await self.backstop.arm()
+                try self.store.saveSession(updated)
+            } catch {
+                self.fail("could not update the lid timer: \(error.localizedDescription)")
+                return
+            }
+            self.session = updated
+            await self.armDeadline(updated.endsAt)
+            self.syncLeaseTimer()
+        }
+    }
+
+    /// A 60 s lease renewal while paused; none while the clock runs.
+    private func syncLeaseTimer() {
+        guard session?.isPaused == true else {
+            leaseTimer?.invalidate()
+            leaseTimer = nil
+            return
+        }
+        guard leaseTimer == nil else { return }
+        let t = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in await self?.renewLeaseIfPaused() }
+        }
+        RunLoop.main.add(t, forMode: .common)
+        leaseTimer = t
+    }
+```
+(`exclusive`'s closure signature is `@escaping @MainActor @Sendable () async -> T`; adapt the closure if the compiler needs explicit `self` captures or a `[weak self]`.) In `stopTimers()` also invalidate and nil `leaseTimer`. In `refreshCountdown()` replace `s.remaining(at:)` with `s.closedLidRemaining(at:)`. In `performExtend` call `syncLeaseTimer()` after `armDeadline`.
+
+Reconcile, after the session is kept as valid (after the sleep check): 
+```swift
+            if closedLidClock {
+                let lid = clamshell()
+                let now = clock()
+                let adjusted = lid == true ? SessionMath.resumed(s, now: now) : (lid == false ? SessionMath.paused(s, now: now) : s)
+                if adjusted != s {
+                    do {
+                        try store.saveSession(adjusted)
+                        session = adjusted
+                    } catch {
+                        Log.error("reconcile: could not update the lid timer: \(error.localizedDescription)")
+                    }
+                }
+            }
+```
+placed before the deadline is armed for the session, followed by `syncLeaseTimer()` after it.
+
+`LidActions.swift`: right after `manager.pauseCountdown()` (`:133`) add `await manager.lidClosedClock()`; right after `manager.resumeCountdown()` (`:145`) add `await manager.lidOpenedClock()`.
+
+`TestSupport.swift`: `Harness.makeManager` gains `closedLidClock: Bool = false` and passes it to `SessionManager`.
+
+- [ ] **Step 5: Run**
+
+Run: `swift test --filter 'ClosedLidClockTests|StoreTests|SessionMathTests|ReconcileTests|LidActionsTests|ClosedLidSleepTests'` and the new RecoveryScriptTests case by name.
+Expected: PASS. Then the fast set and `swift build -c release -Xswiftc -warnings-as-errors`.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add -A && git commit -m "Lid timer counts closed-lid time only; paused sessions keep a renewed lease
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+
+---
+
 ### Task 7: Awake mode (assertion + controller)
 
-Decision 3 applies (the controller exposes `lidSessionStarted()`; Task 10 calls it).
+Decision 3 applies (the controller exposes `lidSessionChanged(active:lidOpen:)`; Task 10 calls it on every session change).
 
 **Files:**
 - Create: `Sources/Insomnia/System/AwakeAssertion.swift`, `Sources/Insomnia/Core/AwakeController.swift`
@@ -549,7 +853,7 @@ Decision 3 applies (the controller exposes `lidSessionStarted()`; Task 10 calls 
 - Produces:
   - `protocol AwakeAsserting: Sendable { var isHeld: Bool { get }; func hold() throws; func release() }`
   - `final class IOPMAwakeAssertion: AwakeAsserting, @unchecked Sendable`
-  - `@MainActor @Observable final class AwakeController` with `enum State: Equatable { case off; case on(until: Date?) }`, `private(set) var state: State`, `private(set) var lastError: String?`, `var isOn: Bool`, `var endsAt: Date?`, `@ObservationIgnored var onChange: (@MainActor (State) -> Void)?`, `init(assertion: any AwakeAsserting, clock: @escaping @Sendable () -> Date = { Date() })`, `func turnOn(for duration: TimeInterval?)`, `func turnOff(reason: String)`, `func toggle()`, `func expireIfDue()`, `func lidSessionStarted()`.
+  - `@MainActor @Observable final class AwakeController` with `enum State: Equatable { case off; case on(until: Date?) }`, `private(set) var state: State`, `private(set) var lastError: String?`, `var isOn: Bool`, `var endsAt: Date?`, `@ObservationIgnored var onChange: (@MainActor (State) -> Void)?`, `init(assertion: any AwakeAsserting, clock: @escaping @Sendable () -> Date = { Date() })`, `func turnOn(for duration: TimeInterval?)`, `func turnOff(reason: String)`, `func toggle()`, `func expireIfDue()`, `private(set) var lidHoldActive: Bool`, `func lidSessionChanged(active: Bool, lidOpen: Bool)`.
 
 - [ ] **Step 1: Add the fake**
 
@@ -625,16 +929,32 @@ final class AwakeControllerTests: XCTestCase {
         XCTAssertNotNil(c.lastError)
     }
 
-    func testLidSessionStartTurnsItOff() {
+    func testLidSessionFoldsAwakeModeIn() {
         let a = FakeAwakeAssertion()
         let c = AwakeController(assertion: a, clock: { [t0] in t0 })
         var seen: [AwakeController.State] = []
         c.onChange = { seen.append($0) }
         c.turnOn(for: nil)
-        c.lidSessionStarted()
-        XCTAssertEqual(c.state, .off)
-        XCTAssertFalse(a.isHeld)
+        c.lidSessionChanged(active: true, lidOpen: true)
+        XCTAssertEqual(c.state, .off, "screen mode is part of lid mode now")
+        XCTAssertTrue(c.lidHoldActive)
+        XCTAssertTrue(a.isHeld, "the screen stays on while the lid is open")
         XCTAssertEqual(seen, [.on(until: nil), .off])
+    }
+
+    func testLidSessionHoldsOnlyWhileTheLidIsOpen() {
+        let a = FakeAwakeAssertion()
+        let c = AwakeController(assertion: a, clock: { [t0] in t0 })
+        c.lidSessionChanged(active: true, lidOpen: true)
+        XCTAssertTrue(a.isHeld)
+        c.lidSessionChanged(active: true, lidOpen: false)
+        XCTAssertFalse(a.isHeld, "released so LidActions can sleep the panel")
+        c.lidSessionChanged(active: true, lidOpen: true)
+        XCTAssertTrue(a.isHeld)
+        c.lidSessionChanged(active: false, lidOpen: true)
+        XCTAssertFalse(a.isHeld, "nothing held once the lid session ends")
+        XCTAssertFalse(c.lidHoldActive)
+        XCTAssertEqual(c.state, .off)
     }
 
     func testTurningOnAgainReplacesTheDeadline() {
@@ -725,9 +1045,10 @@ import Observation
 
 /// Awake mode: the Caffeine-style hold, toggled by a left click (spec
 /// "Interaction"). Independent of `SessionManager`: no journal, no root,
-/// no recovery agent. A lid session supersedes it (`lidSessionStarted`),
-/// because its display assertion would keep `LidActions` from sleeping the
-/// panel when the lid closes (`DisplayDimming.requestSleep`).
+/// no recovery agent. Lid mode includes it (`lidSessionChanged`): during a
+/// lid session the same assertion is held while the lid is open and
+/// released while it is closed, because a held display assertion would
+/// keep `LidActions` from sleeping the panel (`DisplayDimming.requestSleep`).
 @MainActor
 @Observable
 final class AwakeController {
@@ -740,6 +1061,8 @@ final class AwakeController {
     private(set) var state: State = .off
     /// Why the last `turnOn` did not take; shown in the menu.
     private(set) var lastError: String?
+    /// True while lid mode holds the screen on (lid session, lid open).
+    private(set) var lidHoldActive = false
 
     var isOn: Bool { state != .off }
     var endsAt: Date? {
@@ -795,8 +1118,28 @@ final class AwakeController {
         turnOff(reason: "timer")
     }
 
-    func lidSessionStarted() {
-        turnOff(reason: "lid session started")
+    /// Screen mode inside a lid session (spec "Interaction"): a running
+    /// Awake mode folds in when the session starts; the assertion is held
+    /// while the lid is open and released while it is closed or once the
+    /// session ends. Called on every session change; idempotent.
+    func lidSessionChanged(active: Bool, lidOpen: Bool) {
+        if active, state != .off {
+            turnOff(reason: "folded into lid mode")
+        }
+        let want = active && lidOpen
+        guard want != lidHoldActive else { return }
+        if want {
+            do {
+                try assertion.hold()
+                lidHoldActive = true
+            } catch {
+                lastError = "Could not keep the screen on: \(error.localizedDescription)"
+                Log.error("lid-mode screen hold: \(error.localizedDescription)")
+            }
+        } else {
+            assertion.release()
+            lidHoldActive = false
+        }
     }
 
     private func set(_ new: State) {
@@ -1018,7 +1361,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `enum Countdown { static func short(_ remaining: TimeInterval) -> String }` (`"1:42"`, `"0:05"`, never negative, rounds minutes up)
   - `StatusMenu.Item.Kind` new cases: `toggleAwake(isOn: Bool)`, `awakeFor(TimeInterval?)`, `startLid(TimeInterval?)` (nil = Custom…), `extendLid(TimeInterval)`, `endLid`, `submenu([Item])`
   - `static let awakeDurations: [TimeInterval?] = [nil, 3600, 7200, 14400]`, `static let lidDurations: [TimeInterval] = [3600, 7200, 14400, 28800]`
-  - `static func controlItems(awakeOn: Bool, awakeEndsAt: Date?, lidEndsAt: Date?, now: Date) -> [Item]`
+  - `static func controlItems(awakeOn: Bool, awakeEndsAt: Date?, lidRemaining: TimeInterval?, lidPaused: Bool, now: Date) -> [Item]` (`lidRemaining` is closed-lid time left, from `Session.closedLidRemaining`, Task 6b)
   - `items(controls: [Item] = [], thermal: String? = nil, …existing parameters…)`
   - `menu(_:target:settings:quit:relaunchBrowser:stopWaitingForOutput:toggleAwake:awakeFor:startLid:extendLid:endLid:)` with the five new selectors defaulting to `nil`
   - `StatusLines.thermal(_ state: ProcessInfo.ThermalState) -> String`
@@ -1045,7 +1388,7 @@ final class StatusMenuControlTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
     func testIdleControls() {
-        let items = StatusMenu.controlItems(awakeOn: false, awakeEndsAt: nil, lidEndsAt: nil, now: now)
+        let items = StatusMenu.controlItems(awakeOn: false, awakeEndsAt: nil, lidRemaining: nil, lidPaused: false, now: now)
         XCTAssertEqual(items.map(\.title), ["Keep awake", "Keep awake for", "Keep awake with lid closed"])
         XCTAssertEqual(items[0].kind, .toggleAwake(isOn: false))
         guard case let .submenu(awake) = items[1].kind, case let .submenu(lid) = items[2].kind else {
@@ -1058,19 +1401,24 @@ final class StatusMenuControlTests: XCTestCase {
     }
 
     func testTimedAwakeShowsTimeLeft() {
-        let items = StatusMenu.controlItems(awakeOn: true, awakeEndsAt: now.addingTimeInterval(3600), lidEndsAt: nil, now: now)
+        let items = StatusMenu.controlItems(awakeOn: true, awakeEndsAt: now.addingTimeInterval(3600), lidRemaining: nil, lidPaused: false, now: now)
         XCTAssertEqual(items[0].title, "Keep awake \u{00B7} 1:00 left")
         XCTAssertEqual(items[0].kind, .toggleAwake(isOn: true))
     }
 
     func testLidSessionControls() {
-        let items = StatusMenu.controlItems(awakeOn: false, awakeEndsAt: nil, lidEndsAt: now.addingTimeInterval(102 * 60), now: now)
+        let items = StatusMenu.controlItems(awakeOn: false, awakeEndsAt: nil, lidRemaining: 102 * 60, lidPaused: false, now: now)
         XCTAssertEqual(items.map(\.title), ["Lid closed mode \u{00B7} 1:42 left", "Add 1 hour", "End now"])
         XCTAssertEqual(items.map(\.kind), [.info, .extendLid(3600), .endLid])
     }
 
+    func testPausedLidSessionSaysTheClockWaitsForTheLid() {
+        let items = StatusMenu.controlItems(awakeOn: false, awakeEndsAt: nil, lidRemaining: 102 * 60, lidPaused: true, now: now)
+        XCTAssertEqual(items[0].title, "Lid closed mode \u{00B7} 1:42 left \u{00B7} paused while the lid is open")
+    }
+
     func testControlsComeFirstThenASeparatorThenStatus() {
-        let controls = StatusMenu.controlItems(awakeOn: false, awakeEndsAt: nil, lidEndsAt: nil, now: now)
+        let controls = StatusMenu.controlItems(awakeOn: false, awakeEndsAt: nil, lidRemaining: nil, lidPaused: false, now: now)
         let items = StatusMenu.items(controls: controls, thermal: "Temperature: normal", sessionActive: false, sleepHeld: false,
                                      machine: "Lid: open", actions: nil, throttledBrowsers: [], error: nil)
         XCTAssertEqual(items.prefix(4).map(\.kind).last, .separator)
@@ -1088,7 +1436,7 @@ final class StatusMenuControlTests: XCTestCase {
 
     @MainActor
     func testMenuBuildsSubmenusWithLiveItems() {
-        let controls = StatusMenu.controlItems(awakeOn: false, awakeEndsAt: nil, lidEndsAt: nil, now: now)
+        let controls = StatusMenu.controlItems(awakeOn: false, awakeEndsAt: nil, lidRemaining: nil, lidPaused: false, now: now)
         let s = #selector(NSObject.description)
         let menu = StatusMenu.menu(StatusMenu.items(controls: controls, sessionActive: false, sleepHeld: false, machine: nil,
                                                     actions: nil, throttledBrowsers: [], error: nil),
@@ -1146,10 +1494,11 @@ Add:
 
     /// The controls above the status block (spec "Interaction"). During a
     /// lid session only its own controls show: Awake mode is off then.
-    static func controlItems(awakeOn: Bool, awakeEndsAt: Date?, lidEndsAt: Date?, now: Date) -> [Item] {
-        if let lid = lidEndsAt {
+    static func controlItems(awakeOn: Bool, awakeEndsAt: Date?, lidRemaining: TimeInterval?, lidPaused: Bool, now: Date) -> [Item] {
+        if let lid = lidRemaining {
+            let left = "Lid closed mode \u{00B7} \(Countdown.short(lid)) left"
             return [
-                Item(title: "Lid closed mode \u{00B7} \(Countdown.short(lid.timeIntervalSince(now))) left", kind: .info),
+                Item(title: lidPaused ? left + " \u{00B7} paused while the lid is open" : left, kind: .info),
                 Item(title: "Add 1 hour", kind: .extendLid(3600)),
                 Item(title: "End now", kind: .endLid),
             ]
@@ -1315,7 +1664,7 @@ Decisions 3 and 9 apply. Insomnia's "item expands by itself while typing" bug li
 
 **Interfaces:**
 - Consumes: `AwakeController` (Task 7), `MenuBarIcon` (Task 8), `StatusMenu.controlItems`/`items`/`menu`, `Countdown`, `StatusLines.thermal` (Task 9), `DurationParser` (Task 6), `Config.lidMaxDuration` (Task 6), `SessionManager.start(duration:)`, `extend(by:)`, `end(reason:)`, `session`, `isActive`.
-- Produces: `StatusItemController.init(manager:status:awake:showSettings:confirmRelaunch:clock:)`, `struct Presentation: Equatable { let icon: MenuBarIcon; let title: String }`, `static func presentation(lidEndsAt: Date?, awake: AwakeController.State, now: Date) -> Presentation`, `enum ClickAction: Equatable { case toggleAwake, showMenu }`, `static func clickAction(isRightClick: Bool, controlHeld: Bool, lidActive: Bool) -> ClickAction`, `AppDelegate.awake: AwakeController`.
+- Produces: `StatusItemController.init(manager:status:awake:showSettings:confirmRelaunch:clock:)`, `struct Presentation: Equatable { let icon: MenuBarIcon; let title: String }`, `static func presentation(lidRemaining: TimeInterval?, awake: AwakeController.State, now: Date) -> Presentation`, `enum ClickAction: Equatable { case toggleAwake, showMenu }`, `static func clickAction(isRightClick: Bool, controlHeld: Bool, lidActive: Bool) -> ClickAction`, `AppDelegate.awake: AwakeController`.
 
 - [ ] **Step 1: Write the failing logic tests**
 
@@ -1326,11 +1675,11 @@ final class StatusItemControllerLogicTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
     func testPresentation() {
-        XCTAssertEqual(StatusItemController.presentation(lidEndsAt: nil, awake: .off, now: now), .init(icon: .off, title: ""))
-        XCTAssertEqual(StatusItemController.presentation(lidEndsAt: nil, awake: .on(until: nil), now: now), .init(icon: .awake, title: ""))
-        XCTAssertEqual(StatusItemController.presentation(lidEndsAt: nil, awake: .on(until: now.addingTimeInterval(5400)), now: now),
+        XCTAssertEqual(StatusItemController.presentation(lidRemaining: nil, awake: .off, now: now), .init(icon: .off, title: ""))
+        XCTAssertEqual(StatusItemController.presentation(lidRemaining: nil, awake: .on(until: nil), now: now), .init(icon: .awake, title: ""))
+        XCTAssertEqual(StatusItemController.presentation(lidRemaining: nil, awake: .on(until: now.addingTimeInterval(5400)), now: now),
                        .init(icon: .awake, title: "1:30"))
-        XCTAssertEqual(StatusItemController.presentation(lidEndsAt: now.addingTimeInterval(7200), awake: .off, now: now),
+        XCTAssertEqual(StatusItemController.presentation(lidRemaining: 7200, awake: .off, now: now),
                        .init(icon: .lid, title: "2:00"))
     }
 
@@ -1341,20 +1690,26 @@ final class StatusItemControllerLogicTests: XCTestCase {
         XCTAssertEqual(StatusItemController.clickAction(isRightClick: false, controlHeld: false, lidActive: true), .showMenu)
     }
 
-    func testLidSessionStartTurnsAwakeModeOff() async {
+    func testLidSessionFoldsAwakeModeInAndLeavesNothingHeld() async {
         let h = Harness()
-        let m = h.makeManager()
+        h.clamshell.closed = false
+        let m = h.makeManager(closedLidClock: true)
         let a = FakeAwakeAssertion()
         let awake = AwakeController(assertion: a, clock: { h.clock.now })
         let c = StatusItemController(manager: m, status: PlaceholderStatus(), awake: awake, showSettings: {})
         awake.turnOn(for: nil)
         await m.start(duration: 3600)
         c.stateChanged()
-        XCTAssertEqual(awake.state, .off, "a lid session supersedes Awake mode")
+        XCTAssertEqual(awake.state, .off, "Awake mode folds into lid mode")
+        XCTAssertTrue(a.isHeld, "lid open: the screen stays on")
+        h.clamshell.closed = true
+        await m.lidClosedClock()
+        c.stateChanged()
+        XCTAssertFalse(a.isHeld, "lid closed: the display may sleep")
         _ = await m.end(reason: .user)
         c.stateChanged()
-        XCTAssertEqual(awake.state, .off, "ending the lid session does not bring Awake mode back")
         XCTAssertFalse(a.isHeld)
+        XCTAssertEqual(awake.state, .off, "ending the lid session does not bring Awake mode back")
     }
 }
 ```
@@ -1400,7 +1755,6 @@ final class StatusItemController: NSObject {
     private let clock: @Sendable () -> Date
     private let statusItem: NSStatusItem
     private var tick: Timer?
-    private var lidWasActive: Bool
 
     init(
         manager: SessionManager,
@@ -1420,7 +1774,6 @@ final class StatusItemController: NSObject {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.autosaveName = Self.autosaveName
         statusItem.behavior = [.terminationOnRemoval]
-        lidWasActive = manager.isActive
         super.init()
         if let button = statusItem.button {
             button.target = self
@@ -1441,9 +1794,9 @@ final class StatusItemController: NSObject {
         defaults.set(40, forKey: key)
     }
 
-    static func presentation(lidEndsAt: Date?, awake: AwakeController.State, now: Date) -> Presentation {
-        if let lid = lidEndsAt {
-            return Presentation(icon: .lid, title: Countdown.short(lid.timeIntervalSince(now)))
+    static func presentation(lidRemaining: TimeInterval?, awake: AwakeController.State, now: Date) -> Presentation {
+        if let lid = lidRemaining {
+            return Presentation(icon: .lid, title: Countdown.short(lid))
         }
         switch awake {
         case .off:
@@ -1474,15 +1827,16 @@ final class StatusItemController: NSObject {
 
     /// Internal so tests can run it without waiting for observation.
     func stateChanged() {
-        let lidActive = manager.isActive
-        if lidActive && !lidWasActive { awake.lidSessionStarted() }
-        lidWasActive = lidActive
-        reminder.sync(endsAt: manager.session?.endsAt)
+        // A paused session is a lid session with the lid open (Task 6b).
+        awake.lidSessionChanged(active: manager.isActive, lidOpen: manager.session?.isPaused ?? false)
+        // "5 minutes left" only while the closed-lid clock runs.
+        reminder.sync(endsAt: manager.session?.isPaused == false ? manager.session?.endsAt : nil)
         refresh()
     }
 
     private func refresh() {
-        let p = Self.presentation(lidEndsAt: manager.session?.endsAt, awake: awake.state, now: clock())
+        let now = clock()
+        let p = Self.presentation(lidRemaining: manager.session?.closedLidRemaining(at: now), awake: awake.state, now: now)
         if let button = statusItem.button {
             button.image = MenuBarIcon.image(p.icon)
             button.title = p.title
@@ -1540,7 +1894,8 @@ final class StatusItemController: NSObject {
 
     static func menuItems(manager: SessionManager, status: any StatusSource, awake: AwakeController, now: Date) -> [StatusMenu.Item] {
         StatusMenu.items(
-            controls: StatusMenu.controlItems(awakeOn: awake.isOn, awakeEndsAt: awake.endsAt, lidEndsAt: manager.session?.endsAt, now: now),
+            controls: StatusMenu.controlItems(awakeOn: awake.isOn, awakeEndsAt: awake.endsAt, lidRemaining: manager.session?.closedLidRemaining(at: now),
+                                              lidPaused: manager.session?.isPaused ?? false, now: now),
             thermal: StatusLines.thermal(ProcessInfo.processInfo.thermalState),
             sessionActive: manager.isActive,
             sleepHeld: manager.state.sleepDisabledByUs,
@@ -2846,6 +3201,7 @@ Verify: `cat /etc/sudoers.d/awake` shows the three lines; `launchctl list | grep
 2. Right-click → Keep awake with lid closed → 1 hour: the macOS password prompt appears (note whether it offers Touch ID). Cancel it: no notification, no error line, `pmset -g | grep SleepDisabled` shows nothing.
 3. Start it again and enter the password: the robot icon and `1:00` show. Close the lid for 3 minutes with an agent running and Wi-Fi in use; open it: the agent kept working, Wi-Fi stayed up.
 4. Start a 10-minute session, close the lid and leave it until the timer ends: the Mac sleeps (check `pmset -g log | grep -i "Entering Sleep"` afterwards).
+4b. Start a 1-hour lid session with the lid open and leave it open 10 minutes: the countdown stays at 1:00, the screen stays on, and the menu says "paused while the lid is open". Close the lid for 10 minutes and open it: the countdown reads about 0:50 and the display had gone dark while closed.
 5. Start a session, then `kill -9 $(pgrep -x Awake)`: within about 3 minutes `pmset -g` no longer shows `SleepDisabled 1` and `~/Library/Logs/Awake/awake.log` has "app not running for".
 6. Relaunch the app during a session (quit is refused while a session runs, so use `kill -9` then `open` within a minute): no password prompt; the session continues.
 7. With a hotspot configured: turn the router's internet off (or join a captive network): within about 40 s Awake joins the hotspot; restore the router: within about 70 s it switches back. If step 7's switch-back fails because `associate(to:password: nil)` is refused, apply the fallback in Task 15 step 3, rerun Task 15's tests, and repeat.

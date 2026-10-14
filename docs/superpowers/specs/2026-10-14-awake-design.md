@@ -48,11 +48,11 @@ Mockups: (private mockup) (option "Robot head").
 - **Left-click** toggles Awake mode on and off. On means "until I turn it off".
 - **Right-click** opens a standard `NSMenu`:
   - Awake mode on/off, with a duration submenu: until I turn it off, 1h, 2h, 4h.
-  - **Lid closed too…** with a duration submenu: 1h, 2h, 4h, 8h, Custom… Lid mode is always timed, with a 24h maximum. Starting it shows the macOS administrator prompt.
+  - **Lid closed too…** with a duration submenu: 1h, 2h, 4h, 8h, Custom… The duration is **closed-lid time**: the timer only counts while the lid is closed and pauses while it is open. At most 24h of closed-lid time; no other limit (with the lid open, the person is at the Mac). Starting it shows the macOS administrator prompt.
   - While a lid session runs: time left, **Add 1h**, **End now** (a plain menu item; Insomnia's press-and-hold control goes).
   - A status line: battery percentage and thermal state.
   - Settings…, Quit.
-- Lid mode includes Awake mode. When a lid session ends, for any reason, Awake mode ends too and normal sleep returns.
+- **A progression: off → screen (Awake mode) → lid.** Lid mode includes screen mode: while the lid is open during a lid session the screen stays on, exactly as in Awake mode; when the lid closes, that hold is dropped so the display goes dark, and it comes back when the lid opens. Starting a lid session folds a running Awake mode into it. When a lid session ends, for any reason, everything ends and normal sleep returns. (A setting to separate screen and lid may come later.)
 - Left-click during a lid session does nothing destructive: it opens the menu instead of ending the session.
 
 ### When a lid session ends
@@ -71,7 +71,9 @@ An `IOPMAssertionCreateWithName` assertion of type `PreventUserIdleDisplaySleep`
 
 ### Lid mode
 
-Insomnia's session machinery, unchanged in shape: the recovery journal is written before each change, lid-close actions are applied and undone from it, and `pmset -a disablesleep 1/0` controls sleep. What changes is how root is obtained (next section) and how recovery treats a vanished app.
+Insomnia's session machinery, unchanged in shape: the recovery journal is written before each change, lid-close actions are applied and undone from it, and `pmset -a disablesleep 1/0` controls sleep. What changes is how root is obtained (next section), how recovery treats a vanished app, and the clock.
+
+**Closed-lid clock.** The session timer runs only while the lid is closed. While the lid is open the session is paused: `session.json` records `pausedRemaining` (closed-lid seconds left) and keeps `endsAt` as a 5-minute lease the app renews every minute. Recovery and reconcile, which read only `endsAt`, therefore still see a valid session while the app runs, and restore sleep within minutes if the app dies. Lid closes: `endsAt = now + pausedRemaining`. Lid opens: `pausedRemaining = endsAt - now`. Because the timer only advances with the lid closed, a session always ends with the lid closed, and the Mac sleeps at once (closed-lid sleep above).
 
 ## Privileges
 
