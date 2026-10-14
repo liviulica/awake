@@ -1,0 +1,2 @@
+Timestamp                       Ty Process[PID:TID]
+2026-10-14 21:03:43.239 Df powerd[346:13bffda] [com.apple.powerd:sleepWake] Entering Sleep state due to 'Clamshell Sleep'

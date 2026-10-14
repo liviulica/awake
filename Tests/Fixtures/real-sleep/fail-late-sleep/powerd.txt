@@ -1,0 +1,2 @@
+Timestamp                       Ty Process[PID:TID]
+2026-10-14 21:05:30.100 Df powerd[346:13bffda] [com.apple.powerd:sleepWake] Entering Sleep state due to 'Software Sleep pid=412'
