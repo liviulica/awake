@@ -76,4 +76,27 @@ final class AwakeControllerTests: XCTestCase {
         XCTAssertEqual(c.state, .on(until: nil))
         XCTAssertEqual(a.calls, ["hold", "hold"], "hold is idempotent in the live assertion")
     }
+
+    func testAwakeModeCannotStartOrReleaseTheLidHold() {
+        let a = FakeAwakeAssertion()
+        let c = AwakeController(assertion: a, clock: { [t0] in t0 })
+        c.lidSessionChanged(active: true, lidOpen: true)
+        XCTAssertTrue(a.isHeld)
+        c.toggle()
+        XCTAssertEqual(c.state, .off, "screen mode is part of lid mode")
+        XCTAssertTrue(a.isHeld, "the lid hold keeps the assertion")
+        c.turnOff(reason: "test")
+        XCTAssertTrue(a.isHeld, "turning off must not release the lid's hold")
+        XCTAssertTrue(c.lidHoldActive)
+    }
+
+    func testLidClosedDuringASessionDoesNotTakeTheAssertionForAwakeMode() {
+        let a = FakeAwakeAssertion()
+        let c = AwakeController(assertion: a, clock: { [t0] in t0 })
+        c.lidSessionChanged(active: true, lidOpen: false)
+        c.turnOn(for: nil)
+        XCTAssertEqual(c.state, .off)
+        XCTAssertFalse(a.isHeld)
+        XCTAssertEqual(a.calls, [], "no hold is attempted while a lid session is active")
+    }
 }

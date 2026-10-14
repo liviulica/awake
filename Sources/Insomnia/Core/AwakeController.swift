@@ -21,6 +21,9 @@ final class AwakeController {
     private(set) var lastError: String?
     /// True while lid mode holds the screen on (lid session, lid open).
     private(set) var lidHoldActive = false
+    /// True while a lid session runs; Awake mode cannot start then (screen
+    /// mode is part of lid mode).
+    private(set) var lidSessionActive = false
 
     var isOn: Bool { state != .off }
     var endsAt: Date? {
@@ -42,6 +45,10 @@ final class AwakeController {
 
     /// `duration` nil keeps the Mac awake until turned off.
     func turnOn(for duration: TimeInterval?) {
+        guard !lidSessionActive else {
+            Log.info("awake mode ignored: a lid session is active")
+            return
+        }
         do {
             try assertion.hold()
         } catch {
@@ -61,7 +68,8 @@ final class AwakeController {
         timer?.invalidate()
         timer = nil
         guard state != .off else { return }
-        assertion.release()
+        // The assertion is shared with the lid hold, which owns it while held.
+        if !lidHoldActive { assertion.release() }
         Log.info("awake mode off (\(reason))")
         set(.off)
     }
@@ -81,6 +89,7 @@ final class AwakeController {
     /// while the lid is open and released while it is closed or once the
     /// session ends. Called on every session change; idempotent.
     func lidSessionChanged(active: Bool, lidOpen: Bool) {
+        lidSessionActive = active
         if active, state != .off {
             turnOff(reason: "folded into lid mode")
         }
@@ -90,12 +99,14 @@ final class AwakeController {
             do {
                 try assertion.hold()
                 lidHoldActive = true
+                lastError = nil
             } catch {
                 lastError = "Could not keep the screen on: \(error.localizedDescription)"
                 Log.error("lid-mode screen hold: \(error.localizedDescription)")
             }
         } else {
-            assertion.release()
+            // Awake mode may still own the shared assertion; release only when it does not.
+            if state == .off { assertion.release() }
             lidHoldActive = false
         }
     }
