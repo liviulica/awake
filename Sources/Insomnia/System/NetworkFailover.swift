@@ -929,11 +929,17 @@ final class NetworkFailover {
         return task
     }
 
-    private func process(satisfied: Bool) async {
+    /// `internetReachable` is an answer the caller just got from the probe,
+    /// so a recovery does not probe a second time.
+    private func process(satisfied: Bool, internetReachable: Bool? = nil) async {
         guard !Task.isCancelled else { return }
-        if satisfied, machine.inOutage, !(await probe.isInternetReachable()) {
-            Log.info("wifi path satisfied but the internet is unreachable; still in outage")
-            return
+        if satisfied, machine.inOutage {
+            let reachable: Bool
+            if let internetReachable { reachable = internetReachable } else { reachable = await probe.isInternetReachable() }
+            if !reachable {
+                Log.info("wifi path satisfied but the internet is unreachable; still in outage")
+                return
+            }
         }
         let now = clock()
         let outputs = satisfied ? machine.pathSatisfied(at: now) : machine.pathUnsatisfied(at: now)
@@ -954,6 +960,9 @@ final class NetworkFailover {
         if tracker.record(success: ok) {
             Log.info("internet unreachable for \(ReachabilityTracker.threshold) checks with Wi-Fi up")
             await process(satisfied: false)
+        } else if ok, machine.inOutage {
+            // An outage the probe started has no path update to end it.
+            await process(satisfied: true, internetReachable: true)
         }
         scheduleProbe(after: ok ? Self.probeInterval : Self.probeRetryInterval)
     }

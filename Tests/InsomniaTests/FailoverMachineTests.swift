@@ -362,6 +362,20 @@ final class NetworkFailoverDriverTests: XCTestCase {
         XCTAssertTrue(n.machine.inOutage, "Wi-Fi associated but no internet counts as an outage")
     }
 
+    func testProbeSuccessEndsAnOutageTheProbeStarted() async {
+        let clock = FakeClock(Date(timeIntervalSince1970: 1_800_000_000))
+        let n = driver(keychain: FakeKeychainStore(), joiner: RecordingHotspotJoiner(), notifier: RecordingNotifier(),
+                       clock: clock, probe: FakeProbe([false, false, false, true]))
+        await n.probeTick()
+        await n.probeTick()
+        await n.probeTick()
+        XCTAssertTrue(n.machine.inOutage)
+        clock.advance(20)
+        await n.probeTick()
+        XCTAssertFalse(n.machine.inOutage, "the internet answering again ends it with no path change")
+        XCTAssertEqual(n.lastGap, 20)
+    }
+
     func testPathBackWithoutInternetDoesNotEndTheOutage() async {
         let clock = FakeClock(Date(timeIntervalSince1970: 1_800_000_000))
         let n = driver(keychain: FakeKeychainStore(), joiner: RecordingHotspotJoiner(), notifier: RecordingNotifier(),
