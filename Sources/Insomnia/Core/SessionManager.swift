@@ -465,7 +465,10 @@ final class SessionManager {
     /// the lid opens, macOS keeps the closed Mac awake, or a start begins.
     /// Only this process asks, so a quit waits while it is set.
     @ObservationIgnored private(set) var closedLidSleepOwed = false
-    @ObservationIgnored private var closedLidSleepRetry: Timer?
+    /// The timer that asks for the owed sleep again; each retry that does
+    /// not get the sleep through replaces it. Readable so tests can wait
+    /// for a retry to have run instead of waiting for a stretch of time.
+    @ObservationIgnored private(set) var closedLidSleepRetry: Timer?
     /// Whether the 1 Hz redraw is currently on the run loop. Tests assert on
     /// this to prove an idle session leaves no repeating wakeup behind.
     var countdownTimerArmed: Bool { countdownTimer != nil }

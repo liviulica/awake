@@ -942,6 +942,27 @@ private final class MainActorFlag {
     var isSet = false
 }
 
+/// Polls `condition` on the main actor every 10 ms until it holds, then
+/// asserts it. The deadline only ends a test that is already broken: a
+/// passing test returns the moment the condition holds, so the deadline is
+/// long enough for a heavily loaded machine (`scripts/stress-tests.sh`)
+/// and nothing depends on how fast the work runs. Only for positive
+/// conditions: a negative check waits for a positive end condition first
+/// (the retry that could have acted has run), never for a period of time.
+@MainActor
+func pollUntil(
+    _ what: String,
+    timeout: TimeInterval = 60,
+    file: StaticString = #filePath, line: UInt = #line,
+    _ condition: () -> Bool
+) async {
+    let deadline = Date().addingTimeInterval(timeout)
+    while !condition(), Date() < deadline {
+        try? await Task.sleep(for: .milliseconds(10))
+    }
+    XCTAssertTrue(condition(), what, file: file, line: line)
+}
+
 /// Yields a few times so that tasks created just now can run. Nothing
 /// confirms they did, so use it only where the test has no handle on the
 /// request (controller actions that start their own tasks), and

@@ -136,10 +136,7 @@ final class StatusItemControllerLogicTests: XCTestCase {
         defer { c.stop() }
         XCTAssertFalse(a.isHeld)
         await m.start(duration: 3600)
-        for _ in 0..<100 where !a.isHeld {
-            await Task.yield()
-        }
-        XCTAssertTrue(a.isHeld, "observation delivered the lid session to Awake mode")
+        await pollUntil("observation never delivered the lid session to Awake mode") { a.isHeld }
         XCTAssertTrue(awake.lidHoldActive)
     }
 }

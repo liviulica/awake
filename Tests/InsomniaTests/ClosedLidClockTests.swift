@@ -248,12 +248,14 @@ final class ClosedLidClockTests: XCTestCase {
     }
 
     /// The deadline timer firing on a paused session renews the lease
-    /// rather than ending it (real clock, so the Timer actually fires).
+    /// rather than ending it. The timer is real, so its fire date is a real
+    /// time a moment ahead; the expiry check reads the harness clock, which
+    /// stands still until the test moves it past the lease. How long the
+    /// reconcile or the wait for the timer takes therefore changes nothing.
     func testAnExpiringLeaseIsRenewedNotEnded() async throws {
         let real = Harness(now: Date())
         defer { real.home.destroy() }
-        // The harness clock is fixed; the timer's expiry check needs time
-        // to pass.
+        let clock = real.clock
         let m = SessionManager(
             paths: real.home.paths,
             sleepGuard: real.guardFake,
@@ -261,21 +263,21 @@ final class ClosedLidClockTests: XCTestCase {
             backstop: real.backstop,
             notifier: real.notifier,
             clamshell: { false },
-            clock: { Date() },
+            clock: { clock.now },
             closedLidClock: true
         )
         // session.json keeps whole seconds.
-        let lease = Date(timeIntervalSince1970: (Date().timeIntervalSince1970 + 2).rounded(.up))
-        try real.store.saveSession(Session(startedAt: Date(), endsAt: lease, pausedRemaining: 1800))
+        let lease = Date(timeIntervalSince1970: (clock.now.timeIntervalSince1970 + 1).rounded(.up))
+        try real.store.saveSession(Session(startedAt: clock.now, endsAt: lease, pausedRemaining: 1800))
         real.guardFake.sleepDisabled = true
         await m.reconcile()
         XCTAssertEqual(m.scheduledDeadline, lease)
-        for _ in 0..<500 where (m.session?.endsAt ?? lease) <= lease {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        XCTAssertEqual(m.session?.endsAt, lease, "the lease was moved before it ran out")
+        clock.now = lease.addingTimeInterval(1)
+        await pollUntil("the deadline timer never acted on the expired lease") { (m.session?.endsAt ?? .distantFuture) > lease }
         XCTAssertTrue(m.isActive, "a paused session is never ended by the clock")
         let renewed = try XCTUnwrap(m.session)
-        XCTAssertGreaterThan(renewed.endsAt, lease)
+        XCTAssertEqual(renewed.endsAt, clock.now.addingTimeInterval(SessionMath.pauseLease))
         XCTAssertEqual(renewed.pausedRemaining, 1800)
         // session.json keeps whole seconds.
         let onDisk = try XCTUnwrap(real.store.loadSession())

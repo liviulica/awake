@@ -45,17 +45,30 @@ final class PowerMonitor {
 
     private let reader: Reader
     private let recheckDelay: Duration
+    private let wait: @Sendable (Duration) async throws -> Void
+    private let systemEvents: Bool
     private var source: CFRunLoopSource?
     private var thermalObserver: NSObjectProtocol?
     private var running = false
     private var recheck: Task<Void, Never>?
 
-    /// `reader` and `recheckDelay` are injection points for tests; the
-    /// defaults read IOKit and wait 30 s between re-reads of an unreadable
-    /// battery.
-    init(reader: @escaping Reader = { PowerMonitor.readBattery() }, recheckDelay: Duration = .seconds(30)) {
+    /// `reader`, `recheckDelay`, `wait` and `systemEvents` are injection
+    /// points for tests; the defaults read IOKit, wait 30 s between re-reads
+    /// of an unreadable battery with `Task.sleep`, and subscribe to the
+    /// IOKit power source and thermal state notifications. Tests turn
+    /// `systemEvents` off so that only their own reads and rechecks move
+    /// the monitor: the real Mac's battery events and thermal changes (a
+    /// loaded machine warms up) would otherwise call `onChange` at any time.
+    init(
+        reader: @escaping Reader = { PowerMonitor.readBattery() },
+        recheckDelay: Duration = .seconds(30),
+        wait: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+        systemEvents: Bool = true
+    ) {
         self.reader = reader
         self.recheckDelay = recheckDelay
+        self.wait = wait
+        self.systemEvents = systemEvents
     }
 
     func start() {
@@ -65,7 +78,11 @@ final class PowerMonitor {
         battery = .none
         refreshBattery()
         thermalState = ProcessInfo.processInfo.thermalState
+        if systemEvents { subscribeToSystemEvents() }
+        Log.info("power monitor started (battery \(Self.describe(battery)), \(isCharging ? "charging" : "on battery"), thermal \(Self.name(thermalState)))")
+    }
 
+    private func subscribeToSystemEvents() {
         let refcon = Unmanaged.passUnretained(self).toOpaque()
         if let s = IOPSNotificationCreateRunLoopSource(Self.callback, refcon)?.takeRetainedValue() {
             source = s
@@ -81,7 +98,6 @@ final class PowerMonitor {
         ) { [weak self] _ in
             Task { @MainActor in self?.handleThermal() }
         }
-        Log.info("power monitor started (battery \(Self.describe(battery)), \(isCharging ? "charging" : "on battery"), thermal \(Self.name(thermalState)))")
     }
 
     func stop() {
@@ -247,8 +263,8 @@ final class PowerMonitor {
         recheck?.cancel()
         recheck = nil
         guard running, case .unreadable = battery else { return }
-        recheck = Task { @MainActor [weak self, recheckDelay] in
-            try? await Task.sleep(for: recheckDelay)
+        recheck = Task { @MainActor [weak self, recheckDelay, wait] in
+            try? await wait(recheckDelay)
             guard !Task.isCancelled else { return }
             self?.handleBattery()
         }

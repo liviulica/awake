@@ -24,14 +24,17 @@ final class ClosedLidSleepTests: XCTestCase {
         return m
     }
 
-    /// The end that a command's exit runs again runs on the main actor
-    /// after the fake child exits; poll for its effect.
-    private func waitUntil(_ what: String, _ condition: () -> Bool) async {
-        let deadline = Date().addingTimeInterval(5)
-        while !condition(), Date() < deadline {
-            try? await Task.sleep(for: .milliseconds(20))
+    /// Waits until the closed-lid retry has run `count` more times. Each
+    /// run replaces the armed timer: with a new one when it could not ask,
+    /// with none when it asked or dropped the owed sleep, which ends the
+    /// wait early. The retry is a real timer (`retryDelay`), so a negative
+    /// check waits for the retries that could have asked, not for a
+    /// stretch of time.
+    private func waitForClosedLidRetries(_ m: SessionManager, _ count: Int, file: StaticString = #filePath, line: UInt = #line) async {
+        for _ in 0..<count {
+            guard let armed = m.closedLidSleepRetry else { return }
+            await pollUntil("the closed-lid retry never ran", file: file, line: line) { m.closedLidSleepRetry !== armed }
         }
-        XCTAssertTrue(condition(), what)
     }
 
     /// The case from the bag: a critical thermal state with the lid closed
@@ -144,7 +147,7 @@ final class ClosedLidSleepTests: XCTestCase {
 
         h.guardFake.stillRunning = []
         h.guardFake.exitStuckCommands()
-        await waitUntil("pending end never retried") { m.pendingEnd == nil }
+        await pollUntil("pending end never retried") { m.pendingEnd == nil }
 
         XCTAssertEqual(h.lidSleep.requests, [Self.asked])
         XCTAssertEqual(try h.store.loadState(), RuntimeState.clean)
@@ -164,8 +167,11 @@ final class ClosedLidSleepTests: XCTestCase {
         XCTAssertEqual(try h.store.loadState()?.sleepDisabledByUs, true)
 
         h.guardFake.sleepDisabled = false
-        await waitUntil("not asked again once sleep was restored") { h.lidSleep.requests.last == Self.asked }
-        try await Task.sleep(for: .milliseconds(200))
+        await pollUntil("not asked again once sleep was restored") { h.lidSleep.requests.last == Self.asked }
+        // Asked in the same step that cleared the owed sleep and armed no
+        // retry: nothing is left to ask again.
+        XCTAssertFalse(m.closedLidSleepOwed)
+        XCTAssertNil(m.closedLidSleepRetry, "a retry is still armed after the sleep was asked")
         XCTAssertEqual(h.lidSleep.requests.filter { $0 != Self.refused }, [Self.asked])
     }
 
@@ -182,7 +188,7 @@ final class ClosedLidSleepTests: XCTestCase {
         XCTAssertTrue(m.closedLidSleepOwed, "the quit would drop the owed sleep")
         XCTAssertFalse(m.quitRequested, "starts stay refused while the app stays")
         h.guardFake.sleepDisabled = false
-        await waitUntil("not asked once sleep was restored") { h.lidSleep.requests.last == Self.asked }
+        await pollUntil("not asked once sleep was restored") { h.lidSleep.requests.last == Self.asked }
         XCTAssertFalse(m.closedLidSleepOwed)
     }
 
@@ -194,8 +200,10 @@ final class ClosedLidSleepTests: XCTestCase {
 
         h.clamshell.closed = false
         h.guardFake.sleepDisabled = false
-        try await Task.sleep(for: .milliseconds(300))
+        // The next retry finds the lid open and drops the owed sleep.
+        await pollUntil("the open lid never dropped the owed sleep") { !m.closedLidSleepOwed }
 
+        XCTAssertNil(m.closedLidSleepRetry, "a retry is still armed for an open Mac")
         XCTAssertEqual(h.lidSleep.requests, [Self.refused], "asked an open Mac to sleep")
     }
 
@@ -209,10 +217,13 @@ final class ClosedLidSleepTests: XCTestCase {
 
         await m.start(duration: 3600)
         XCTAssertNotNil(m.session)
+        XCTAssertFalse(m.closedLidSleepOwed, "the start kept the owed sleep")
         let outcome = await m.end(reason: .user)
-        try await Task.sleep(for: .milliseconds(200))
 
         XCTAssertEqual(outcome, .restored)
+        // Nothing owed and no retry armed: nothing can ask later.
+        XCTAssertFalse(m.closedLidSleepOwed)
+        XCTAssertNil(m.closedLidSleepRetry)
         XCTAssertEqual(h.lidSleep.requests, [Self.refused])
     }
 
@@ -229,7 +240,7 @@ final class ClosedLidSleepTests: XCTestCase {
         XCTAssertNil(m.session)
         other.release()
         h.guardFake.sleepDisabled = false
-        await waitUntil("the refused start dropped the owed sleep") { h.lidSleep.requests.last == Self.asked }
+        await pollUntil("the refused start dropped the owed sleep") { h.lidSleep.requests.last == Self.asked }
     }
 
     /// A start queued behind a heat end runs before any sleep request, and
@@ -263,7 +274,7 @@ final class ClosedLidSleepTests: XCTestCase {
 
         h.guardFake.stillRunning = []
         h.guardFake.exitStuckCommands()
-        await waitUntil("pending end never retried") { m.pendingEnd == nil }
+        await pollUntil("pending end never retried") { m.pendingEnd == nil }
 
         XCTAssertEqual(h.lidSleep.requests, [Self.asked])
     }
@@ -280,12 +291,15 @@ final class ClosedLidSleepTests: XCTestCase {
         XCTAssertEqual(stuck, .privilegedCommandRunning(pid: 4242))
 
         h.guardFake.sleepDisabled = false
-        try await Task.sleep(for: .milliseconds(300))
-        XCTAssertFalse(h.lidSleep.requests.contains(Self.asked), "asked for sleep beside a live sudo pmset")
+        let before = h.lidSleep.requests.count
+        // Two retries run with sleep reading restored and the command live.
+        XCTAssertNotNil(m.closedLidSleepRetry, "no retry armed while the sleep is owed")
+        await waitForClosedLidRetries(m, 2)
+        XCTAssertEqual(Array(h.lidSleep.requests.dropFirst(before)), [], "asked for sleep beside a live sudo pmset")
 
         h.guardFake.stillRunning = []
         h.guardFake.exitStuckCommands()
-        await waitUntil("not asked once the command exited") { h.lidSleep.requests.last == Self.asked }
+        await pollUntil("not asked once the command exited") { h.lidSleep.requests.last == Self.asked }
     }
 
     /// A session.json that cannot be removed keeps the end pending, but

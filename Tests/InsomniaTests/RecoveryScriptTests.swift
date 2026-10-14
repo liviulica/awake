@@ -1499,6 +1499,7 @@ final class RecoveryScriptTests: XCTestCase {
     /// The normal path: the backstop puts the entries back under
     /// uninstall's lock, the check passes, and everything is removed.
     func testUninstallRestoresAppNapViaBackstopThenRemoves() throws {
+        try fx.writePatientCopies()
         try fx.installMachinery()
         try fx.writeState(#"{"sleepDisabledByUs":true,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false,"appNapOverrides":[{"bundleId":"com.google.Chrome"},{"bundleId":"com.apple.Terminal","previous":false}]}"#)
         try fx.defaultsTable([("com.google.Chrome", "1"), ("com.apple.Terminal", "1")])
@@ -5141,19 +5142,21 @@ final class RecoveryScriptTests: XCTestCase {
     /// the plist on disk pins. When it never answers, that is unknown, so
     /// the run stops it, moves neither bundle, unloads no job, and exits
     /// instead of holding the lock. Deleting the set-aside copy here would
-    /// lose the bundle the plist may pin.
+    /// lose the bundle the plist may pin. That the run stopped the call
+    /// rather than waiting for it shows in the message: install.sh prints
+    /// "did not answer within 5s" only for status 124, which its supervisor
+    /// writes only after it has signalled the call (the fake would end on
+    /// its own only after 60 s). No wall-clock bound is asserted, so a slow
+    /// or sleeping machine cannot fail the test.
     func testInstallMovesNeitherBundleWhenCodesignDoesNotAnswerDuringTheRepair() throws {
         let previous = try writeInterruptedSwap()
         try fx.writeState(#"{"sleepDisabledByUs":false,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false}"#)
         fx.setMode("launchctl", "loaded")
         fx.setMode("codesign", "verify-hangs-under-lock")
 
-        let started = Date()
         let r = try fx.run(fx.installRedirected, extraEnvironment: ["USER": "tester"])
-        let elapsed = Date().timeIntervalSince(started)
 
         XCTAssertEqual(r.status, 1, r.stderr + r.stdout)
-        XCTAssertLessThan(elapsed, 30)
         XCTAssertTrue(r.stderr.contains("aside at \(previous.path), and 'codesign --verify', which tells which of the two bundles \(fx.plist.path) pins,\ndid not answer within 5s.\nNeither bundle was moved"), r.stderr)
         let calls = fx.calls()
         XCTAssertTrue(calls.contains("codesign FD9-OPEN"), "the call keeps the lock while it runs: \(calls)")
@@ -6502,7 +6505,38 @@ private final class ScriptFixture {
 
     private func writeScriptCopies() throws {
         let src = Self.productionScripts
-        let backstopText = try String(contentsOf: src.appendingPathComponent("backstop.sh"), encoding: .utf8)
+        try writeBackstopCopy(extraConstants: [:])
+        try writeUninstallCopy(extraConstants: [:])
+
+        // build-app.sh (run by install.sh from $ROOT/scripts): build and
+        // signing go to the fakes.
+        let buildText = try String(contentsOf: src.appendingPathComponent("build-app.sh"), encoding: .utf8)
+        let buildApp = repoScripts.appendingPathComponent("build-app.sh")
+        try Self.patch(buildText, [
+            "SWIFT": bin.appendingPathComponent("swift").path,
+            "CODESIGN": bin.appendingPathComponent("codesign").path,
+        ]).write(to: buildApp, atomically: true, encoding: .utf8)
+        try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: buildApp.path)
+
+        try writeInstallCopies(extraConstants: [:])
+    }
+
+    /// Rewrites backstop.sh and uninstall.sh with 60 s call and lock limits
+    /// in place of the 1 s and 5 s ones the timeout tests need, for a test
+    /// on the normal path, where nothing is meant to time out: each call
+    /// then ends on its own answer, and a fake that is slow to start on a
+    /// loaded machine cannot turn that path into a timeout. A passing run
+    /// never waits for these limits. Call it before `installMachinery`,
+    /// which copies the backstop into the bundle.
+    func writePatientCopies() throws {
+        try writeBackstopCopy(extraConstants: ["LOCK_TIMEOUT_SECONDS": "60", "COMMAND_TIMEOUT_SECONDS": "60"])
+        try writeUninstallCopy(extraConstants: ["LOCK_TIMEOUT_SECONDS": "60", "CALL_TIMEOUT_SECONDS": "60"])
+    }
+
+    /// backstop.sh with every tool redirected into the fixture and 1 s
+    /// limits; `extraConstants` replaces any of them.
+    func writeBackstopCopy(extraConstants: [String: String]) throws {
+        let backstopText = try String(contentsOf: Self.productionScripts.appendingPathComponent("backstop.sh"), encoding: .utf8)
         try Self.patch(backstopText, [
             "PMSET": fakePmset,
             "SUDO": bin.appendingPathComponent("sudo").path,
@@ -6520,9 +6554,13 @@ private final class ScriptFixture {
             "LOCK_TIMEOUT_SECONDS": "1",
             "COMMAND_TIMEOUT_SECONDS": "1",
             "KILL_GRACE_SECONDS": "1",
-        ]).write(to: backstop, atomically: true, encoding: .utf8)
+        ].merging(extraConstants) { $1 }).write(to: backstop, atomically: true, encoding: .utf8)
+    }
 
-        let uninstallText = try String(contentsOf: src.appendingPathComponent("uninstall.sh"), encoding: .utf8)
+    /// uninstall.sh with every tool and path redirected into the fixture
+    /// and short limits; `extraConstants` replaces any of them.
+    func writeUninstallCopy(extraConstants: [String: String]) throws {
+        let uninstallText = try String(contentsOf: Self.productionScripts.appendingPathComponent("uninstall.sh"), encoding: .utf8)
         try Self.patch(uninstallText, [
             "PGREP": bin.appendingPathComponent("pgrep").path,
             "OSASCRIPT": bin.appendingPathComponent("osascript").path,
@@ -6536,19 +6574,7 @@ private final class ScriptFixture {
             "LOCK_TIMEOUT_SECONDS": "1",
             "QUIT_WAIT_SECONDS": "1",
             "CALL_TIMEOUT_SECONDS": "5",
-        ]).write(to: uninstall, atomically: true, encoding: .utf8)
-
-        // build-app.sh (run by install.sh from $ROOT/scripts): build and
-        // signing go to the fakes.
-        let buildText = try String(contentsOf: src.appendingPathComponent("build-app.sh"), encoding: .utf8)
-        let buildApp = repoScripts.appendingPathComponent("build-app.sh")
-        try Self.patch(buildText, [
-            "SWIFT": bin.appendingPathComponent("swift").path,
-            "CODESIGN": bin.appendingPathComponent("codesign").path,
-        ]).write(to: buildApp, atomically: true, encoding: .utf8)
-        try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: buildApp.path)
-
-        try writeInstallCopies(extraConstants: [:])
+        ].merging(extraConstants) { $1 }).write(to: uninstall, atomically: true, encoding: .utf8)
     }
 
     /// install.sh: every $HOME-derived path and every tool is redirected

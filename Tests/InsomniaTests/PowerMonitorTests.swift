@@ -102,12 +102,71 @@ final class PowerMonitorTests: XCTestCase {
         }
     }
 
-    private func waitUntil(_ what: String, _ condition: () -> Bool) async {
-        let deadline = Date().addingTimeInterval(5)
-        while !condition(), Date() < deadline {
-            try? await Task.sleep(for: .milliseconds(10))
+    /// Stands in for the recheck's `Task.sleep`: each wait stays parked
+    /// until `fire()` lets the oldest one return, or until its task is
+    /// cancelled, when it throws at once as `Task.sleep` does. `pending`
+    /// counts the parked waits, `cancelled` the ones a cancel ended and
+    /// `returned` the waits that have gone back to the monitor (on the main
+    /// actor, as the recheck that calls it runs). No test here depends on
+    /// how long anything takes.
+    private final class ManualWait: @unchecked Sendable {
+        private let lock = NSLock()
+        private var parked: [(id: Int, resume: CheckedContinuation<Void, Error>)] = []
+        private var nextId = 0
+        private var _cancelled = 0
+        private var _returned = 0
+        var pending: Int { lock.withLock { parked.count } }
+        var cancelled: Int { lock.withLock { _cancelled } }
+        var returned: Int { lock.withLock { _returned } }
+
+        @MainActor
+        func wait(_: Duration) async throws {
+            let id: Int = lock.withLock { nextId += 1; return nextId }
+            defer { lock.withLock { _returned += 1 } }
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in
+                    let cancelledAlready: Bool = lock.withLock {
+                        if Task.isCancelled { _cancelled += 1; return true }
+                        parked.append((id, c))
+                        return false
+                    }
+                    if cancelledAlready { c.resume(throwing: CancellationError()) }
+                }
+            } onCancel: {
+                let c: CheckedContinuation<Void, Error>? = lock.withLock {
+                    guard let i = parked.firstIndex(where: { $0.id == id }) else { return nil }
+                    _cancelled += 1
+                    return parked.remove(at: i).resume
+                }
+                c?.resume(throwing: CancellationError())
+            }
         }
-        XCTAssertTrue(condition(), what)
+
+        /// Lets the oldest parked wait return, as if its delay had passed.
+        func fire(file: StaticString = #filePath, line: UInt = #line) {
+            let c: CheckedContinuation<Void, Error>? = lock.withLock { parked.isEmpty ? nil : parked.removeFirst().resume }
+            XCTAssertNotNil(c, "no recheck was waiting", file: file, line: line)
+            c?.resume()
+        }
+    }
+
+    /// A started monitor whose rechecks wait on `wait` and that hears
+    /// nothing from the real Mac: no IOKit battery events, no thermal
+    /// changes (a loaded machine warms up and changes its thermal state,
+    /// which is an `onChange` of its own).
+    private func monitor(_ reads: Reads, _ wait: ManualWait) -> PowerMonitor {
+        PowerMonitor(reader: { reads.read() }, wait: { try await wait.wait($0) }, systemEvents: false)
+    }
+
+    /// Lets the parked recheck run and waits until it has read the battery.
+    /// The read and everything the recheck does with it (the new state,
+    /// `onChange`, the next recheck) is one synchronous main-actor step, so
+    /// a test on the main actor that sees the read sees all of it.
+    private func runRecheck(_ wait: ManualWait, _ reads: Reads, file: StaticString = #filePath, line: UInt = #line) async {
+        await pollUntil("no recheck was scheduled", file: file, line: line) { wait.pending == 1 }
+        let before = reads.count
+        wait.fire(file: file, line: line)
+        await pollUntil("the recheck never read the battery", file: file, line: line) { reads.count == before + 1 }
     }
 
     /// The menu's refresh never counts a miss: the count only moves on the
@@ -139,7 +198,8 @@ final class PowerMonitorTests: XCTestCase {
     /// one; the recheck makes it two and reports the change.
     func testMenuRefreshDuringAMissDoesNotHideTheSecondMissFromTheFloorRules() async {
         let reads = Reads()
-        let monitor = PowerMonitor(reader: { reads.read() }, recheckDelay: .milliseconds(50))
+        let wait = ManualWait()
+        let monitor = monitor(reads, wait)
         var changes = 0
         monitor.onChange = { changes += 1 }
 
@@ -151,7 +211,8 @@ final class PowerMonitorTests: XCTestCase {
         XCTAssertEqual(monitor.battery, .unreadable(misses: 1), "the menu counted a miss")
         XCTAssertEqual(changes, 0)
 
-        await waitUntil("second miss never reported") { monitor.battery == .unreadable(misses: 2) }
+        await runRecheck(wait, reads)
+        XCTAssertEqual(monitor.battery, .unreadable(misses: 2), "second miss never reached")
         XCTAssertEqual(changes, 1, "the move to two misses was not reported")
     }
 
@@ -160,18 +221,21 @@ final class PowerMonitorTests: XCTestCase {
     func testMenuRefreshStartsTheRecheckWhenTheBatteryTurnsUnreadable() async {
         let reads = Reads()
         reads.next = (.percent(80), false)
-        let monitor = PowerMonitor(reader: { reads.read() }, recheckDelay: .milliseconds(50))
+        let wait = ManualWait()
+        let monitor = monitor(reads, wait)
         var changes = 0
         monitor.onChange = { changes += 1 }
 
         monitor.start()
         defer { monitor.stop() }
         XCTAssertEqual(monitor.battery, .percent(80))
+        XCTAssertEqual(wait.pending, 0, "a readable battery is not rechecked")
         reads.next = (.unreadable(misses: 1), false)
         monitor.refreshBattery()
         XCTAssertEqual(monitor.battery, .unreadable(misses: 1))
 
-        await waitUntil("second miss never reported") { monitor.battery == .unreadable(misses: 2) }
+        await runRecheck(wait, reads)
+        XCTAssertEqual(monitor.battery, .unreadable(misses: 2), "second miss never reached")
         XCTAssertEqual(changes, 1)
     }
 
@@ -182,7 +246,8 @@ final class PowerMonitorTests: XCTestCase {
     /// readable again it stops re-reading.
     func testUnreadableBatteryIsRecheckedWhileStarted() async {
         let reads = Reads()
-        let monitor = PowerMonitor(reader: { reads.read() }, recheckDelay: .milliseconds(50))
+        let wait = ManualWait()
+        let monitor = monitor(reads, wait)
         var changes = 0
         monitor.onChange = { changes += 1 }
 
@@ -191,45 +256,56 @@ final class PowerMonitorTests: XCTestCase {
         XCTAssertEqual(monitor.battery, .unreadable(misses: 1))
         XCTAssertEqual(reads.count, 1)
 
-        await waitUntil("second miss never reported") { monitor.battery == .unreadable(misses: 2) }
+        await runRecheck(wait, reads)
+        XCTAssertEqual(monitor.battery, .unreadable(misses: 2), "second miss never reached")
         XCTAssertEqual(changes, 1)
-        let atTwo = reads.count
-        await waitUntil("no re-read at two misses") { reads.count >= atTwo + 2 }
+        XCTAssertEqual(reads.count, 2)
+        await runRecheck(wait, reads)
+        await runRecheck(wait, reads)
+        XCTAssertEqual(reads.count, 4, "no re-read at two misses")
         XCTAssertEqual(monitor.battery, .unreadable(misses: 2))
         XCTAssertEqual(changes, 1, "a capped count was reported as a change")
 
         reads.next = (.percent(80), false)
-        await waitUntil("recovery never seen") { monitor.battery == .percent(80) }
+        await runRecheck(wait, reads)
+        XCTAssertEqual(monitor.battery, .percent(80), "recovery never seen")
         XCTAssertEqual(changes, 2)
-        let after = reads.count
-        try? await Task.sleep(for: .milliseconds(200))
-        XCTAssertEqual(reads.count, after, "still re-reading a readable battery")
+        XCTAssertEqual(wait.pending, 0, "still re-reading a readable battery")
     }
 
     /// Misses before a stop are not consecutive with the next start.
     func testStartBeginsAFreshCount() async {
         let reads = Reads()
-        let monitor = PowerMonitor(reader: { reads.read() }, recheckDelay: .milliseconds(50))
+        let wait = ManualWait()
+        let monitor = monitor(reads, wait)
         monitor.start()
-        await waitUntil("second miss never reported") { monitor.battery == .unreadable(misses: 2) }
+        await runRecheck(wait, reads)
+        XCTAssertEqual(monitor.battery, .unreadable(misses: 2), "second miss never reached")
         monitor.stop()
         monitor.start()
         defer { monitor.stop() }
         XCTAssertEqual(monitor.battery, .unreadable(misses: 1))
     }
 
+    /// The recheck waiting at the stop is cancelled, and once its wait has
+    /// gone back to the monitor (which then finds the task cancelled) it
+    /// has read nothing.
     func testStopCancelsTheRecheck() async {
         let reads = Reads()
-        let monitor = PowerMonitor(reader: { reads.read() }, recheckDelay: .milliseconds(50))
+        let wait = ManualWait()
+        let monitor = monitor(reads, wait)
         monitor.start()
+        await pollUntil("no recheck was scheduled") { wait.pending == 1 }
+        let returned = wait.returned
         monitor.stop()
+        XCTAssertEqual(wait.cancelled, 1, "stop left the recheck waiting")
+        XCTAssertEqual(wait.pending, 0)
         let after = reads.count
-        try? await Task.sleep(for: .milliseconds(200))
+        await pollUntil("the cancelled recheck never returned") { wait.returned == returned + 1 }
         XCTAssertEqual(reads.count, after, "re-read after stop")
         // Not started: a refresh schedules nothing.
         monitor.refreshBattery()
-        let again = reads.count
-        try? await Task.sleep(for: .milliseconds(200))
-        XCTAssertEqual(reads.count, again)
+        XCTAssertEqual(reads.count, after + 1)
+        XCTAssertEqual(wait.pending, 0)
     }
 }
