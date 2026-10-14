@@ -8,13 +8,12 @@ import Foundation
 /// first, then set both to 0 and ask the display to sleep), mute (save
 /// volume + mute state first), freeze scope (the freeze list plus every
 /// other Dock app when `freezeAllApps` is on; one journal write per app),
-/// Docker rule, stop the countdown redraw.
+/// stop the countdown redraw.
 /// Order on open: the exact reverse, driven by `SessionManager.undoLidActions`.
 @MainActor
 final class LidActions {
     private weak var manager: SessionManager?
     private let freezer: any Freezing
-    private let docker: DockerRule
     private let audio: any AudioControlling
     private let display: any DisplayDimming
     private let keyboard: any KeyboardBacklighting
@@ -26,14 +25,10 @@ final class LidActions {
     /// queue behind earlier ones (`AppServices.lidChanged`). A close whose
     /// number is no longer the last one is stale: the lid has opened since.
     private(set) var lidEvents = 0
-    /// Set only while a close transaction waits on a Docker probe: hands it
-    /// a nil answer at once when the next lid event arrives.
-    private var interruptProbe: (() -> Void)?
 
     init(
         manager: SessionManager,
         freezer: any Freezing,
-        docker: DockerRule,
         audio: any AudioControlling,
         display: any DisplayDimming = NoopDisplayDimmer(),
         keyboard: any KeyboardBacklighting = NoopKeyboardBacklight(),
@@ -41,7 +36,6 @@ final class LidActions {
     ) {
         self.manager = manager
         self.freezer = freezer
-        self.docker = docker
         self.audio = audio
         self.display = display
         self.keyboard = keyboard
@@ -50,14 +44,10 @@ final class LidActions {
 
     /// Records a lid event as it arrives and returns its number. Every
     /// close before it is stale from then on. A close still queued does
-    /// nothing when its turn comes. A close waiting on a Docker probe stops
-    /// waiting at once, takes Docker's entries out of the journal again,
-    /// and signals nothing more, so the open queued behind it runs its undo
-    /// without waiting for the probe.
+    /// nothing when its turn comes.
     @discardableResult
     func lidEventArrived() -> Int {
         lidEvents += 1
-        interruptProbe?()
         return lidEvents
     }
 
@@ -97,33 +87,7 @@ final class LidActions {
             let groups = freezer.plan(config: config)
             for group in groups {
                 guard stillCurrent() else { return }
-                await freeze(group, docker: false, manager: manager)
-            }
-
-            guard stillCurrent() else { return }
-            let dockerGroup = await untilNextLidEvent(after: event) { [docker] in
-                await docker.idleDockerGroup(config: config)
-            } ?? nil
-            guard stillCurrent() else {
-                if lidEvents != event { Log.info("docker rule: lid opened during the first check, Docker left alone") }
-                return
-            }
-            if let dockerGroup {
-                // The idle answer above is already stale by the time the
-                // journal write is done, so Docker is asked once more right
-                // before its SIGSTOP; busy, a failed probe or a timeout
-                // leaves it running. An end or a lid open during that
-                // probe leaves it running too.
-                await freeze(dockerGroup, docker: true, manager: manager) { [self, docker] in
-                    let idle = await untilNextLidEvent(after: event) { await docker.isStillIdle() }
-                    guard stillCurrent() else {
-                        Log.info(lidEvents != event
-                            ? "docker rule: lid opened during the second check, Docker left alone"
-                            : "docker rule: session ending during the second check, Docker left alone")
-                        return false
-                    }
-                    return idle == true
-                }
+                await freeze(group, manager: manager)
             }
 
             // A session whose end arrived during this transaction has no
@@ -146,22 +110,6 @@ final class LidActions {
     }
 
     // MARK: Private
-
-    /// The answer of `probe`, or nil as soon as a lid event after `event`
-    /// arrives (or one already has). The probe then runs on in its own task
-    /// and its answer is dropped: it only reads (`docker ps`, bounded by
-    /// `DockerRule.timeout`).
-    private func untilNextLidEvent<T: Sendable>(after event: Int, _ probe: @escaping @Sendable () async -> T) async -> T? {
-        guard lidEvents == event else { return nil }
-        let race = ProbeRace<T>()
-        let answer = await withCheckedContinuation { (continuation: CheckedContinuation<T?, Never>) in
-            race.continuation = continuation
-            interruptProbe = { race.finish(nil) }
-            Task { @MainActor in race.finish(await probe()) }
-        }
-        interruptProbe = nil
-        return answer
-    }
 
     /// With `pmset disablesleep 1` macOS never turns the built-in panel or
     /// the keyboard backlight off on lid close, so this does. Brightness 0
@@ -359,10 +307,7 @@ final class LidActions {
         }
     }
 
-    /// `beforeSignal`, when given, runs after the journal write and right
-    /// before the SIGSTOP; false means leave the group running and take its
-    /// entries out of the journal again.
-    private func freeze(_ group: FreezeGroup, docker: Bool, manager: SessionManager, beforeSignal: (() async -> Bool)? = nil) async {
+    private func freeze(_ group: FreezeGroup, manager: SessionManager) async {
         let already = Set(manager.state.frozenPids)
         var candidates: [FrozenProcess] = []
         for pid in group.pids where !already.contains(pid) {
@@ -381,30 +326,12 @@ final class LidActions {
         // skips, cannot be resumed from this entry wherever the app dies.
         // If this write fails nothing is signaled.
         let provisional = candidates.map { FrozenProcess(pid: $0.pid, identity: nil) }
-        // Whether this freeze is the one that sets the Docker flag, so an
-        // undo below clears only a flag it set.
-        let setsDockerFlag = docker && !manager.effectiveState.dockerFrozen
         do {
             try manager.journal { s in
                 s.frozenProcesses.append(contentsOf: provisional)
-                if docker { s.dockerFrozen = true }
             }
         } catch {
             manager.fail("lid close: could not journal the freeze of \(group.name) (\(group.bundleId)): \(error.localizedDescription); its \(candidates.count) pid(s) were left running")
-            return
-        }
-        if let beforeSignal, await !beforeSignal() {
-            do {
-                try manager.journal { s in
-                    s.frozenProcesses.removeAll { candidatePids.contains($0.pid) }
-                    if setsDockerFlag { s.dockerFrozen = false }
-                }
-            } catch {
-                // Entries without identity are never signaled, and a running
-                // pid is cleared as gone on the next resume.
-                Log.error("could not drop the unsignaled entries of \(group.bundleId) from the journal: \(error.localizedDescription); \(candidates.count) pid(s) stay journaled without identity")
-            }
-            Log.info("\(group.name) left running: the check before the signal said no")
             return
         }
         let report = freezer.suspend(candidates, expectedParents: group.expectedParents)
@@ -420,7 +347,6 @@ final class LidActions {
             try manager.journal { s in
                 s.frozenProcesses.removeAll { candidatePids.contains($0.pid) }
                 s.frozenProcesses.append(contentsOf: confirmed)
-                if docker, confirmed.isEmpty { s.dockerFrozen = false }
             }
         } catch {
             // Nothing on disk can resume these stops, but this run still
@@ -433,16 +359,12 @@ final class LidActions {
             let stuck = undo.failed + undo.unverifiable + undo.unobserved
             // Every provisional entry but the stuck ones now names a pid
             // that runs: resumed, gone, or never stopped by this freeze.
-            // They leave the journal, and so does a Docker flag this
-            // freeze set, unless part of Docker is still stopped. If the
+            // They leave the journal. If the
             // disk refuses that write too, the status leaves them out
             // until a later write takes them off. The stuck ones stay
             // without identity, are never signaled, and lid open reports
             // them if they are still stopped.
-            manager.clearUndoneFreeze(.init(
-                pids: candidatePids.subtracting(stuck),
-                docker: setsDockerFlag && stuck.isEmpty
-            ))
+            manager.clearUndoneFreeze(.init(pids: candidatePids.subtracting(stuck)))
             let outcome = stuck.isEmpty
                 ? "so this freeze of \(group.name) is undone"
                 : "and pid(s) \(stuck.map(String.init).joined(separator: ", ")) may still be stopped; they stay journaled without identity, so Awake will not resume them, and lid open reports the ones still stopped"
@@ -450,17 +372,5 @@ final class LidActions {
             return
         }
         Log.info("froze \(group.name) (\(report.suspended.count) pid(s), \(report.skipped.count) skipped)")
-    }
-}
-
-/// Hands a close transaction whichever comes first, a probe's answer or a
-/// lid event; the later one finds the continuation gone.
-@MainActor
-private final class ProbeRace<T: Sendable> {
-    var continuation: CheckedContinuation<T?, Never>?
-
-    func finish(_ answer: T?) {
-        continuation?.resume(returning: answer)
-        continuation = nil
     }
 }

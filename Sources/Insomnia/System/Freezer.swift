@@ -289,15 +289,14 @@ enum FreezePlanner {
         apps: [RunningApp],
         processes: [ProcessEntry],
         config: Config,
-        selfBundleId: String = Paths.bundleIdentifier,
-        applyDenylist: Bool = true
+        selfBundleId: String = Paths.bundleIdentifier
     ) -> [FreezeGroup] {
         var out: [FreezeGroup] = []
         var done: Set<String> = []
         let byPid = Dictionary(processes.map { ($0.pid, $0) }, uniquingKeysWith: { first, _ in first })
         for id in bundleIds where !done.contains(id) {
             done.insert(id)
-            if applyDenylist, isDenied(id, config: config, selfBundleId: selfBundleId) {
+            if isDenied(id, config: config, selfBundleId: selfBundleId) {
                 Log.info("freeze: \(id) is on the denylist, skipped")
                 continue
             }
@@ -327,8 +326,6 @@ enum FreezePlanner {
 
 /// Finds and stops whole app process trees.
 protocol Freezing: Sendable {
-    /// Groups for the given bundle ids that are running right now.
-    func plan(bundleIds: [String], config: Config, applyDenylist: Bool) -> [FreezeGroup]
     /// Everything the config says to freeze right now: the freeze list plus,
     /// with `freezeAllApps` on, every other Dock app outside the denylist
     /// and the built-in protected set (`FreezePlanner.lidCloseBundleIds`).
@@ -337,12 +334,6 @@ protocol Freezing: Sendable {
     func resume(_ processes: [FrozenProcess]) -> ResumeReport
     /// See `ProcessSignaling.cancelStops`.
     func cancelStops(_ processes: [FrozenProcess]) -> ResumeReport
-}
-
-extension Freezing {
-    func plan(bundleIds: [String], config: Config) -> [FreezeGroup] {
-        plan(bundleIds: bundleIds, config: config, applyDenylist: true)
-    }
 }
 
 /// Live implementation over NSWorkspace + sysctl KERN_PROC_ALL.
@@ -355,17 +346,6 @@ struct Freezer: Freezing {
         self.selfBundleId = selfBundleId
     }
 
-    func plan(bundleIds: [String], config: Config, applyDenylist: Bool) -> [FreezeGroup] {
-        FreezePlanner.groups(
-            bundleIds: bundleIds,
-            apps: Self.runningApps(),
-            processes: Self.processSnapshot(),
-            config: config,
-            selfBundleId: selfBundleId,
-            applyDenylist: applyDenylist
-        )
-    }
-
     func plan(config: Config) -> [FreezeGroup] {
         let apps = Self.runningApps()
         return FreezePlanner.groups(
@@ -373,8 +353,7 @@ struct Freezer: Freezing {
             apps: apps,
             processes: Self.processSnapshot(),
             config: config,
-            selfBundleId: selfBundleId,
-            applyDenylist: true
+            selfBundleId: selfBundleId
         )
     }
 

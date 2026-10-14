@@ -21,11 +21,6 @@ struct Config: Codable, Equatable, Sendable {
     /// config.json an earlier build saved with it on gets it turned off
     /// once (`applyLidCloseDefaults`).
     var freezeAllApps: Bool = false
-    /// SIGSTOP Docker Desktop on lid close when `docker ps` finds no running
-    /// container, checked once more right before the signal. Off by default
-    /// (and for a config.json without the key): a container that starts
-    /// between the last check and the signal is frozen with Desktop.
-    var dockerRule: Bool = false
     /// Mute the output on lid close and restore the volume on open. On by
     /// default: with sleep disabled, sound otherwise keeps playing from the
     /// closed laptop. A config.json an earlier build saved with it off gets
@@ -137,7 +132,6 @@ struct Config: Codable, Equatable, Sendable {
         maxDuration = try c.decodeIfPresent(TimeInterval.self, forKey: .maxDuration) ?? d.maxDuration
         freezeList = try c.decodeIfPresent([String].self, forKey: .freezeList) ?? d.freezeList
         freezeAllApps = try c.decodeIfPresent(Bool.self, forKey: .freezeAllApps) ?? d.freezeAllApps
-        dockerRule = try c.decodeIfPresent(Bool.self, forKey: .dockerRule) ?? d.dockerRule
         lidCloseDefaultsApplied = try c.decodeIfPresent(Bool.self, forKey: .lidCloseDefaultsApplied) ?? false
         lidCloseDefaultsNotice = try c.decodeIfPresent(LidCloseDefaultsChange.self, forKey: .lidCloseDefaultsNotice)
         // Earlier builds read a missing key as off, so the update below

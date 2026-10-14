@@ -231,7 +231,6 @@ final class RefusedDarkeningTests: XCTestCase {
         let actions = LidActions(
             manager: m,
             freezer: freezer,
-            docker: DockerRule(freezer: freezer, probe: { true }),
             audio: h.audio,
             display: display,
             keyboard: keyboard,
@@ -627,7 +626,6 @@ final class RefusedDarkeningTests: XCTestCase {
         let actions = LidActions(
             manager: m,
             freezer: freezer,
-            docker: DockerRule(freezer: freezer, probe: { true }),
             audio: h.audio,
             display: h.display,
             keyboard: h.keyboard,
@@ -1058,7 +1056,6 @@ final class RefusedDarkeningTests: XCTestCase {
         let actions = LidActions(
             manager: m,
             freezer: freezer,
-            docker: DockerRule(freezer: freezer, probe: { true }),
             audio: h.audio,
             display: h.display,
             keyboard: h.keyboard,
@@ -1233,7 +1230,6 @@ final class RefusedDarkeningTests: XCTestCase {
         return LidActions(
             manager: m,
             freezer: freezer,
-            docker: DockerRule(freezer: freezer, probe: { true }),
             audio: h.audio,
             display: h.display,
             keyboard: h.keyboard,
@@ -3079,7 +3075,6 @@ final class OwedKeptClearQuitTests: XCTestCase {
         return LidActions(
             manager: m,
             freezer: freezer,
-            docker: DockerRule(freezer: freezer, probe: { true }),
             audio: h.audio,
             display: h.display,
             keyboard: h.keyboard,

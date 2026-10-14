@@ -661,17 +661,11 @@ final class FakeFreezer: Freezing, @unchecked Sendable {
         self.selfBundleId = selfBundleId
     }
 
-    func plan(bundleIds: [String], config: Config, applyDenylist: Bool) -> [FreezeGroup] {
-        lock.withLock {
-            FreezePlanner.groups(bundleIds: bundleIds, apps: apps, processes: processes, config: config, selfBundleId: selfBundleId, applyDenylist: applyDenylist)
-        }
-    }
-
     func plan(config: Config) -> [FreezeGroup] {
         lock.withLock {
             FreezePlanner.groups(
                 bundleIds: FreezePlanner.lidCloseBundleIds(config: config, apps: apps, selfBundleId: selfBundleId),
-                apps: apps, processes: processes, config: config, selfBundleId: selfBundleId, applyDenylist: true
+                apps: apps, processes: processes, config: config, selfBundleId: selfBundleId
             )
         }
     }

@@ -942,4 +942,13 @@ final class ReconcileTests: XCTestCase {
         XCTAssertFalse(h.notifier.posts.contains { $0.title == SessionManager.sessionFileTitle }, "\(h.notifier.posts)")
         XCTAssertEqual(h.notifier.posts.filter { $0.title == SessionManager.journalTitle }.count, 1)
     }
+
+    func testReconcileClearsAnInsomniaEraDockerFlag() async throws {
+        var state = RuntimeState.clean
+        state.dockerFrozen = true
+        try h.store.saveState(state)
+        let m = h.makeManager()
+        await m.reconcile()
+        XCTAssertFalse(try XCTUnwrap(h.store.loadState()).dockerFrozen)
+    }
 }

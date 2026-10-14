@@ -20,7 +20,6 @@ final class IntegrationWiringTests: XCTestCase {
         services.status.wifiSSID = "iPhone"
         services.status.lastGap = 12
         services.status.frozenCount = 3
-        services.status.dockerPaused = true
         services.status.throttledBrowsers = [ThrottledBrowser(bundleId: "com.google.Chrome", name: "Chrome")]
 
         let source = LiveStatusSource(services: services)
@@ -31,7 +30,6 @@ final class IntegrationWiringTests: XCTestCase {
         XCTAssertEqual(source.wifiSSID, "iPhone")
         XCTAssertEqual(source.lastGap, 12)
         XCTAssertEqual(source.frozenCount, 3)
-        XCTAssertTrue(source.dockerPaused)
         XCTAssertEqual(source.throttledBrowsers, [ThrottledBrowser(bundleId: "com.google.Chrome", name: "Chrome")])
         XCTAssertEqual(source.locationPermission.authorizationStatus, .authorizedAlways)
     }

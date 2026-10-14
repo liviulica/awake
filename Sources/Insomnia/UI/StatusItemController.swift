@@ -677,7 +677,6 @@ final class StatusItemController: NSObject {
             ),
             actions: StatusLines.actions(
                 frozenCount: status.frozenCount,
-                dockerPaused: status.dockerPaused,
                 lastGap: status.lastGap
             ),
             throttledBrowsers: status.throttledBrowsers,

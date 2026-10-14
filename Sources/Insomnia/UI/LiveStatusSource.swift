@@ -17,7 +17,6 @@ final class LiveStatusSource: StatusSource {
     var wifiSSID: String? { services.status.wifiSSID }
     var lastGap: TimeInterval? { services.status.lastGap }
     var frozenCount: Int { services.status.frozenCount }
-    var dockerPaused: Bool { services.status.dockerPaused }
     var throttledBrowsers: [ThrottledBrowser] { services.status.throttledBrowsers }
     var relaunchProblems: [String] {
         services.status.relaunchProblems.sorted { $0.key < $1.key }.map(\.value)

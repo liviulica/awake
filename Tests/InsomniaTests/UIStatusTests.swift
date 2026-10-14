@@ -200,7 +200,6 @@ final class UIStatusTests: XCTestCase {
         XCTAssertNil(s.wifiSSID)
         XCTAssertNil(s.lastGap)
         XCTAssertEqual(s.frozenCount, 0)
-        XCTAssertFalse(s.dockerPaused)
         XCTAssertTrue(s.throttledBrowsers.isEmpty)
         XCTAssertNil(s.hotspotPasswordReport)
         XCTAssertNil(s.instantWatts())
@@ -225,10 +224,10 @@ final class UIStatusTests: XCTestCase {
     }
 
     func testActionsLine() {
-        XCTAssertNil(StatusLines.actions(frozenCount: 0, dockerPaused: false, lastGap: nil))
-        XCTAssertEqual(StatusLines.actions(frozenCount: 3, dockerPaused: true, lastGap: nil), "3 apps frozen \u{00B7} Docker paused")
-        XCTAssertEqual(StatusLines.actions(frozenCount: 1, dockerPaused: false, lastGap: 12.4), "1 app frozen \u{00B7} last gap 12s")
-        XCTAssertEqual(StatusLines.actions(frozenCount: 0, dockerPaused: true, lastGap: 0), "Docker paused")
+        XCTAssertNil(StatusLines.actions(frozenCount: 0, lastGap: nil))
+        XCTAssertEqual(StatusLines.actions(frozenCount: 3, lastGap: nil), "3 apps frozen")
+        XCTAssertEqual(StatusLines.actions(frozenCount: 1, lastGap: 12.4), "1 app frozen \u{00B7} last gap 12s")
+        XCTAssertNil(StatusLines.actions(frozenCount: 0, lastGap: 0))
     }
 
     func testThrottleWarning() {
@@ -1184,7 +1183,6 @@ final class RecordingStatusSource: StatusSource {
     var wifiSSID: String? = nil
     var lastGap: TimeInterval? = nil
     var frozenCount = 0
-    var dockerPaused = false
     var throttledBrowsers: [ThrottledBrowser] = []
     var relaunchProblems: [String] = []
     var hotspotPasswordReport: HotspotPasswordReport? = nil

@@ -685,7 +685,7 @@ final class StillRunningCommandTests: XCTestCase {
     private func makeLidActions(_ m: SessionManager) -> LidActions {
         m.config.muteOnLidClose = true
         let freezer = FakeFreezer(apps: [], processes: [], control: h.procs)
-        return LidActions(manager: m, freezer: freezer, docker: DockerRule(freezer: freezer, probe: { false }), audio: h.audio, display: h.display, keyboard: h.keyboard)
+        return LidActions(manager: m, freezer: freezer, audio: h.audio, display: h.display, keyboard: h.keyboard)
     }
 
     /// An end refused while the command runs is recorded by the refusal

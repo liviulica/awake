@@ -7582,7 +7582,7 @@ final class AgentModeExitInANewBootTests: XCTestCase {
         m.config.freezeAllApps = false
         m.config.darkenDisplayOnLidClose = true
         let freezer = FakeFreezer(apps: [], processes: [], control: h.procs)
-        return LidActions(manager: m, freezer: freezer, docker: DockerRule(freezer: freezer, probe: { true }), audio: h.audio, display: h.display, keyboard: h.keyboard, sampler: sampler)
+        return LidActions(manager: m, freezer: freezer, audio: h.audio, display: h.display, keyboard: h.keyboard, sampler: sampler)
     }
 
     private func follow(_ m: SessionManager) -> BrightnessSampler {
@@ -7910,7 +7910,7 @@ final class AppEncodedJournalScriptTests: XCTestCase {
         m.config.freezeAllApps = false
         await m.start(duration: 3600)
         let freezer = FakeFreezer(apps: [], processes: [], control: h.procs)
-        let actions = LidActions(manager: m, freezer: freezer, docker: DockerRule(freezer: freezer, probe: { true }), audio: h.audio, display: h.display, keyboard: h.keyboard)
+        let actions = LidActions(manager: m, freezer: freezer, audio: h.audio, display: h.display, keyboard: h.keyboard)
         await actions.onClose()
         XCTAssertEqual(h.audio.mutes, 1)
         var s = try XCTUnwrap(try h.store.loadState())

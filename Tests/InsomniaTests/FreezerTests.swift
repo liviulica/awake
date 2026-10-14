@@ -60,8 +60,6 @@ final class FreezerTests: XCTestCase {
         XCTAssertTrue(FreezePlanner.isDenied("com.docker.docker", config: c))
         let denied = FreezePlanner.groups(bundleIds: ["com.docker.docker"], apps: apps, processes: processes, config: c)
         XCTAssertTrue(denied.isEmpty)
-        let bypassed = FreezePlanner.groups(bundleIds: ["com.docker.docker"], apps: apps, processes: processes, config: c, applyDenylist: false)
-        XCTAssertEqual(bypassed.map(\.pids), [[400, 401]])
     }
 
     func testDenylistAgentListOverridesFreezeList() {

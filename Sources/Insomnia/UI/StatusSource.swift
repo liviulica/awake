@@ -13,7 +13,6 @@ protocol StatusSource: AnyObject, Observable {
     /// Length of the most recent network outage, nil if none this session.
     var lastGap: TimeInterval? { get }
     var frozenCount: Int { get }
-    var dockerPaused: Bool { get }
     /// Browsers running without the occlusion flags.
     var throttledBrowsers: [ThrottledBrowser] { get }
     /// Why each browser's last relaunch did not happen, ordered by
@@ -44,7 +43,6 @@ final class PlaceholderStatus: StatusSource {
     var wifiSSID: String? = nil
     var lastGap: TimeInterval? = nil
     var frozenCount: Int = 0
-    var dockerPaused: Bool = false
     var throttledBrowsers: [ThrottledBrowser] = []
     var relaunchProblems: [String] = []
     var hotspotPasswordReport: HotspotPasswordReport? = nil
@@ -75,14 +73,11 @@ enum StatusLines {
         return parts.joined(separator: " \u{00B7} ")
     }
 
-    /// "3 apps frozen · Docker paused", or nil when nothing is held.
-    static func actions(frozenCount: Int, dockerPaused: Bool, lastGap: TimeInterval?) -> String? {
+    /// "3 apps frozen", or nil when nothing is held.
+    static func actions(frozenCount: Int, lastGap: TimeInterval?) -> String? {
         var parts: [String] = []
         if frozenCount > 0 {
             parts.append(frozenCount == 1 ? "1 app frozen" : "\(frozenCount) apps frozen")
-        }
-        if dockerPaused {
-            parts.append("Docker paused")
         }
         if let gap = lastGap, gap > 0 {
             parts.append("last gap \(Int(gap.rounded()))s")

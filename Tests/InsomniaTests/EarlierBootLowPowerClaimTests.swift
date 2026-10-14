@@ -67,7 +67,7 @@ final class EarlierBootLowPowerClaimTests: XCTestCase {
         m.config.freezeAllApps = false
         m.config.darkenDisplayOnLidClose = true
         let freezer = FakeFreezer(apps: [], processes: [], control: h.procs)
-        return LidActions(manager: m, freezer: freezer, docker: DockerRule(freezer: freezer, probe: { true }), audio: h.audio, display: h.display, keyboard: h.keyboard, sampler: sampler)
+        return LidActions(manager: m, freezer: freezer, audio: h.audio, display: h.display, keyboard: h.keyboard, sampler: sampler)
     }
 
     private func logText() -> String {

@@ -15,7 +15,6 @@ final class SystemStatus {
     /// Length of the last Wi-Fi outage this session, in seconds.
     var lastGap: TimeInterval?
     var frozenCount: Int = 0
-    var dockerPaused: Bool = false
     /// Running Chromium browsers missing the two flags.
     var throttledBrowsers: [ThrottledBrowser] = []
     /// Full detail for the relaunch item (bundle id + name).
@@ -56,7 +55,6 @@ final class AppServices {
     private let display: any DisplayDimming
     private let keyboard: any KeyboardBacklighting
     private let freezer: any Freezing
-    private let docker: DockerRule
     private let keychain: any KeychainStoring
     private let lid = LidObserver()
     /// The file trigger behind scripts/simulate-lid.sh. Compiled into debug
@@ -121,7 +119,6 @@ final class AppServices {
         self.lidSimulationEnabled = lidSimulationEnabled
         self.sampler = BrightnessSampler(display: display, keyboard: keyboard, idleSeconds: idleSeconds)
         self.freezer = Freezer(control: processControl)
-        self.docker = DockerRule(freezer: freezer)
         self.keychain = keychain
         self.locationPermission = locationPermission
         self.browser = browser ?? BrowserThrottle()
@@ -144,7 +141,7 @@ final class AppServices {
 
         (notifier as? Notifier)?.requestAuthorizationIfNeeded()
 
-        lidActions = LidActions(manager: manager, freezer: freezer, docker: docker, audio: audio, display: display, keyboard: keyboard, sampler: sampler)
+        lidActions = LidActions(manager: manager, freezer: freezer, audio: audio, display: display, keyboard: keyboard, sampler: sampler)
         floors = FloorRuleDriver(manager: manager, notifier: notifier)
         // The panel under Insomnia's own Low Power Mode reads the mode's
         // rescaled value: sample once more just before the mode goes on
@@ -449,7 +446,6 @@ final class AppServices {
     private func syncState() {
         let s = manager?.effectiveState ?? .clean
         status.frozenCount = s.frozenPids.count
-        status.dockerPaused = s.dockerFrozen
     }
 
     private func refreshBrowsers() async {
