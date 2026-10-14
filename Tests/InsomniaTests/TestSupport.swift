@@ -1076,3 +1076,26 @@ enum TestACL {
         return count
     }
 }
+
+final class FakeAwakeAssertion: AwakeAsserting, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _held = false
+    private var _calls: [String] = []
+    var failHold = false
+
+    var calls: [String] { lock.withLock { _calls } }
+    var isHeld: Bool { lock.withLock { _held } }
+
+    func hold() throws {
+        lock.withLock { _calls.append("hold") }
+        if failHold { throw AwakeAssertionError(code: -1) }
+        lock.withLock { _held = true }
+    }
+
+    func release() {
+        lock.withLock {
+            _calls.append("release")
+            _held = false
+        }
+    }
+}
