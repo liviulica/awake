@@ -80,6 +80,9 @@ final class AppServices {
     private var floors: FloorRuleDriver?
     private var network: NetworkFailover?
     private var networkTask: Task<Void, Never>?
+    /// Failover for Awake mode, separate from the session's (`network`).
+    private var awakeNetwork: NetworkFailover?
+    var awakeFailoverRunning: Bool { awakeNetwork != nil }
     private var lidTasks: [Task<Void, Never>] = []
     private var floorTasks: [Task<Void, Never>] = []
     private var browserTasks: [Task<Void, Never>] = []
@@ -128,6 +131,8 @@ final class AppServices {
     /// Called by SessionManager once a session is active.
     func start(for manager: SessionManager) {
         guard !running else { return }
+        // A lid session runs its own failover (and includes screen mode).
+        stopAwakeFailover()
         running = true
         self.manager = manager
         let config = manager.config
@@ -187,6 +192,26 @@ final class AppServices {
 
         browserTasks.append(Task { await self.refreshBrowsers() })
         syncState()
+    }
+
+    /// Starts failover for Awake mode. Never alongside a lid session, which
+    /// runs its own.
+    func startAwakeFailover(config: @escaping @MainActor () -> Config) {
+        guard awakeNetwork == nil, !running else { return }
+        let net = NetworkFailover(paths: paths, keychain: keychain, notifier: notifier, config: config)
+        net.onRecovered = { [weak self] gap in self?.status.lastGap = gap }
+        net.onPasswordReport = { [weak self] report in self?.status.hotspotPasswordReport = report }
+        awakeNetwork = net
+        Task { [weak self, weak net] in
+            guard let net else { return }
+            await net.start()
+            if self?.awakeNetwork !== net { net.stop() }
+        }
+    }
+
+    func stopAwakeFailover() {
+        awakeNetwork?.stop()
+        awakeNetwork = nil
     }
 
     func stop() {

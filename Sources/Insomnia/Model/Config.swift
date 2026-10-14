@@ -58,6 +58,8 @@ struct Config: Codable, Equatable, Sendable {
 
     // Network failover
     var hotspotSSID: String = ""
+    /// Run hotspot failover in Awake mode too, not only in lid sessions.
+    var awakeHotspotFailover: Bool = false
 
     // App
     var launchAtLogin: Bool = false
@@ -148,6 +150,7 @@ struct Config: Codable, Equatable, Sendable {
         endFloor = try c.decodeIfPresent(Int.self, forKey: .endFloor) ?? d.endFloor
         thermalRules = try c.decodeIfPresent(Bool.self, forKey: .thermalRules) ?? d.thermalRules
         hotspotSSID = try c.decodeIfPresent(String.self, forKey: .hotspotSSID) ?? d.hotspotSSID
+        awakeHotspotFailover = try c.decodeIfPresent(Bool.self, forKey: .awakeHotspotFailover) ?? d.awakeHotspotFailover
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? d.launchAtLogin
         launchAtLoginInstall = try c.decodeIfPresent(String.self, forKey: .launchAtLoginInstall)
     }

@@ -187,6 +187,7 @@ struct SettingsView: View {
     private var networkSection: some View {
         Section {
             TextField("Hotspot SSID", text: bind(\.hotspotSSID))
+            Toggle("Use hotspot failover in Awake mode too", isOn: bind(\.awakeHotspotFailover))
             HStack {
                 SecureField("Hotspot password", text: Binding(get: { hotspot.password }, set: { hotspot.edit($0) }))
                     .onSubmit(savePassword)

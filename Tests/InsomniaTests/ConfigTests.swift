@@ -513,4 +513,10 @@ final class ConfigLoadTests: XCTestCase {
         XCTAssertEqual(try h.store.loadConfig()?.lidCloseDefaultsApplied, true)
         XCTAssertTrue(log().contains("config.json: lid-close update: nothing to change; saved"), log())
     }
+
+    func testAwakeHotspotFailoverDefaultsOffAndDecodes() throws {
+        XCTAssertFalse(Config().awakeHotspotFailover)
+        let c = try JSONDecoder().decode(Config.self, from: Data(#"{"awakeHotspotFailover":true}"#.utf8))
+        XCTAssertTrue(c.awakeHotspotFailover)
+    }
 }

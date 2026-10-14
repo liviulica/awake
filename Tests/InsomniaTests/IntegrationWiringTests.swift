@@ -524,4 +524,21 @@ final class ExpectingNotifier: Notifying, @unchecked Sendable {
         recorder.post(title: title, body: body)
         posted.fulfill()
     }
+
+    @MainActor
+    func testAwakeFailoverStartsAndStopsWithoutASession() async {
+        let home = TempHome()
+        defer { home.destroy() }
+        let services = AppServices(
+            paths: home.paths,
+            notifier: RecordingNotifier(),
+            audio: FakeAudioControl(),
+            processControl: FakeProcessControl(),
+            locationPermission: LocationPermission(authorizationStatus: .notDetermined)
+        )
+        services.startAwakeFailover { Config() }
+        XCTAssertTrue(services.awakeFailoverRunning)
+        services.stopAwakeFailover()
+        XCTAssertFalse(services.awakeFailoverRunning)
+    }
 }

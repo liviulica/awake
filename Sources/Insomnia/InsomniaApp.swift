@@ -86,6 +86,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = StatusItemController(manager: manager, status: status, awake: awake) { [weak settings] in
             settings?.show()
         }
+        // Awake mode runs hotspot failover when the setting is on. A lid
+        // session (which includes screen mode) runs its own: `awake` turns
+        // off when one starts, and `startAwakeFailover` refuses while it runs.
+        awake.onChange = { [weak self] state in
+            guard let self, let services = self.manager.services else { return }
+            if state != .off, self.manager.config.awakeHotspotFailover, !self.manager.config.hotspotSSID.isEmpty {
+                services.startAwakeFailover { [weak manager = self.manager] in manager?.config ?? Config() }
+            } else {
+                services.stopAwakeFailover()
+            }
+        }
         Task { await manager.reconcile() }
     }
 
