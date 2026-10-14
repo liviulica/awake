@@ -52,6 +52,9 @@ final class EarlierBootLowPowerClaimTests: XCTestCase {
             try h.store.saveSession(Session(startedAt: now.addingTimeInterval(-7200), endsAt: now.addingTimeInterval(-3600)))
         case .valid:
             try h.store.saveSession(Session(startedAt: now.addingTimeInterval(-600), endsAt: now.addingTimeInterval(3000)))
+            // Still disabled from before: reconcile keeps the session
+            // without raising the administrator prompt.
+            h.guardFake.sleepDisabled = true
         }
     }
 

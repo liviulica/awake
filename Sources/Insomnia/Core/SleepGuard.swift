@@ -1,7 +1,8 @@
 import Foundation
 
-/// The only two things Insomnia ever does as root, both through the four
-/// sudoers-allowed pmset commands written by install.sh.
+/// The only two things Awake ever does as root: through the three
+/// sudoers-allowed pmset commands written by install.sh, plus
+/// `disablesleep 1` through the administrator prompt (`AdminCommandRunning`).
 protocol SleepGuarding: Sendable {
     func setSleepDisabled(_ disabled: Bool) async throws
     func isSleepDisabled() async throws -> Bool
@@ -37,8 +38,10 @@ struct SleepDisableRevertedError: Error, LocalizedError, Sendable {
     }
 }
 
-/// `sudo -n pmset …`. Never prompts; if the sudoers rule is missing the call
-/// fails fast with a readable error instead of hanging on a password prompt.
+/// `sudo -n pmset …` for everything but `disablesleep 1`, which raises the
+/// administrator prompt (`admin`). The sudo path never prompts; if the
+/// sudoers rule is missing the call fails fast with a readable error
+/// instead of hanging on a password prompt.
 struct PmsetSleepGuard: SleepGuarding {
     static let sudo = "/usr/bin/sudo"
     static let pmset = "/usr/bin/pmset"
@@ -54,6 +57,10 @@ struct PmsetSleepGuard: SleepGuarding {
     /// 1 for about 2 s, then powerd reloads the Energy Saver preferences and
     /// it reads 0 for good, so a closed lid sleeps the Mac mid-session.
     static let settle: TimeInterval = 5
+    /// The one command that goes through the administrator prompt. A
+    /// constant: nothing user-provided reaches it.
+    static let disableSleepCommand = "/usr/bin/pmset -a disablesleep 1"
+    static let adminPrompt = "Awake needs your password to keep this Mac running with the lid closed."
 
     /// The app uses the defaults; tests point `sudo` at a fake, shorten the
     /// limits, start the deadline once the fake is ready, and replace the
@@ -65,6 +72,8 @@ struct PmsetSleepGuard: SleepGuarding {
     let settleDelay: TimeInterval
     let settleWait: @Sendable (TimeInterval) async throws -> Void
     let runner: CancellableCommand
+    /// Runs `disableSleepCommand`; tests pass one that runs a fake pmset.
+    let admin: any AdminCommandRunning
 
     init(
         sudo: String = Self.sudo,
@@ -73,7 +82,8 @@ struct PmsetSleepGuard: SleepGuarding {
         stopGrace: TimeInterval = Self.stopGrace,
         settle: TimeInterval = Self.settle,
         settleWait: @escaping @Sendable (TimeInterval) async throws -> Void = { try await Task.sleep(for: .seconds($0)) },
-        runner: CancellableCommand = CancellableCommand()
+        runner: CancellableCommand = CancellableCommand(),
+        admin: any AdminCommandRunning = OsascriptAdminRunner()
     ) {
         sudoPath = sudo
         pmsetPath = pmset
@@ -82,15 +92,26 @@ struct PmsetSleepGuard: SleepGuarding {
         settleDelay = settle
         self.settleWait = settleWait
         self.runner = runner
+        self.admin = admin
     }
 
     /// A disable that reads SleepDisabled 0 after `settle` throws
     /// `SleepDisableRevertedError`, and one that cannot be read back throws
     /// `SleepGuardError`; callers handle both like a failed pmset. Restoring
-    /// sleep is not read back.
+    /// sleep is not read back. Disabling goes through the administrator
+    /// prompt (sudoers never grants it) and throws `AdminPromptCancelledError`
+    /// when the person cancels it; restoring stays passwordless.
     func setSleepDisabled(_ disabled: Bool) async throws {
-        try await sudoPmset(["-a", "disablesleep", disabled ? "1" : "0"])
-        guard disabled else { return }
+        guard disabled else {
+            try await sudoPmset(["-a", "disablesleep", "0"])
+            return
+        }
+        // The same rule as `sudoPmset`: only inside a recovery transaction,
+        // with the prompt's command holding the lock until it exits.
+        guard RecoveryLock.held != nil else {
+            throw SleepGuardError(command: "pmset -a disablesleep 1", status: -1, stderr: "not run: no recovery transaction holds the lock")
+        }
+        try await admin.runAsAdministrator(Self.disableSleepCommand, prompt: Self.adminPrompt)
         try await settleWait(settleDelay)
         switch Self.readSleepDisabled(try await pmsetG()) {
         case true?:

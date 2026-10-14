@@ -154,14 +154,15 @@ final class RecoverySafetyTests: XCTestCase {
         XCTAssertNil(m.scheduledDeadline)
     }
 
-    /// The deadline passes while reconcile's `disablesleep 1` for the
+    /// The deadline passes while reconcile's read of SleepDisabled for the
     /// session on disk is still running. The end waits for it, so its
     /// `disablesleep 0` lands last and nothing stays journaled.
     func testEndDuringReconcileMustNotLeaveSleepDisabled() async throws {
         let now = h.clock.now
         try h.store.saveSession(Session(startedAt: now.addingTimeInterval(-600), endsAt: now.addingTimeInterval(60)))
+        h.guardFake.sleepDisabled = true
         let gate = AsyncGate()
-        h.guardFake.sleepGate = gate
+        h.guardFake.readGate = gate
         let m = h.makeManager()
 
         let reconcile = Task { await m.reconcile() }
@@ -175,7 +176,8 @@ final class RecoverySafetyTests: XCTestCase {
         // first await, so an end that ran here instead of queuing shows now.
         XCTAssertEqual(m.session, held, "the end ran inside the reconcile")
         XCTAssertEqual(try h.store.loadSession(), held, "the end ran inside the reconcile")
-        XCTAssertEqual(h.guardFake.calls, ["disablesleep 1"])
+        XCTAssertEqual(h.guardFake.calls, ["pmset -g"])
+        h.guardFake.readGate = nil
         await gate.open()
         await reconcile.value
         let outcome = await end.value
@@ -184,7 +186,7 @@ final class RecoverySafetyTests: XCTestCase {
         XCTAssertNil(m.session)
         XCTAssertNil(m.scheduledDeadline)
         XCTAssertFalse(h.guardFake.sleepDisabled, "sleep left disabled after the end completed")
-        XCTAssertEqual(h.guardFake.calls, ["disablesleep 1", "disablesleep 0"])
+        XCTAssertEqual(h.guardFake.calls, ["pmset -g", "disablesleep 0"])
         XCTAssertNil(try h.store.loadSession())
         XCTAssertEqual(try h.store.loadState(), RuntimeState.clean)
     }
@@ -290,6 +292,30 @@ final class RecoverySafetyTests: XCTestCase {
         XCTAssertNil(try h.store.loadSession())
         XCTAssertEqual(try h.store.loadState(), RuntimeState.clean)
         XCTAssertTrue(try XCTUnwrap(m.lastError).contains("disable sleep"), m.lastError ?? "")
+        XCTAssertEqual(h.notifier.posts.last?.title, "Session not started")
+    }
+
+    /// The person closed the administrator prompt: the start is undone from
+    /// the journal like a failed one, but with no notification and no error.
+    func testCancelledPromptEndsTheStartQuietly() async throws {
+        h.guardFake.cancelDisable = true
+        let m = h.makeManager()
+        await m.start(duration: 3600)
+        XCTAssertNil(m.session)
+        XCTAssertNil(m.lastError, "a cancel is the person's choice, not an error")
+        XCTAssertFalse(h.notifier.posts.contains { $0.title == "Session not started" }, "\(h.notifier.posts)")
+        XCTAssertEqual(h.guardFake.calls, ["disablesleep 1", "disablesleep 0"])
+        XCTAssertNil(try h.store.loadSession())
+    }
+
+    /// A prompt left open until it times out is a failure, not a cancel:
+    /// sleep is restored and the person is told the start did not happen.
+    func testAdminTimeoutFailsTheStartAndRestoresSleep() async throws {
+        h.guardFake.throwOn = ["disablesleep 1"]
+        let m = h.makeManager()
+        await m.start(duration: 3600)
+        XCTAssertNil(m.session)
+        XCTAssertFalse(h.guardFake.sleepDisabled)
         XCTAssertEqual(h.notifier.posts.last?.title, "Session not started")
     }
 

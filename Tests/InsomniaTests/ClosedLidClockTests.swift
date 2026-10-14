@@ -267,6 +267,7 @@ final class ClosedLidClockTests: XCTestCase {
         // session.json keeps whole seconds.
         let lease = Date(timeIntervalSince1970: (Date().timeIntervalSince1970 + 2).rounded(.up))
         try real.store.saveSession(Session(startedAt: Date(), endsAt: lease, pausedRemaining: 1800))
+        real.guardFake.sleepDisabled = true
         await m.reconcile()
         XCTAssertEqual(m.scheduledDeadline, lease)
         for _ in 0..<500 where (m.session?.endsAt ?? lease) <= lease {

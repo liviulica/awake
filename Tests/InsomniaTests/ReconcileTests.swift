@@ -13,6 +13,34 @@ final class ReconcileTests: XCTestCase {
         h.home.destroy()
     }
 
+    /// A relaunch never raises the administrator prompt: a valid session is
+    /// kept while sleep still reads disabled from before.
+    func testReconcileKeepsSessionWithoutPromptWhenSleepStillDisabled() async throws {
+        try h.store.saveSession(Session(startedAt: h.clock.now, endsAt: h.clock.now.addingTimeInterval(3600)))
+        var state = RuntimeState.clean
+        state.sleepDisabledByUs = true
+        try h.store.saveState(state)
+        h.guardFake.sleepDisabled = true
+        let m = h.makeManager()
+        await m.reconcile()
+        XCTAssertNotNil(m.session)
+        XCTAssertFalse(h.guardFake.calls.contains("disablesleep 1"), "\(h.guardFake.calls)")
+    }
+
+    /// Sleep was turned back on while Awake was not running: the session
+    /// ends instead of prompting for the password at launch.
+    func testReconcileEndsSessionWhenSleepWasTurnedBackOn() async throws {
+        try h.store.saveSession(Session(startedAt: h.clock.now, endsAt: h.clock.now.addingTimeInterval(3600)))
+        var state = RuntimeState.clean
+        state.sleepDisabledByUs = true
+        try h.store.saveState(state)
+        h.guardFake.sleepDisabled = false
+        let m = h.makeManager()
+        await m.reconcile()
+        XCTAssertNil(m.session)
+        XCTAssertFalse(h.guardFake.calls.contains("disablesleep 1"), "never prompt at launch: \(h.guardFake.calls)")
+    }
+
     // (a) expired session on disk -> sleep restored, pids resumed, low power cleared, files cleared
     func testExpiredSessionIsFullyRestored() async throws {
         let now = h.clock.now
@@ -44,8 +72,10 @@ final class ReconcileTests: XCTestCase {
         XCTAssertFalse(h.guardFake.sleepDisabled)
     }
 
-    // (b) valid session -> agent confirmed, disablesleep re-applied idempotently, timer rescheduled
-    func testValidSessionIsReappliedAndRearmed() async throws {
+    // (b) valid session -> agent confirmed, sleep still read as disabled
+    // (never re-applied: that would raise the administrator prompt), timer
+    // rescheduled
+    func testValidSessionIsKeptAndRearmed() async throws {
         let now = h.clock.now
         let s = Session(startedAt: now.addingTimeInterval(-600), endsAt: now.addingTimeInterval(2 * 3600 + 14 * 60 + 30))
         try h.store.saveSession(s)
@@ -59,7 +89,7 @@ final class ReconcileTests: XCTestCase {
 
         XCTAssertEqual(m.session, s)
         XCTAssertTrue(m.isActive)
-        XCTAssertEqual(h.guardFake.calls, ["disablesleep 1"])
+        XCTAssertEqual(h.guardFake.calls, ["pmset -g"])
         XCTAssertEqual(m.scheduledDeadline, s.endsAt)
         XCTAssertEqual(h.backstop.arms, 1)
         XCTAssertEqual(m.remainingText, "2h 14m")
@@ -71,10 +101,11 @@ final class ReconcileTests: XCTestCase {
     func testValidSessionWithMissingStateMarksSleepDisabledByUs() async throws {
         let now = h.clock.now
         try h.store.saveSession(Session(startedAt: now, endsAt: now.addingTimeInterval(3600)))
+        h.guardFake.sleepDisabled = true
         let m = h.makeManager()
         await m.reconcile()
         XCTAssertEqual(try h.store.loadState()?.sleepDisabledByUs, true)
-        XCTAssertEqual(h.guardFake.calls, ["disablesleep 1"])
+        XCTAssertEqual(h.guardFake.calls, ["pmset -g"])
     }
 
     // (c) no session, no journal entry, but pmset reports SleepDisabled:
@@ -400,6 +431,7 @@ final class ReconcileTests: XCTestCase {
         // come back up to a second earlier than written.
         let endsAt = Date(timeIntervalSince1970: (Date().timeIntervalSince1970 + 2).rounded(.up))
         try real.store.saveSession(Session(startedAt: Date(), endsAt: endsAt))
+        real.guardFake.sleepDisabled = true
         await m.reconcile()
         XCTAssertTrue(m.isActive)
         XCTAssertEqual(m.scheduledDeadline, endsAt)
@@ -418,7 +450,7 @@ final class ReconcileTests: XCTestCase {
         XCTAssertFalse(m.isActive)
         XCTAssertNil(try real.store.loadSession())
         XCTAssertEqual(try real.store.loadState(), RuntimeState.clean)
-        XCTAssertEqual(real.guardFake.calls, ["disablesleep 1", "disablesleep 0"])
+        XCTAssertEqual(real.guardFake.calls, ["pmset -g", "disablesleep 0"])
         XCTAssertFalse(real.guardFake.sleepDisabled)
     }
 
@@ -451,13 +483,14 @@ final class ReconcileTests: XCTestCase {
         let json = #"{"startedAt":"2027-01-15T09:50:00+02:00","endsAt":"2027-01-15T11:00:00+02:00","extensions":[]}"#
         try Data(json.utf8).write(to: h.home.paths.sessionFile)
         try h.store.saveState(RuntimeState())
+        h.guardFake.sleepDisabled = true
 
         let m = h.makeManager()
         await m.reconcile()
 
         XCTAssertEqual(m.session?.endsAt, h.clock.now.addingTimeInterval(3600))
         XCTAssertEqual(m.scheduledDeadline, h.clock.now.addingTimeInterval(3600))
-        XCTAssertEqual(h.guardFake.calls, ["disablesleep 1"])
+        XCTAssertEqual(h.guardFake.calls, ["pmset -g"])
         XCTAssertEqual(try movedAsideSessions, [])
     }
 

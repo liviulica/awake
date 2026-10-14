@@ -12,20 +12,24 @@ enum EndReason: String, Sendable {
     case thermalCritical
     case backstop
     /// Reconcile found a session on disk but could not arm the recovery
-    /// agent, journal, or hold sleep for it, so it ended the session instead
-    /// of holding sleep with nothing to release it.
+    /// agent or journal for it, so it ended the session instead of holding
+    /// sleep with nothing to release it; or sleep no longer read disabled,
+    /// and turning it off again would raise the administrator prompt.
     case recoveryUnavailable
     /// `pmset disablesleep 1` failed or timed out during start. The setting
     /// may still have been applied, so the start is undone from the journal
     /// like an end rather than rolled back from memory.
     case startFailed
+    /// The person cancelled the administrator prompt at start. Undone like
+    /// `startFailed`, but with no notification and no error line.
+    case startCancelled
 
     /// The timer and floor-rule ends. With the lid closed they also ask
     /// macOS to sleep (`SessionManager.sleepClosedLidIfOwed`).
     var sleepsAClosedLid: Bool {
         switch self {
         case .timer, .thermalCritical, .batteryFloor, .batteryUnreadable: true
-        case .user, .quit, .backstop, .recoveryUnavailable, .startFailed: false
+        case .user, .quit, .backstop, .recoveryUnavailable, .startFailed, .startCancelled: false
         }
     }
 }
@@ -1281,6 +1285,10 @@ final class SessionManager {
             // the start is undone like an end once the command has exited.
             stopTransaction(for: still, thenEnd: .startFailed)
             return
+        } catch is AdminPromptCancelledError {
+            Log.info("lid mode start cancelled at the administrator prompt")
+            _ = await performEnd(reason: .startCancelled)
+            return
         } catch {
             fail("could not disable sleep: \(error.localizedDescription)")
             _ = await performEnd(reason: .startFailed)
@@ -1596,7 +1604,10 @@ final class SessionManager {
             if !agentCanFinish { scheduleEndRetry(reason) }
             return .incomplete(agentArmed: agentCanFinish)
         }
-        notifier.post(title: Self.endTitle(reason, had: had), body: endBody(reason, waiting: waiting))
+        // A cancelled prompt was the person's own choice: nothing to tell.
+        if reason != .startCancelled {
+            notifier.post(title: Self.endTitle(reason, had: had), body: endBody(reason, waiting: waiting))
+        }
         return .restored
     }
 
@@ -2724,9 +2735,10 @@ final class SessionManager {
         }
 
         if let s = onDisk, !s.isExpired(at: now) {
-            // Step 2: valid session. Arm first, then journal, then hold
-            // sleep. Any failure ends the session rather than holding sleep
-            // with nothing guaranteed to release it.
+            // Step 2: valid session. Arm first, then journal, then check
+            // that sleep is still disabled. Any failure ends the session
+            // rather than holding sleep with nothing guaranteed to release
+            // it, or prompting for a password at launch.
             session = s
             do {
                 try await backstop.arm()
@@ -2744,20 +2756,22 @@ final class SessionManager {
                     return
                 }
             }
+            // Turning sleep off needs the administrator prompt, which a
+            // launch must never raise (spec "Privileges"). Keep the session
+            // only while sleep is still off from before.
+            let stillHeld: Bool
             do {
-                try await sleepGuard.setSleepDisabled(true)
-                lastError = nil
-            } catch let still as CommandStillRunningError {
-                // Not surfaced: the session file and journal stay for the end
-                // that runs once the command has exited.
-                session = nil
-                stopTransaction(for: still, thenEnd: .recoveryUnavailable)
-                return
+                stillHeld = try await sleepGuard.isSleepDisabled()
             } catch {
-                fail("could not re-apply sleep guard: \(error.localizedDescription); ending session")
+                Log.error("reconcile: could not read SleepDisabled: \(error.localizedDescription)")
+                stillHeld = false
+            }
+            guard stillHeld else {
+                fail("Lid closed mode ended: sleep was turned back on while Awake was not running. Start it again from the menu.")
                 _ = await performEnd(reason: .recoveryUnavailable)
                 return
             }
+            lastError = nil
             Log.info("reconcile: session valid until \(iso(s.endsAt))")
             if !state.lowPowerSetByUs, state.displayRestoredUnderLowPower != nil {
                 dropDisplayWrite(reason: "the mode is not ours")
@@ -3358,6 +3372,7 @@ final class SessionManager {
         switch reason {
         case .backstop: "Sleep restored"
         case .startFailed: "Session not started"
+        case .startCancelled: "Lid mode not started"
         default: had ? "Session ended" : "Session restored"
         }
     }
@@ -3404,8 +3419,9 @@ final class SessionManager {
         case .backstop: outputsWaiting
             ? "A previous session left changes behind. Sleep is back to normal."
             : "A previous session left changes behind; everything has been undone."
-        case .recoveryUnavailable: "Awake could not arm its recovery agent for the session found on disk, so it ended the session. Sleep is back to normal."
+        case .recoveryUnavailable: "Awake could not resume the session found on disk, so it ended the session. Sleep is back to normal."
         case .startFailed: "Awake could not disable sleep, so no session was started. Sleep is back to normal."
+        case .startCancelled: "The administrator prompt was cancelled, so no session was started. Sleep is back to normal."
         }
     }
 }

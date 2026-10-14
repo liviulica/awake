@@ -4,8 +4,9 @@ import XCTest
 /// `pmset -a disablesleep 1` exiting 0 does not prove that sleep is disabled:
 /// on macOS 26.6.2 (25G83) `pmset -g` reads SleepDisabled 1 for about 2 s,
 /// then 0 for good. `sudo` and `pmset` are tiny `/bin/sh` scripts in a
-/// private temp dir that record their calls, so nothing here runs sudo or
-/// pmset or changes a power setting.
+/// private temp dir that record their calls, and the administrator prompt
+/// is `FakeAdminRunner` running that pmset, so nothing here runs sudo,
+/// osascript or pmset or changes a power setting.
 final class SleepGuardReadBackTests: XCTestCase {
     private var dir: URL!
 
@@ -37,7 +38,8 @@ final class SleepGuardReadBackTests: XCTestCase {
         try handle.write(contentsOf: Data(text.utf8))
     }
 
-    /// A sudo that exits 0, and a pmset whose `-g` reads SleepDisabled 1
+    /// A sudo that exits 0, an administrator prompt that runs the fake
+    /// pmset directly, and a pmset whose `-g` reads SleepDisabled 1
     /// until the settle wait has run, as on 25G83, then prints `afterSettle`
     /// and exits `status` (to stderr when `status` is not 0). The wait does
     /// not sleep: it records `wait <seconds>` and marks the time as passed.
@@ -58,7 +60,7 @@ final class SleepGuardReadBackTests: XCTestCase {
         return PmsetSleepGuard(sudo: sudo, pmset: pmset, timeout: 5, stopGrace: 1, settleWait: { seconds in
             try Self.append("wait \(seconds)\n", to: calls)
             FileManager.default.createFile(atPath: settled, contents: nil)
-        })
+        }, admin: FakeAdminRunner(pmset: pmset))
     }
 
     private func sleepDisabled(_ value: String) -> String {
@@ -73,7 +75,7 @@ final class SleepGuardReadBackTests: XCTestCase {
     /// The disable, the wait, then the read: a read before the wait would
     /// see the 1 that macOS has not put back yet.
     private var expectedCalls: [String] {
-        ["sudo -n \(file("pmset")) -a disablesleep 1", "wait 5.0", "pmset -g"]
+        ["pmset -a disablesleep 1", "wait 5.0", "pmset -g"]
     }
 
     private func disableSleep(_ sleepGuard: PmsetSleepGuard) async throws {

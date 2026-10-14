@@ -91,6 +91,8 @@ final class FakeSleepGuard: SleepGuarding, @unchecked Sendable {
     /// Commands that take effect and *then* fail (a timeout after pmset
     /// already applied the setting): the ambiguous failure shape.
     var throwAfterEffect: Set<String> = []
+    /// `disablesleep 1` answers like a cancelled administrator prompt.
+    var cancelDisable = false
     private var _stillRunning: Set<String> = []
     private var _stuckExitsAtOnce = false
     private var _stuckExitStatus: Int32 = 0
@@ -223,6 +225,7 @@ final class FakeSleepGuard: SleepGuarding, @unchecked Sendable {
     func setSleepDisabled(_ disabled: Bool) async throws {
         if !disabled { lock.withLock { _restoreCalledAt = Date() } }
         try record("disablesleep \(disabled ? 1 : 0)")
+        if disabled && cancelDisable { throw AdminPromptCancelledError() }
         if disabled, let gate = sleepGate { await gate.wait() }
         if !disabled, let gate = restoreGate { await gate.wait() }
         sleepDisabled = disabled
@@ -245,6 +248,18 @@ final class FakeSleepGuard: SleepGuarding, @unchecked Sendable {
     func isLowPowerModeOn() async throws -> Bool {
         try record("pmset -g custom")
         return lowPowerOn
+    }
+}
+
+/// Runs the command the administrator prompt would run with a fake pmset
+/// instead, no prompt and no osascript, so the guard's read back after
+/// `disablesleep 1` is still exercised.
+struct FakeAdminRunner: AdminCommandRunning {
+    let pmset: String
+    func runAsAdministrator(_ command: String, prompt: String) async throws {
+        let args = Array(command.split(separator: " ").dropFirst().map(String.init))
+        let r = try await Shell.run(pmset, args, timeout: 5)
+        guard r.status == 0 else { throw SleepGuardError(command: command, status: r.status, stderr: r.stderr) }
     }
 }
 

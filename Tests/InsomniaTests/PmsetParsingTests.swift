@@ -61,9 +61,9 @@ final class PmsetParsingTests: XCTestCase {
     }
 
     func testErrorMessageMentionsInstall() {
-        let e = SleepGuardError(command: "sudo -n pmset -a disablesleep 1", status: 1, stderr: "sudo: a password is required\n")
+        let e = SleepGuardError(command: "sudo -n pmset -a disablesleep 0", status: 1, stderr: "sudo: a password is required\n")
         let msg = e.errorDescription ?? ""
-        XCTAssertTrue(msg.contains("disablesleep 1"))
+        XCTAssertTrue(msg.contains("disablesleep 0"))
         XCTAssertTrue(msg.contains("password is required"))
         XCTAssertTrue(msg.contains("install.sh"))
     }
