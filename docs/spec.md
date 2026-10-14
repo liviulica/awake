@@ -4,9 +4,9 @@
 
 These are design notes, not a release certification. The
 [README](../README.md) describes supported use and recovery limits; the
-[release validation record](release-validation.md) records the real-Mac
+release validation record (Insomnia's doc, removed in Awake; see git history) records the real-Mac
 checks each release passed, and
-[Releasing](releasing.md#real-mac-checks-before-a-release) lists the checks
+Releasing, "Real-Mac checks before a release" (Insomnia's doc, removed in Awake; see git history) lists the checks
 to run before the next one. Historical model sketches and UI proposals below
 are not exhaustive descriptions of the current code.
 
