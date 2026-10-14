@@ -14,7 +14,6 @@ struct SettingsView: View {
     @State private var presetError: String?
     @State private var newFreezeBundle = ""
     @State private var newAgentBundle = ""
-    @State private var newTmuxTarget = ""
     /// The password field, saving, what was saved, and the notice under
     /// the field.
     @State private var hotspot = HotspotPasswordField()
@@ -276,47 +275,11 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Stepper(value: nudgeSeconds, in: 10...900, step: 10) {
-                LabeledContent("Nudge tmux after", value: "\(Int(manager.config.nudgeThreshold)) s offline")
-            }
-            Text("After that long offline, Awake types \"continue\" into each pane listed below. Only a pane you have marked with this tmux command is nudged. Mark a dedicated pane, not one you type in.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(TmuxNudge.markCommand())
-                .font(.system(.caption, design: .monospaced))
-                .textSelection(.enabled)
-            Toggle("Press Enter after continue", isOn: bind(\.tmuxNudgePressesEnter))
-            Text("Enter submits whatever is already typed in that pane, including a line that was never finished. When off, \"continue\" is typed and nothing submits it.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            ForEach(manager.config.tmuxTargets, id: \.self) { t in
-                HStack {
-                    Text(t).font(.system(.body, design: .monospaced))
-                    Spacer()
-                    removeButton {
-                        update { $0.tmuxTargets.removeAll { $0 == t } }
-                    }
-                }
-            }
-            HStack {
-                TextField("tmux target (session:window.pane)", text: $newTmuxTarget)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit(addTmuxTarget)
-                Button("Add", action: addTmuxTarget)
-                    .disabled(newTmuxTarget.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
         } header: {
             Text("Network failover")
         } footer: {
             Text("The password is kept in the login keychain, readable without a prompt only by the build of Awake that saved it; after a reinstall, enter it again. Location permission lets macOS reveal Wi-Fi network names and find the configured hotspot.")
         }
-    }
-
-    private var nudgeSeconds: Binding<Int> {
-        Binding(
-            get: { Int(manager.config.nudgeThreshold) },
-            set: { seconds in update { $0.nudgeThreshold = TimeInterval(seconds) } }
-        )
     }
 
     /// Fills the field when the window appears (`loadForField`).
@@ -466,13 +429,6 @@ struct SettingsView: View {
             Log.error("could not save hotspot password: \(error.localizedDescription)")
             return .failed(notice: "Could not save the hotspot password: \(error.localizedDescription)")
         }
-    }
-
-    private func addTmuxTarget() {
-        let t = newTmuxTarget.trimmingCharacters(in: .whitespaces)
-        guard !t.isEmpty else { return }
-        update { if !$0.tmuxTargets.contains(t) { $0.tmuxTargets.append(t) } }
-        newTmuxTarget = ""
     }
 
     private var appSection: some View {

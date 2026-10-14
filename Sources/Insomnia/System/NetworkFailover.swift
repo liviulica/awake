@@ -746,11 +746,13 @@ final class FakeKeychainStore: KeychainStoring, @unchecked Sendable {
 // MARK: - Driver
 
 /// NWPathMonitor on Wi-Fi, one retry timer that exists only during an
-/// outage, CoreWLAN for the join, handoffs.log, tmux nudge and a
+/// outage, CoreWLAN for the join, handoffs.log and a
 /// notification on recovery. Active only while a session is active.
 @MainActor
 final class NetworkFailover {
     static let networksetup = "/usr/sbin/networksetup"
+    /// Outages at least this long post "Network recovered" when they end.
+    static let recoveredNoticeThreshold: TimeInterval = 90
 
     /// Called after every recovery with the gap length.
     var onRecovered: ((TimeInterval) -> Void)?
@@ -777,7 +779,6 @@ final class NetworkFailover {
     private let paths: Paths
     private let keychain: any KeychainStoring
     private let keychainQueue: KeychainQueue
-    private let nudge: TmuxNudge
     private let hotspotJoiner: any HotspotJoining
     private let notifier: any Notifying
     private let configProvider: @MainActor () -> Config
@@ -787,7 +788,7 @@ final class NetworkFailover {
     private(set) var retryTimer: Timer?
     private var generation = 0
     /// Bumped by `stop()`. Work that started under an older epoch (a
-    /// recovery mid-nudge) stops issuing commands as soon as it notices.
+    /// recovery in flight) stops issuing commands as soon as it notices.
     private var epoch = 0
     /// Bumped when an outage ends, by recovery or by `stop()`. A join, and
     /// the retry its timer tick queued after it, belong to the outage they
@@ -803,7 +804,6 @@ final class NetworkFailover {
         paths: Paths,
         keychain: any KeychainStoring = KeychainStore(),
         keychainQueue: KeychainQueue = .shared,
-        nudge: TmuxNudge = TmuxNudge(),
         hotspotJoiner: any HotspotJoining = CoreWLANHotspotJoiner(),
         notifier: any Notifying,
         wifiInterface: String? = nil,
@@ -813,7 +813,6 @@ final class NetworkFailover {
         self.paths = paths
         self.keychain = keychain
         self.keychainQueue = keychainQueue
-        self.nudge = nudge
         self.hotspotJoiner = hotspotJoiner
         self.notifier = notifier
         self.wifiInterface = wifiInterface
@@ -1072,25 +1071,14 @@ final class NetworkFailover {
         let line = FailoverMachine.logLine(start: start, end: end, gap: gap)
         appendHandoff(line)
         Log.info("wifi path satisfied after \(FailoverMachine.humanGap(gap))")
-        let config = configProvider()
-        if gap >= config.nudgeThreshold {
-            // Each pane is only nudged while this session is still the live one.
-            let count = await nudge.nudge(targets: config.tmuxTargets, pressEnter: config.tmuxNudgePressesEnter) { [weak self] in self?.epoch == epoch }
-            let stopped = self.epoch != epoch
-            if stopped {
-                Log.info("network failover stopped during recovery; \(count) tmux pane(s) had already been nudged")
-            }
-            // A keystroke that went out before the stop is still reported.
-            if !stopped || count > 0 {
-                let panes = count == 1 ? "1 tmux pane" : "\(count) tmux panes"
-                notifier.post(
-                    title: "Network recovered",
-                    body: "Network was down \(FailoverMachine.humanGap(gap)). Nudged \(panes). Check GUI agents."
-                )
-            }
-        }
         // A stopped driver must not write into the next session's status.
         guard self.epoch == epoch else { return }
+        if gap >= Self.recoveredNoticeThreshold {
+            notifier.post(
+                title: "Network recovered",
+                body: "The network was down for \(FailoverMachine.humanGap(gap)). Check that your agents picked up where they left off."
+            )
+        }
         onRecovered?(gap)
     }
 

@@ -4,8 +4,8 @@ import Foundation
 /// task cancellation.
 enum StopPolicy: Sendable, Equatable {
     /// SIGTERM, then SIGKILL one second later if it is still running. The
-    /// default, for children that leave nothing behind when killed (tmux,
-    /// docker, launchctl).
+    /// default, for children that leave nothing behind when killed (docker,
+    /// launchctl).
     case terminateThenKill
     /// SIGTERM only. A child still running `grace` seconds later is left
     /// alone and the call throws `CommandStillRunningError`, which carries

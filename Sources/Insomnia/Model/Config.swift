@@ -60,15 +60,6 @@ struct Config: Codable, Equatable, Sendable {
 
     // Network failover
     var hotspotSSID: String = ""
-    /// Seconds of outage after which tmux panes are nudged.
-    var nudgeThreshold: TimeInterval = 90
-    /// tmux targets as `session:window.pane`. Only a pane carrying the
-    /// `@insomnia-nudge` pane option is nudged (TmuxNudge).
-    var tmuxTargets: [String] = []
-    /// Press Enter after typing `continue`. Off: the word is typed and left
-    /// for the user or the program; on: Enter also submits anything already
-    /// typed in that pane.
-    var tmuxNudgePressesEnter: Bool = false
 
     // App
     var launchAtLogin: Bool = false
@@ -160,9 +151,6 @@ struct Config: Codable, Equatable, Sendable {
         endFloor = try c.decodeIfPresent(Int.self, forKey: .endFloor) ?? d.endFloor
         thermalRules = try c.decodeIfPresent(Bool.self, forKey: .thermalRules) ?? d.thermalRules
         hotspotSSID = try c.decodeIfPresent(String.self, forKey: .hotspotSSID) ?? d.hotspotSSID
-        nudgeThreshold = try c.decodeIfPresent(TimeInterval.self, forKey: .nudgeThreshold) ?? d.nudgeThreshold
-        tmuxTargets = try c.decodeIfPresent([String].self, forKey: .tmuxTargets) ?? d.tmuxTargets
-        tmuxNudgePressesEnter = try c.decodeIfPresent(Bool.self, forKey: .tmuxNudgePressesEnter) ?? d.tmuxNudgePressesEnter
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? d.launchAtLogin
         launchAtLoginInstall = try c.decodeIfPresent(String.self, forKey: .launchAtLoginInstall)
     }

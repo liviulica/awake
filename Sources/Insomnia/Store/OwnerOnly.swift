@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 
 /// Everything Insomnia writes under its own two directories is owner-only.
-/// awake.log and handoffs.log name SSIDs, tmux targets and processes;
+/// awake.log and handoffs.log name SSIDs and processes;
 /// the journal, session and config files say what the machine is doing.
 /// Files are created 0600 and the directories Insomnia owns 0700. A file or
 /// directory that already exists with a looser mode (an older build, a

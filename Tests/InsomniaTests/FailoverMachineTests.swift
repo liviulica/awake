@@ -75,13 +75,6 @@ final class FailoverMachineTests: XCTestCase {
         XCTAssertEqual(m.pathSatisfied(at: t0), [])
     }
 
-    func testRecoveryBelowThresholdNoNudge() {
-        let c = Config()  // nudgeThreshold 90
-        XCTAssertFalse(60 >= c.nudgeThreshold)
-        XCTAssertTrue(90 >= c.nudgeThreshold)
-        XCTAssertTrue(130 >= c.nudgeThreshold)
-    }
-
     func testLogLineFormat() {
         let end = t0.addingTimeInterval(130)
         XCTAssertEqual(
@@ -106,101 +99,26 @@ final class NetworkFailoverDriverTests: XCTestCase {
     override func setUp() async throws { home = TempHome() }
     override func tearDown() async throws { home.destroy() }
 
-    /// Runs the machine through the real driver's recovery path via the
-    /// `onRecovered`/nudge/notify plumbing by exercising a NetworkFailover
-    /// whose tmux runner is a fake. The NWPathMonitor itself is not started.
-    func testRecoveryAboveThresholdNudgesAndNotifies() async throws {
-        let nudged = Locked<[String]>([])
-        let nudge = TmuxNudge { target, _ in
-            nudged.value.append(target)
-            return true
-        }
+    func testLongOutageRecoveryNotifiesWithoutTmuxText() async throws {
         let notifier = RecordingNotifier()
-        var config = Config()
-        config.tmuxTargets = ["agents:0.0", "agents:0.1"]
         let clock = FakeClock(Date(timeIntervalSince1970: 1_800_000_000))
-        let n = NetworkFailover(paths: home.paths, keychain: FakeKeychainStore(), nudge: nudge, notifier: notifier, clock: { clock.now }) { config }
-        let gaps = Locked<[TimeInterval]>([])
-        n.onRecovered = { gaps.value.append($0) }
-
+        let n = driver(keychain: FakeKeychainStore(), joiner: RecordingHotspotJoiner(), notifier: notifier, clock: clock)
         await n.simulate(satisfied: false)
-        clock.advance(130)
+        clock.advance(NetworkFailover.recoveredNoticeThreshold)
         await n.simulate(satisfied: true)
-
-        XCTAssertEqual(nudged.value, ["agents:0.0", "agents:0.1"])
-        XCTAssertEqual(notifier.posts.count, 1)
-        XCTAssertEqual(notifier.posts[0].body, "Network was down 2m 10s. Nudged 2 tmux panes. Check GUI agents.")
-        XCTAssertEqual(gaps.value, [130])
-        XCTAssertEqual(n.lastGap, 130)
-        let log = try String(contentsOf: home.paths.handoffsLog, encoding: .utf8)
-        XCTAssertTrue(log.contains("gap=130s"), log)
+        let post = try XCTUnwrap(notifier.posts.last)
+        XCTAssertEqual(post.title, "Network recovered")
+        XCTAssertFalse(post.body.contains("tmux"), post.body)
     }
 
-    /// Whether Enter follows `continue` is read from the config at nudge
-    /// time and handed to the runner; the default is no Enter.
-    func testNudgePassesTheEnterSettingFromConfig() async throws {
-        for pressEnter in [false, true] {
-            let seen = Locked<[Bool]>([])
-            let nudge = TmuxNudge { _, enter in
-                seen.value.append(enter)
-                return true
-            }
-            var config = Config()
-            config.tmuxTargets = ["agents:0.0"]
-            config.tmuxNudgePressesEnter = pressEnter
-            let clock = FakeClock(Date(timeIntervalSince1970: 1_800_000_000))
-            let n = NetworkFailover(paths: home.paths, keychain: FakeKeychainStore(), nudge: nudge, notifier: RecordingNotifier(), clock: { clock.now }) { config }
-
-            await n.simulate(satisfied: false)
-            clock.advance(130)
-            await n.simulate(satisfied: true)
-
-            XCTAssertEqual(seen.value, [pressEnter])
-        }
-    }
-
-    func testRecoveryBelowThresholdLogsOnly() async throws {
-        let nudged = Locked<[String]>([])
-        let nudge = TmuxNudge { target, _ in
-            nudged.value.append(target)
-            return true
-        }
+    func testShortOutageRecoveryDoesNotNotify() async {
         let notifier = RecordingNotifier()
-        var config = Config()
-        config.tmuxTargets = ["agents:0.0"]
         let clock = FakeClock(Date(timeIntervalSince1970: 1_800_000_000))
-        let n = NetworkFailover(paths: home.paths, keychain: FakeKeychainStore(), nudge: nudge, notifier: notifier, clock: { clock.now }) { config }
-
+        let n = driver(keychain: FakeKeychainStore(), joiner: RecordingHotspotJoiner(), notifier: notifier, clock: clock)
         await n.simulate(satisfied: false)
-        clock.advance(20)
+        clock.advance(NetworkFailover.recoveredNoticeThreshold - 1)
         await n.simulate(satisfied: true)
-
-        XCTAssertEqual(nudged.value, [])
-        XCTAssertEqual(notifier.posts.count, 0)
-        XCTAssertEqual(n.lastGap, 20)
-        let log = try String(contentsOf: home.paths.handoffsLog, encoding: .utf8)
-        XCTAssertTrue(log.contains("gap=20s"), log)
-    }
-
-    func testRecoveryAtThresholdNudgesAndNotifies() async throws {
-        let nudged = Locked<[String]>([])
-        let nudge = TmuxNudge { target, _ in
-            nudged.value.append(target)
-            return true
-        }
-        let notifier = RecordingNotifier()
-        var config = Config()
-        config.nudgeThreshold = 90
-        config.tmuxTargets = ["agents:0.0"]
-        let clock = FakeClock(Date(timeIntervalSince1970: 1_800_000_000))
-        let n = NetworkFailover(paths: home.paths, keychain: FakeKeychainStore(), nudge: nudge, notifier: notifier, clock: { clock.now }) { config }
-
-        await n.simulate(satisfied: false)
-        clock.advance(90)
-        await n.simulate(satisfied: true)
-
-        XCTAssertEqual(nudged.value, ["agents:0.0"])
-        XCTAssertEqual(notifier.posts.count, 1)
+        XCTAssertFalse(notifier.posts.contains { $0.title == "Network recovered" })
     }
 
     func testHotspotJoinUsesInjectedJoiner() async throws {

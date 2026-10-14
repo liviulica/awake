@@ -17,7 +17,6 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(c.presets, [1800, 3600, 7200, 14400, 28800, 43200, 86400, 259200])
         XCTAssertEqual(c.lowPowerFloor, 40)
         XCTAssertEqual(c.endFloor, 10)
-        XCTAssertEqual(c.nudgeThreshold, 90)
         XCTAssertEqual(c.maxDuration, 30 * 24 * 3600)
         XCTAssertEqual(c.freezeList, ["com.tinyspeck.slackmacgap", "net.whatsapp.WhatsApp", "com.hnc.Discord"])
         XCTAssertTrue(c.agentList.contains("com.apple.Terminal"))
@@ -36,24 +35,7 @@ final class ConfigTests: XCTestCase {
         XCTAssertTrue(c.thermalRules)
         XCTAssertFalse(c.disableAppNapForAgents, "writing other apps' preferences is opt-in")
         XCTAssertEqual(c.hotspotSSID, "")
-        XCTAssertEqual(c.tmuxTargets, [])
-        XCTAssertFalse(c.tmuxNudgePressesEnter)
         XCTAssertFalse(c.launchAtLogin)
-    }
-
-    /// Enter after `continue` is opt-in: a config.json written before the
-    /// key existed, or without it, keeps it off; an explicit true is honoured.
-    func testTmuxNudgePressesEnterDecodesAndDefaultsOff() throws {
-        let legacy = try Store.makeDecoder().decode(Config.self, from: Data(#"{"tmuxTargets": ["agents:0.0"]}"#.utf8))
-        XCTAssertFalse(legacy.tmuxNudgePressesEnter)
-        XCTAssertEqual(legacy.tmuxTargets, ["agents:0.0"])
-        let on = try Store.makeDecoder().decode(Config.self, from: Data(#"{"tmuxNudgePressesEnter": true}"#.utf8))
-        XCTAssertTrue(on.tmuxNudgePressesEnter)
-        var expected = earlierBuild()
-        expected.tmuxNudgePressesEnter = true
-        XCTAssertEqual(on, expected)
-        let data = try Store.makeEncoder().encode(on)
-        XCTAssertEqual(try Store.makeDecoder().decode(Config.self, from: data), on)
     }
 
     // MARK: Battery floors
@@ -330,7 +312,6 @@ final class ConfigTests: XCTestCase {
     func testRoundTrip() throws {
         var c = Config()
         c.hotspotSSID = "iPhone"
-        c.tmuxTargets = ["main:0.1"]
         c.presets = [60]
         let data = try Store.makeEncoder().encode(c)
         XCTAssertEqual(try Store.makeDecoder().decode(Config.self, from: data), c)

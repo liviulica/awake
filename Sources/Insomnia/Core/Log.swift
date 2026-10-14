@@ -7,7 +7,7 @@ import os
 /// The unified log is readable by every program running as the user (and
 /// by anyone with a sysdiagnose), so message bodies go there as private
 /// data: `log show` prints `<private>` in their place. The bodies name
-/// SSIDs, tmux targets, process names and bundle ids. awake.log keeps
+/// SSIDs, process names and bundle ids. awake.log keeps
 /// the full text for the user; its permissions are its own protection.
 enum Log {
     static let logger = Logger(subsystem: Paths.bundleIdentifier, category: "core")

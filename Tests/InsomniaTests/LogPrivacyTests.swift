@@ -3,7 +3,7 @@ import XCTest
 @testable import Insomnia
 
 /// What reaches the unified log is readable by every program running as
-/// the user. The message bodies (SSIDs, tmux targets, process names) must
+/// the user. The message bodies (SSIDs, process names) must
 /// arrive there as private data; the file log keeps the full text.
 final class LogPrivacyTests: XCTestCase {
     var home: TempHome!
@@ -15,7 +15,7 @@ final class LogPrivacyTests: XCTestCase {
         let token = "ssid-\(UUID().uuidString)"
         let since = Date()
         Log.info("joining hotspot \(token) on en0 (attempt 1)")
-        Log.error("tmux nudge to \(token) rejected")
+        Log.error("hotspot \(token) rejected")
         // A line that is private by construction shows whether this Mac has
         // private data logging enabled: then the store returns every body
         // in clear and the redaction cannot be observed, whatever Log does.
@@ -49,6 +49,6 @@ final class LogPrivacyTests: XCTestCase {
 
         let file = try String(contentsOf: home.paths.logFile, encoding: .utf8)
         XCTAssertTrue(file.contains("[info] awake: joining hotspot \(token) on en0 (attempt 1)"), file)
-        XCTAssertTrue(file.contains("[error] awake: tmux nudge to \(token) rejected"), file)
+        XCTAssertTrue(file.contains("[error] awake: hotspot \(token) rejected"), file)
     }
 }
