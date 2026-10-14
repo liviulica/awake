@@ -4170,6 +4170,21 @@ final class RecoveryScriptTests: XCTestCase {
 
     // MARK: - install.sh (fully redirected: fake build, signing, sudo, launchctl)
 
+    /// Awake and Insomnia drive the same SleepDisabled bit, so the installer
+    /// refuses while any Insomnia file exists, before the password prompt.
+    func testInstallRefusesWhileInsomniaIsInstalled() throws {
+        try fx.prepareInstall()
+        let insomnia = fx.root.appendingPathComponent("Applications/Insomnia.app")
+        try FileManager.default.createDirectory(at: insomnia, withIntermediateDirectories: true)
+
+        let r = try fx.run(fx.installRedirected, extraEnvironment: ["USER": "tester"])
+
+        XCTAssertEqual(r.status, 1, r.stdout + r.stderr)
+        XCTAssertTrue(r.stderr.contains("Insomnia is installed"), r.stderr)
+        XCTAssertFalse(fx.calls().contains { $0.hasPrefix("sudo") }, "\(fx.calls())")
+        XCTAssertFalse(fx.exists(fx.sudoers))
+    }
+
     func testInstallKeepsTheTrustedAgentWhenRecoveryIsUnresolved() throws {
         try fx.prepareInstall()
         try fx.writePreviousApp()
@@ -6447,6 +6462,9 @@ private final class ScriptFixture {
             "LOG_DIR": home.appendingPathComponent("Logs").path,
             "LAUNCH_AGENTS": home.appendingPathComponent("LaunchAgents").path,
             "SUDOERS": sudoers.path,
+            "INSOMNIA_SUDOERS": root.appendingPathComponent("etc/sudoers.d/insomnia").path,
+            "INSOMNIA_PLIST": root.appendingPathComponent("home/Library/LaunchAgents/com.insomnia.backstop.plist").path,
+            "INSOMNIA_APP": root.appendingPathComponent("Applications/Insomnia.app").path,
             "PGREP": bin.appendingPathComponent("pgrep").path,
             "KILL": bin.appendingPathComponent("kill").path,
             "OSASCRIPT": bin.appendingPathComponent("osascript").path,

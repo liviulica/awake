@@ -91,6 +91,11 @@ LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
 LABEL="app.chargingpixels.awake.recovery"
 PLIST="$LAUNCH_AGENTS/$LABEL.plist"
 SUDOERS=/etc/sudoers.d/awake
+# Insomnia drives the same SleepDisabled bit; the two must not be installed
+# together (spec "Coexistence").
+INSOMNIA_SUDOERS=/etc/sudoers.d/insomnia
+INSOMNIA_PLIST="$HOME/Library/LaunchAgents/com.insomnia.backstop.plist"
+INSOMNIA_APP="$HOME/Applications/Insomnia.app"
 UID_NUM="$(id -u)"
 # Where the new bundle is assembled and signed (step 3) and where the previous
 # one waits during the swap (step 6). Both inside $APP_DIR, so the swap is two
@@ -381,6 +386,17 @@ else
   BUILD_DIR="$("$MKTEMP" -d)"
   "$SCRIPT_DIR/build-app.sh" --output "$BUILD_DIR"
   SOURCE_APP="$BUILD_DIR/Awake.app"
+fi
+
+# 1b. Insomnia ---------------------------------------------------------------
+#    Refused before the password prompt, so nothing is changed.
+insomnia_found=""
+for path in "$INSOMNIA_SUDOERS" "$INSOMNIA_PLIST" "$INSOMNIA_APP"; do
+  if [[ -e "$path" ]]; then insomnia_found="$insomnia_found $path"; fi
+done
+if [[ -n "$insomnia_found" ]]; then
+  echo "Insomnia is installed (found:$insomnia_found). Awake and Insomnia both control this Mac's sleep setting and cannot be installed together. Uninstall Insomnia first (scripts/uninstall.sh in your Insomnia checkout), then run this installer again. Nothing was changed." >&2
+  exit 1
 fi
 
 # 2. sudoers -----------------------------------------------------------------
