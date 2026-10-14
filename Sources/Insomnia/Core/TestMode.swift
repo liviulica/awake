@@ -5,7 +5,7 @@ import Foundation
 /// lid simulation (`LidSimulationBuild`), and on only when the environment
 /// asks for it twice over: `AWAKE_TEST_MODE=1` and a relocated
 /// `AWAKE_HOME`. A lid simulation build installed for the real-Mac checks
-/// (docs/releasing.md) runs without either and keeps the real `pmset`, the
+/// (docs/superpowers/specs/2026-10-14-awake-design.md, "Testing") runs without either and keeps the real `pmset`, the
 /// real recovery agent and the real lid.
 ///
 /// In test mode the app needs no root and changes nothing outside its

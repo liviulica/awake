@@ -401,7 +401,7 @@ final class PackagingTests: XCTestCase {
     }
 
     /// `--output` is resolved before the build changes into the checkout, so
-    /// a relative path means relative to the caller: release.yml runs the
+    /// a relative path means relative to the caller: CI runs the
     /// script from the repository root, but a caller elsewhere gets its own
     /// `dist`, not one inside the checkout.
     func testBuildAppResolvesARelativeOutputAgainstTheCallersDirectory() throws {

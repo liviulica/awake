@@ -1,14 +1,13 @@
 #!/bin/bash
 # Build Awake and assemble an ad-hoc signed Awake.app. install.sh runs this for
-# source installs, and .github/workflows/release.yml runs it for the
-# downloadable package, so both produce the same bundle.
+# source installs and the smoke test builds its test bundle with it.
 #
 # Usage: scripts/build-app.sh --output DIR
 #   Writes DIR/Awake.app, replacing a bundle already at that path. DIR is
 #   created if needed. Prints the bundle path last.
 #
 # The signature is always ad-hoc (`codesign --sign -`): releases are ad-hoc
-# signed and not notarized (docs/releasing.md). It identifies only this build
+# signed and not notarized (there is no signed release yet). It identifies only this build
 # (its cdhash), and macOS blocks the first launch of a downloaded copy until
 # the user allows it. The bundle has no nested code, so there is no --deep;
 # backstop.sh under Contents/Resources is sealed as a resource.

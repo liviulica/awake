@@ -1,3 +1,5 @@
+> This is Insomnia's original spec; Awake's changes are in docs/superpowers/specs/2026-10-14-awake-design.md.
+
 # Insomnia — keep the Mac awake and working with the lid closed
 
 These are design notes, not a release certification. The

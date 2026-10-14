@@ -10,8 +10,7 @@ updates:
       interval: weekly
     cooldown:
       # Wait 7 days after a release before proposing it, so a release that
-      # is yanked or found compromised in its first week never reaches a PR
-      # (zizmor's dependabot-cooldown audit).
+      # is yanked or found compromised in its first week never reaches a PR.
       default-days: 7
     commit-message:
       # Matches the repo's "Area: what changed" subject style.

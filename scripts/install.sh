@@ -353,7 +353,7 @@ if [[ -n "$PREBUILT" ]]; then
   # from. A signature shows the bundle has not changed since it was signed,
   # and anyone can sign a bundle with this identifier, so this script does
   # not read who signed it. Releases are ad-hoc signed and not notarized
-  # (docs/releasing.md). What ties a zip to this repository's Release
+  # (there is no signed release yet). What ties a zip to this repository's Release
   # workflow is the checksum and the attestation, which only the user can
   # check, so every prebuilt bundle needs --allow-unverified-origin, the flag
   # that says they did.

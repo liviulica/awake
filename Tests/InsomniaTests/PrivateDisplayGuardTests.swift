@@ -64,7 +64,7 @@ struct BrightnessOnlyDimmer: DisplayDimming {
 final class PrivateDisplayGuardTests: XCTestCase {
     private var home: TempHome!
 
-    /// Raw encodings measured on macOS 26.2 (25C56), see docs/release-validation.md.
+    /// Raw encodings measured on macOS 26.2 (25C56), see Insomnia's docs/release-validation.md, in git history.
     private let measured: [String: String] = [
         "copyKeyboardBacklightIDs": "@16@0:8",
         "isKeyboardBuiltIn:": "B24@0:8Q16",

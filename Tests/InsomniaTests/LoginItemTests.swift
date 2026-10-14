@@ -42,7 +42,7 @@ final class FakeLoginItemService: LoginItemServicing {
 /// Launch at login kept in step with what macOS reports. The suspicion
 /// behind this (a login item silently dropped after install.sh renews the
 /// ad-hoc signature) is driven here through the fake; the real reinstall
-/// is a real-Mac check in docs/releasing.md. Nothing here touches
+/// is a real-Mac check in docs/superpowers/specs/2026-10-14-awake-design.md, "Testing". Nothing here touches
 /// `SMAppService`.
 @MainActor
 final class LoginItemTests: XCTestCase {

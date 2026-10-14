@@ -16,7 +16,7 @@
 # Each step has a 10 s deadline and prints PASS or FAIL with the reason;
 # the first FAIL prints what the app wrote and exits 1. The app is killed
 # and the temp directory removed on every exit. Runs locally and in CI
-# (.github/workflows/smoke.yml).
+# (the smoke job in .github/workflows/ci.yml).
 #
 # Usage: scripts/smoke-test.sh
 set -euo pipefail

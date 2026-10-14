@@ -82,7 +82,7 @@ enum DisplayPower {
     // MARK: Guards on the private calls
 
     /// macOS major versions on which the DisplayServices brightness calls
-    /// were measured (docs/release-validation.md). A C symbol carries no
+    /// were measured (Insomnia's docs/release-validation.md, in git history). A C symbol carries no
     /// type information, so on any other major the calls are refused until
     /// someone measures them again, rather than passing a display id and a
     /// float pointer into a function whose signature may have changed.
@@ -161,7 +161,7 @@ struct NoopKeyboardBacklight: KeyboardBacklighting {
 }
 
 /// Private DisplayServices.framework, measured on macOS 26 and 27 (see
-/// docs/release-validation.md): Get/SetBrightness take effect at once
+/// Insomnia's docs/release-validation.md, in git history): Get/SetBrightness take effect at once
 /// whether the display is awake, asleep or held by a display assertion.
 /// Symbols are resolved once, lazily, under a lock, and only on a macOS
 /// major the calls were measured on; a macOS that drops a symbol or was
