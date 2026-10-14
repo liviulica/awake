@@ -763,6 +763,8 @@ final class NetworkFailover {
 
     private(set) var machine = FailoverMachine()
     private(set) var wifiInterface: String?
+    /// The Wi-Fi the Mac was on before failover moved it to the hotspot.
+    private(set) var homeSSID: String?
     private(set) var lastGap: TimeInterval?
     /// Why the last join was skipped before the join itself, if it was,
     /// and for which hotspot.
@@ -781,6 +783,8 @@ final class NetworkFailover {
     private let keychainQueue: KeychainQueue
     private let hotspotJoiner: any HotspotJoining
     private let probe: any ReachabilityProbing
+    private let ssidReader: (@MainActor () async -> String?)?
+    private let settle: Duration
     private let notifier: any Notifying
     private let configProvider: @MainActor () -> Config
     private let clock: @Sendable () -> Date
@@ -788,6 +792,7 @@ final class NetworkFailover {
     private var monitor: NWPathMonitor?
     private(set) var retryTimer: Timer?
     private(set) var probeTimer: Timer?
+    private(set) var switchBackTimer: Timer?
     private var tracker = ReachabilityTracker()
     private var generation = 0
     /// Bumped by `stop()`. Work that started under an older epoch (a
@@ -809,6 +814,8 @@ final class NetworkFailover {
         keychainQueue: KeychainQueue = .shared,
         hotspotJoiner: any HotspotJoining = CoreWLANHotspotJoiner(),
         probe: any ReachabilityProbing = CaptivePortalProbe(),
+        ssidReader: (@MainActor () async -> String?)? = nil,
+        settle: Duration = .seconds(10),
         notifier: any Notifying,
         wifiInterface: String? = nil,
         clock: @escaping @Sendable () -> Date = { Date() },
@@ -819,6 +826,8 @@ final class NetworkFailover {
         self.keychainQueue = keychainQueue
         self.hotspotJoiner = hotspotJoiner
         self.probe = probe
+        self.ssidReader = ssidReader
+        self.settle = settle
         self.notifier = notifier
         self.wifiInterface = wifiInterface
         self.clock = clock
@@ -845,6 +854,7 @@ final class NetworkFailover {
         monitor = m
         Log.info("network failover started (wifi \(wifiInterface ?? "unresolved"))")
         scheduleProbe(after: Self.probeInterval)
+        await recordHomeNetwork()
     }
 
     func stop() {
@@ -853,6 +863,8 @@ final class NetworkFailover {
         cancelTimer()
         probeTimer?.invalidate()
         probeTimer = nil
+        switchBackTimer?.invalidate()
+        switchBackTimer = nil
         tracker = ReachabilityTracker()
         for task in inflight.values { task.cancel() }
         inflight.removeAll()
@@ -966,7 +978,66 @@ final class NetworkFailover {
         }
         // stop() may have run while the outage was being started or ended.
         guard self.epoch == epoch, !Task.isCancelled else { return }
+        if ok, !machine.inOutage { await recordHomeNetwork() }
+        guard self.epoch == epoch, !Task.isCancelled else { return }
         scheduleProbe(after: ok ? Self.probeInterval : Self.probeRetryInterval)
+    }
+
+    static let switchBackInterval: TimeInterval = 60
+
+    private func readSSID() async -> String? {
+        if let ssidReader { return await ssidReader() }
+        return await currentSSID()
+    }
+
+    /// Remember the current network as home unless it is the hotspot.
+    func recordHomeNetwork() async {
+        let epoch = self.epoch
+        let ssid = await readSSID()
+        guard self.epoch == epoch, !Task.isCancelled, let ssid, !ssid.isEmpty else { return }
+        let hotspot = HotspotSSID.normalized(configProvider().hotspotSSID)
+        guard ssid != hotspot else { return }
+        homeSSID = ssid
+    }
+
+    /// While on the hotspot: rejoin home when it is visible, and go back
+    /// to the hotspot if home has no internet. Internal so tests drive it.
+    func switchBackTick() async {
+        let epoch = self.epoch
+        guard let home = homeSSID, let iface = wifiInterface else { return }
+        do {
+            guard try await hotspotJoiner.isVisible(ssid: home, interfaceName: iface) else { return }
+            guard self.epoch == epoch, !Task.isCancelled else { return }
+            guard try await hotspotJoiner.rejoinKnownNetwork(ssid: home, interfaceName: iface) else { return }
+        } catch {
+            Log.error("switch back to the previous Wi-Fi failed: \(error.localizedDescription)")
+            return
+        }
+        try? await Task.sleep(for: settle)
+        guard self.epoch == epoch, !Task.isCancelled else { return }
+        if await probe.isInternetReachable() {
+            guard self.epoch == epoch, !Task.isCancelled else { return }
+            Log.info("switched back to the previous Wi-Fi")
+            switchBackTimer?.invalidate()
+            switchBackTimer = nil
+        } else {
+            guard self.epoch == epoch, !Task.isCancelled else { return }
+            Log.info("previous Wi-Fi has no internet; back to the hotspot")
+            await joinHotspot()
+        }
+    }
+
+    private func scheduleSwitchBack() {
+        switchBackTimer?.invalidate()
+        let epoch = self.epoch
+        let t = Timer(timeInterval: Self.switchBackInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.epoch == epoch else { return }
+                self.track { [weak self] in await self?.switchBackTick() }
+            }
+        }
+        RunLoop.main.add(t, forMode: .common)
+        switchBackTimer = t
     }
 
     private func scheduleProbe(after: TimeInterval) {
@@ -1135,6 +1206,10 @@ final class NetworkFailover {
             )
         }
         onRecovered?(gap)
+        if homeSSID != nil, await readSSID() == HotspotSSID.normalized(configProvider().hotspotSSID) {
+            guard self.epoch == epoch else { return }
+            scheduleSwitchBack()
+        }
     }
 
     /// Owner-only, rotated to handoffs.log.1 past OwnerOnly.maxLogBytes.

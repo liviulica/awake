@@ -10,12 +10,30 @@ final class RecordingHotspotJoiner: HotspotJoining, @unchecked Sendable {
 
     private let lock = NSLock()
     private var _calls: [Call] = []
+    private var _visible: Set<String> = []
+    private var _rejoined: [String] = []
     var result = true
     var calls: [Call] { lock.withLock { _calls } }
+    var visible: Set<String> {
+        get { lock.withLock { _visible } }
+        set { lock.withLock { _visible = newValue } }
+    }
+    var rejoined: [String] { lock.withLock { _rejoined } }
 
     func join(ssid: String, password: String, interfaceName: String) async throws -> Bool {
         lock.withLock { _calls.append(Call(ssid: ssid, password: password, interfaceName: interfaceName)) }
         return result
+    }
+
+    func isVisible(ssid: String, interfaceName: String) async throws -> Bool {
+        lock.withLock { _visible.contains(ssid) }
+    }
+
+    func rejoinKnownNetwork(ssid: String, interfaceName: String) async throws -> Bool {
+        lock.withLock {
+            _rejoined.append(ssid)
+            return _visible.contains(ssid)
+        }
     }
 }
 
@@ -435,21 +453,85 @@ final class NetworkFailoverDriverTests: XCTestCase {
         notifier: RecordingNotifier,
         clock: FakeClock,
         probe: any ReachabilityProbing = FakeProbe([true]),
-        hotspot: Locked<String> = Locked("Phone")
+        hotspot: Locked<String> = Locked("Phone"),
+        ssid: String? = "Home",
+        wifiInterface: String? = "en0"
     ) -> NetworkFailover {
         NetworkFailover(
             paths: home.paths,
             keychain: keychain,
             hotspotJoiner: joiner,
             probe: probe,
+            ssidReader: { ssid },
+            settle: .zero,
             notifier: notifier,
-            wifiInterface: "en0",
+            wifiInterface: wifiInterface,
             clock: { clock.now }
         ) {
             var config = Config()
             config.hotspotSSID = hotspot.value
             return config
         }
+    }
+
+    func testSwitchBackRejoinsHomeWhenItIsVisibleAndOnline() async {
+        let joiner = RecordingHotspotJoiner()
+        joiner.visible = ["Home"]
+        let n = driver(keychain: FakeKeychainStore(), joiner: joiner, notifier: RecordingNotifier(),
+                       clock: FakeClock(Date(timeIntervalSince1970: 1_800_000_000)), probe: FakeProbe([true]))
+        await n.recordHomeNetwork()
+        XCTAssertEqual(n.homeSSID, "Home")
+        await n.switchBackTick()
+        XCTAssertEqual(joiner.rejoined, ["Home"])
+    }
+
+    func testSwitchBackRejoinsHotspotWhenHomeHasNoInternet() async throws {
+        let joiner = RecordingHotspotJoiner()
+        joiner.visible = ["Home"]
+        let keychain = FakeKeychainStore()
+        try keychain.set(service: KeychainStore.service, account: "Phone", value: "pw")
+        let n = driver(keychain: keychain, joiner: joiner, notifier: RecordingNotifier(),
+                       clock: FakeClock(Date(timeIntervalSince1970: 1_800_000_000)), probe: FakeProbe([false]))
+        await n.recordHomeNetwork()
+        await n.switchBackTick()
+        XCTAssertEqual(joiner.rejoined, ["Home"])
+        XCTAssertEqual(joiner.calls.last?.ssid, "Phone", "back to the hotspot: home has no internet")
+    }
+
+    func testNoSwitchBackWhileHomeIsOutOfRange() async {
+        let joiner = RecordingHotspotJoiner()
+        let n = driver(keychain: FakeKeychainStore(), joiner: joiner, notifier: RecordingNotifier(),
+                       clock: FakeClock(Date(timeIntervalSince1970: 1_800_000_000)), probe: FakeProbe([true]))
+        await n.recordHomeNetwork()
+        await n.switchBackTick()
+        XCTAssertEqual(joiner.rejoined, [])
+    }
+
+    func testTheHotspotIsNeverRecordedAsHome() async {
+        let n = driver(keychain: FakeKeychainStore(), joiner: RecordingHotspotJoiner(), notifier: RecordingNotifier(),
+                       clock: FakeClock(Date(timeIntervalSince1970: 1_800_000_000)), ssid: "Phone")
+        await n.recordHomeNetwork()
+        XCTAssertNil(n.homeSSID)
+    }
+
+    func testNoSwitchBackWithoutAWifiInterface() async {
+        let joiner = RecordingHotspotJoiner()
+        joiner.visible = ["Home"]
+        let n = driver(keychain: FakeKeychainStore(), joiner: joiner, notifier: RecordingNotifier(),
+                       clock: FakeClock(Date(timeIntervalSince1970: 1_800_000_000)), wifiInterface: nil)
+        await n.recordHomeNetwork()
+        await n.switchBackTick()
+        XCTAssertEqual(joiner.rejoined, [])
+    }
+
+    func testSwitchBackDoesNothingAfterStop() async {
+        let joiner = RecordingHotspotJoiner()
+        joiner.visible = ["Home"]
+        let n = driver(keychain: FakeKeychainStore(), joiner: joiner, notifier: RecordingNotifier(),
+                       clock: FakeClock(Date(timeIntervalSince1970: 1_800_000_000)))
+        await n.recordHomeNetwork()
+        n.stop()
+        XCTAssertNil(n.switchBackTimer)
     }
 
     /// A join with no saved password is not a silent skip: the problem is
