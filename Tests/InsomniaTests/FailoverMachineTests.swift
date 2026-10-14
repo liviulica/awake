@@ -131,6 +131,7 @@ final class NetworkFailoverDriverTests: XCTestCase {
             paths: home.paths,
             keychain: keychain,
             hotspotJoiner: joiner,
+            probe: FakeProbe([true]),
             notifier: RecordingNotifier(),
             wifiInterface: "en0"
         ) { config }
@@ -166,6 +167,7 @@ final class NetworkFailoverDriverTests: XCTestCase {
             keychain: keychain,
             keychainQueue: queue,
             hotspotJoiner: joiner,
+            probe: FakeProbe([true]),
             notifier: notifier,
             wifiInterface: "en0",
             clock: { clock.now }
@@ -332,6 +334,7 @@ final class NetworkFailoverDriverTests: XCTestCase {
             keychain: keychain,
             keychainQueue: queue,
             hotspotJoiner: joiner,
+            probe: FakeProbe([true]),
             notifier: notifier,
             wifiInterface: "en0",
             clock: { clock.now }
@@ -348,17 +351,48 @@ final class NetworkFailoverDriverTests: XCTestCase {
         return BlockedJoin(driver: n, saving: saving, tick: tick, joiner: joiner, notifier: notifier, clock: clock, hotspot: hotspot)
     }
 
+    func testProbeFailuresStartAnOutage() async {
+        let clock = FakeClock(Date(timeIntervalSince1970: 1_800_000_000))
+        let n = driver(keychain: FakeKeychainStore(), joiner: RecordingHotspotJoiner(), notifier: RecordingNotifier(),
+                       clock: clock, probe: FakeProbe([false]))
+        await n.probeTick()
+        await n.probeTick()
+        XCTAssertFalse(n.machine.inOutage)
+        await n.probeTick()
+        XCTAssertTrue(n.machine.inOutage, "Wi-Fi associated but no internet counts as an outage")
+    }
+
+    func testPathBackWithoutInternetDoesNotEndTheOutage() async {
+        let clock = FakeClock(Date(timeIntervalSince1970: 1_800_000_000))
+        let n = driver(keychain: FakeKeychainStore(), joiner: RecordingHotspotJoiner(), notifier: RecordingNotifier(),
+                       clock: clock, probe: FakeProbe([false]))
+        await n.simulate(satisfied: false)
+        await n.simulate(satisfied: true)
+        XCTAssertTrue(n.machine.inOutage)
+    }
+
+    func testPathBackWithInternetEndsTheOutage() async {
+        let clock = FakeClock(Date(timeIntervalSince1970: 1_800_000_000))
+        let n = driver(keychain: FakeKeychainStore(), joiner: RecordingHotspotJoiner(), notifier: RecordingNotifier(),
+                       clock: clock, probe: FakeProbe([true]))
+        await n.simulate(satisfied: false)
+        await n.simulate(satisfied: true)
+        XCTAssertFalse(n.machine.inOutage)
+    }
+
     private func driver(
         keychain: FakeKeychainStore,
         joiner: RecordingHotspotJoiner,
         notifier: RecordingNotifier,
         clock: FakeClock,
+        probe: any ReachabilityProbing = FakeProbe([true]),
         hotspot: Locked<String> = Locked("Phone")
     ) -> NetworkFailover {
         NetworkFailover(
             paths: home.paths,
             keychain: keychain,
             hotspotJoiner: joiner,
+            probe: probe,
             notifier: notifier,
             wifiInterface: "en0",
             clock: { clock.now }

@@ -780,12 +780,15 @@ final class NetworkFailover {
     private let keychain: any KeychainStoring
     private let keychainQueue: KeychainQueue
     private let hotspotJoiner: any HotspotJoining
+    private let probe: any ReachabilityProbing
     private let notifier: any Notifying
     private let configProvider: @MainActor () -> Config
     private let clock: @Sendable () -> Date
 
     private var monitor: NWPathMonitor?
     private(set) var retryTimer: Timer?
+    private(set) var probeTimer: Timer?
+    private var tracker = ReachabilityTracker()
     private var generation = 0
     /// Bumped by `stop()`. Work that started under an older epoch (a
     /// recovery in flight) stops issuing commands as soon as it notices.
@@ -805,6 +808,7 @@ final class NetworkFailover {
         keychain: any KeychainStoring = KeychainStore(),
         keychainQueue: KeychainQueue = .shared,
         hotspotJoiner: any HotspotJoining = CoreWLANHotspotJoiner(),
+        probe: any ReachabilityProbing = CaptivePortalProbe(),
         notifier: any Notifying,
         wifiInterface: String? = nil,
         clock: @escaping @Sendable () -> Date = { Date() },
@@ -814,6 +818,7 @@ final class NetworkFailover {
         self.keychain = keychain
         self.keychainQueue = keychainQueue
         self.hotspotJoiner = hotspotJoiner
+        self.probe = probe
         self.notifier = notifier
         self.wifiInterface = wifiInterface
         self.clock = clock
@@ -839,12 +844,16 @@ final class NetworkFailover {
         m.start(queue: .main)
         monitor = m
         Log.info("network failover started (wifi \(wifiInterface ?? "unresolved"))")
+        scheduleProbe(after: Self.probeInterval)
     }
 
     func stop() {
         monitor?.cancel()
         monitor = nil
         cancelTimer()
+        probeTimer?.invalidate()
+        probeTimer = nil
+        tracker = ReachabilityTracker()
         for task in inflight.values { task.cancel() }
         inflight.removeAll()
         epoch += 1
@@ -922,11 +931,44 @@ final class NetworkFailover {
 
     private func process(satisfied: Bool) async {
         guard !Task.isCancelled else { return }
+        if satisfied, machine.inOutage, !(await probe.isInternetReachable()) {
+            Log.info("wifi path satisfied but the internet is unreachable; still in outage")
+            return
+        }
         let now = clock()
         let outputs = satisfied ? machine.pathSatisfied(at: now) : machine.pathUnsatisfied(at: now)
         if outputs.isEmpty { return }
         if !satisfied { Log.info("wifi path unsatisfied") }
         await apply(outputs)
+    }
+
+    static let probeInterval: TimeInterval = 30
+    static let probeRetryInterval: TimeInterval = 10
+
+    /// One reachability check. Three failures in a row start an outage
+    /// even while Wi-Fi stays associated. Internal so tests drive it.
+    func probeTick() async {
+        let epoch = self.epoch
+        let ok = await probe.isInternetReachable()
+        guard self.epoch == epoch, !Task.isCancelled else { return }
+        if tracker.record(success: ok) {
+            Log.info("internet unreachable for \(ReachabilityTracker.threshold) checks with Wi-Fi up")
+            await process(satisfied: false)
+        }
+        scheduleProbe(after: ok ? Self.probeInterval : Self.probeRetryInterval)
+    }
+
+    private func scheduleProbe(after: TimeInterval) {
+        probeTimer?.invalidate()
+        let epoch = self.epoch
+        let t = Timer(timeInterval: after, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.epoch == epoch else { return }
+                self.track { [weak self] in await self?.probeTick() }
+            }
+        }
+        RunLoop.main.add(t, forMode: .common)
+        probeTimer = t
     }
 
     /// What the retry timer calls. Internal so tests can exercise the

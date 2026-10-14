@@ -69,7 +69,7 @@ final class NetworkFailoverCancellationTests: XCTestCase {
     private func makeDriver() -> NetworkFailover {
         let config = Config()
         let clock = self.clock!
-        return NetworkFailover(paths: home.paths, keychain: FakeKeychainStore(), notifier: notifier, clock: { clock.now }) { config }
+        return NetworkFailover(paths: home.paths, keychain: FakeKeychainStore(), probe: FakeProbe([true]), notifier: notifier, clock: { clock.now }) { config }
     }
 
     /// A path update that was queued before `stop()` but runs after it must
@@ -90,7 +90,7 @@ final class NetworkFailoverCancellationTests: XCTestCase {
         var config = Config()
         config.hotspotSSID = "Phone"
         let clock = self.clock!
-        return NetworkFailover(paths: home.paths, keychain: keychain, hotspotJoiner: joiner,
+        return NetworkFailover(paths: home.paths, keychain: keychain, hotspotJoiner: joiner, probe: FakeProbe([true]),
             notifier: notifier, wifiInterface: "en0", clock: { clock.now }) { config }
     }
 
