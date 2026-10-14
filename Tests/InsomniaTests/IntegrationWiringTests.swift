@@ -507,6 +507,58 @@ final class IntegrationWiringTests: XCTestCase {
         XCTAssertFalse(undetermined.isAuthorized)
         XCTAssertEqual(undetermined.statusDescription, "Not requested")
     }
+
+    @MainActor
+    private func awakeServices(_ home: TempHome) -> AppServices {
+        AppServices(
+            paths: home.paths,
+            notifier: RecordingNotifier(),
+            audio: FakeAudioControl(),
+            processControl: FakeProcessControl(),
+            locationPermission: LocationPermission(authorizationStatus: .notDetermined)
+        )
+    }
+
+    @MainActor
+    func testAwakeFailoverStartsAndStopsWithoutASession() async {
+        let home = TempHome()
+        defer { home.destroy() }
+        let services = awakeServices(home)
+        services.startAwakeFailover { Config() }
+        XCTAssertTrue(services.awakeFailoverRunning)
+        services.stopAwakeFailover()
+        XCTAssertFalse(services.awakeFailoverRunning)
+    }
+
+    @MainActor
+    func testAwakeFailoverRefusesWhileASessionRunsAndASessionStopsIt() async {
+        let h = Harness()
+        defer { h.home.destroy() }
+        let services = awakeServices(h.home)
+        services.startAwakeFailover { Config() }
+        XCTAssertTrue(services.awakeFailoverRunning)
+
+        services.start(for: h.makeManager())
+        defer { services.stop() }
+        XCTAssertFalse(services.awakeFailoverRunning, "a lid session runs its own failover")
+
+        services.startAwakeFailover { Config() }
+        XCTAssertFalse(services.awakeFailoverRunning, "refused while a session runs")
+    }
+
+    @MainActor
+    func testShouldRunAwakeFailoverDecision() {
+        func run(_ on: Bool, _ setting: Bool, _ ssid: String, _ lid: Bool) -> Bool {
+            AppServices.shouldRunAwakeFailover(awakeOn: on, setting: setting, hotspotSSID: ssid, lidActive: lid)
+        }
+        XCTAssertFalse(run(false, false, "", false))
+        XCTAssertFalse(run(false, true, "iPhone", false))
+        XCTAssertTrue(run(true, true, "iPhone", false))
+        XCTAssertFalse(run(true, true, "", false))
+        XCTAssertFalse(run(true, true, "  ", false))
+        XCTAssertFalse(run(true, false, "iPhone", false))
+        XCTAssertFalse(run(true, true, "iPhone", true))
+    }
 }
 
 /// Records posts like `RecordingNotifier` and fulfills `posted` at the
@@ -523,22 +575,5 @@ final class ExpectingNotifier: Notifying, @unchecked Sendable {
     func post(title: String, body: String) {
         recorder.post(title: title, body: body)
         posted.fulfill()
-    }
-
-    @MainActor
-    func testAwakeFailoverStartsAndStopsWithoutASession() async {
-        let home = TempHome()
-        defer { home.destroy() }
-        let services = AppServices(
-            paths: home.paths,
-            notifier: RecordingNotifier(),
-            audio: FakeAudioControl(),
-            processControl: FakeProcessControl(),
-            locationPermission: LocationPermission(authorizationStatus: .notDetermined)
-        )
-        services.startAwakeFailover { Config() }
-        XCTAssertTrue(services.awakeFailoverRunning)
-        services.stopAwakeFailover()
-        XCTAssertFalse(services.awakeFailoverRunning)
     }
 }

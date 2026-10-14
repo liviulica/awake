@@ -194,10 +194,20 @@ final class AppServices {
         syncState()
     }
 
+    /// Whether Awake mode should be running hotspot failover: Awake mode on,
+    /// the setting on, a hotspot configured, and no lid session (which runs
+    /// its own failover).
+    static func shouldRunAwakeFailover(awakeOn: Bool, setting: Bool, hotspotSSID: String, lidActive: Bool) -> Bool {
+        awakeOn && setting && !lidActive
+            && !hotspotSSID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     /// Starts failover for Awake mode. Never alongside a lid session, which
     /// runs its own.
     func startAwakeFailover(config: @escaping @MainActor () -> Config) {
         guard awakeNetwork == nil, !running else { return }
+        status.lastGap = nil
+        status.hotspotPasswordReport = nil
         let net = NetworkFailover(paths: paths, keychain: keychain, notifier: notifier, config: config)
         net.onRecovered = { [weak self] gap in self?.status.lastGap = gap }
         net.onPasswordReport = { [weak self] report in self?.status.hotspotPasswordReport = report }

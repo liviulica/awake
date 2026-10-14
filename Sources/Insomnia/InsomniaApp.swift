@@ -87,17 +87,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             settings?.show()
         }
         // Awake mode runs hotspot failover when the setting is on. A lid
-        // session (which includes screen mode) runs its own: `awake` turns
-        // off when one starts, and `startAwakeFailover` refuses while it runs.
-        awake.onChange = { [weak self] state in
-            guard let self, let services = self.manager.services else { return }
-            if state != .off, self.manager.config.awakeHotspotFailover, !self.manager.config.hotspotSSID.isEmpty {
-                services.startAwakeFailover { [weak manager = self.manager] in manager?.config ?? Config() }
-            } else {
-                services.stopAwakeFailover()
+        // session (which includes screen mode) runs its own.
+        awake.onChange = { [weak self] _ in self?.reconcileAwakeFailover() }
+        observeAwakeFailoverInputs()
+        Task { await manager.reconcile() }
+    }
+
+    /// Starts or stops Awake mode's failover from the current Awake state,
+    /// setting, hotspot and lid session. Idempotent.
+    private func reconcileAwakeFailover() {
+        guard let services = manager.services else { return }
+        let want = AppServices.shouldRunAwakeFailover(
+            awakeOn: awake.state != .off,
+            setting: manager.config.awakeHotspotFailover,
+            hotspotSSID: manager.config.hotspotSSID,
+            lidActive: manager.isActive
+        )
+        if want {
+            services.startAwakeFailover { [weak manager = self.manager] in manager?.config ?? Config() }
+        } else {
+            services.stopAwakeFailover()
+        }
+    }
+
+    /// Re-reconciles when the setting, the hotspot, a lid session or Awake
+    /// mode changes (Settings edits `manager.config` directly).
+    private func observeAwakeFailoverInputs() {
+        withObservationTracking {
+            _ = manager.config
+            _ = manager.session
+            _ = awake.state
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.reconcileAwakeFailover()
+                self.observeAwakeFailoverInputs()
             }
         }
-        Task { await manager.reconcile() }
     }
 
     /// Quitting always ends the session (spec 1). Terminate is deferred until
