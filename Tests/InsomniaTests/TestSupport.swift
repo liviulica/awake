@@ -93,6 +93,10 @@ final class FakeSleepGuard: SleepGuarding, @unchecked Sendable {
     var throwAfterEffect: Set<String> = []
     /// `disablesleep 1` answers like a cancelled administrator prompt.
     var cancelDisable = false
+    /// `disablesleep 1` takes effect and then answers like an administrator
+    /// prompt that timed out: the worst case, a password typed just as
+    /// osascript was stopped.
+    var promptTimesOut = false
     private var _stillRunning: Set<String> = []
     private var _stuckExitsAtOnce = false
     private var _stuckExitStatus: Int32 = 0
@@ -217,6 +221,9 @@ final class FakeSleepGuard: SleepGuarding, @unchecked Sendable {
     }
 
     private func afterEffect(_ c: String) throws {
+        if c == "disablesleep 1", promptTimesOut {
+            throw AdminPromptTimeoutError(timeout: OsascriptAdminRunner.timeout)
+        }
         if throwAfterEffect.contains(c) {
             throw ShellTimeoutError.timedOut(exe: "/usr/bin/pmset", seconds: 20)
         }

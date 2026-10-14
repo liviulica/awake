@@ -21,7 +21,9 @@ struct SleepGuardError: Error, LocalizedError, Sendable {
         let detail = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
         var msg = "`\(command)` failed with status \(status)"
         if !detail.isEmpty { msg += ": \(detail)" }
-        if detail.contains("password") || detail.contains("sudo") {
+        // Only a sudo failure is about the sudoers file; the administrator
+        // prompt (osascript) does not use it.
+        if command.hasPrefix("sudo "), detail.contains("password") || detail.contains("sudo") {
             msg += " (run scripts/install.sh to install /etc/sudoers.d/awake)"
         }
         return msg

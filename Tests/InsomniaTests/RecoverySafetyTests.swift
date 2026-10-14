@@ -303,20 +303,28 @@ final class RecoverySafetyTests: XCTestCase {
         await m.start(duration: 3600)
         XCTAssertNil(m.session)
         XCTAssertNil(m.lastError, "a cancel is the person's choice, not an error")
-        XCTAssertFalse(h.notifier.posts.contains { $0.title == "Session not started" }, "\(h.notifier.posts)")
+        XCTAssertEqual(h.notifier.posts.map(\.title), [], "a cancel posts nothing")
         XCTAssertEqual(h.guardFake.calls, ["disablesleep 1", "disablesleep 0"])
+        XCTAssertFalse(h.guardFake.sleepDisabled)
         XCTAssertNil(try h.store.loadSession())
+        XCTAssertEqual(try h.store.loadState(), RuntimeState.clean)
     }
 
     /// A prompt left open until it times out is a failure, not a cancel:
     /// sleep is restored and the person is told the start did not happen.
     func testAdminTimeoutFailsTheStartAndRestoresSleep() async throws {
-        h.guardFake.throwOn = ["disablesleep 1"]
+        h.guardFake.promptTimesOut = true
         let m = h.makeManager()
         await m.start(duration: 3600)
         XCTAssertNil(m.session)
-        XCTAssertFalse(h.guardFake.sleepDisabled)
+        XCTAssertFalse(h.guardFake.sleepDisabled, "sleep left disabled after a timed-out prompt")
+        XCTAssertEqual(h.guardFake.calls, ["disablesleep 1", "disablesleep 0"])
+        XCTAssertNil(try h.store.loadSession())
+        XCTAssertEqual(try h.store.loadState(), RuntimeState.clean)
         XCTAssertEqual(h.notifier.posts.last?.title, "Session not started")
+        let err = try XCTUnwrap(m.lastError)
+        XCTAssertTrue(err.contains("the password prompt was not answered within 5 minutes"), err)
+        XCTAssertFalse(err.contains("install.sh"), err)
     }
 
     /// Same failure, and the undo fails too: the entry stays journaled and
