@@ -148,7 +148,7 @@ final class IntegrationWiringTests: XCTestCase {
 
         let reason = "Chrome quit but could not be relaunched: LSOpenURLsWithRole() failed with error -10810. Open it yourself."
         XCTAssertEqual(source.relaunchProblems, [reason])
-        let items = StatusItemController.menuItems(manager: h.makeManager(), status: source)
+        let items = StatusItemController.menuItems(manager: h.makeManager(), status: source, awake: AwakeController(assertion: FakeAwakeAssertion()), now: h.clock.now)
         // The scan after the relaunch lists whatever browsers this Mac is
         // running, so only the line itself is checked.
         XCTAssertTrue(items.contains(StatusMenu.Item(title: "\u{26A0} \(reason)", kind: .warning)), "\(items.map(\.title))")
@@ -175,7 +175,7 @@ final class IntegrationWiringTests: XCTestCase {
         services.status.hotspotPasswordReport = HotspotPasswordReport(ssid: "Phone", problem: .unreadable)
         // A debug build also has the lid simulation line.
         func warnings() -> [String] {
-            StatusItemController.menuItems(manager: manager, status: source).map(\.title).filter { $0.contains("Hotspot") }
+            StatusItemController.menuItems(manager: manager, status: source, awake: AwakeController(assertion: FakeAwakeAssertion()), now: h.clock.now).map(\.title).filter { $0.contains("Hotspot") }
         }
 
         XCTAssertEqual(warnings(), [HotspotPasswordProblem.unreadable.menuLine])

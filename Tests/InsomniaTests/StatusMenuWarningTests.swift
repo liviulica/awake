@@ -1,9 +1,8 @@
 import XCTest
 @testable import Insomnia
 
-/// Pure `StatusMenu.items` checks that need no status item. The menu's
-/// other model tests live in UIStatusTests beside the status item tests;
-/// these are kept apart so they can run anywhere.
+/// Pure `StatusMenu.items` checks that need no status item. The controls
+/// and the item's own logic are in MenuBarTests.
 @MainActor
 final class StatusMenuWarningTests: XCTestCase {
     /// A restore that failed and a SleepDisabled bit someone else set can

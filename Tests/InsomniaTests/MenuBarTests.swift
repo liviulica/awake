@@ -78,3 +78,46 @@ final class StatusMenuControlTests: XCTestCase {
         XCTAssertTrue(lid.submenu?.items.allSatisfy(\.isEnabled) ?? false)
     }
 }
+
+@MainActor
+final class StatusItemControllerLogicTests: XCTestCase {
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+    func testPresentation() {
+        XCTAssertEqual(StatusItemController.presentation(lidRemaining: nil, awake: .off, now: now), .init(icon: .off, title: ""))
+        XCTAssertEqual(StatusItemController.presentation(lidRemaining: nil, awake: .on(until: nil), now: now), .init(icon: .awake, title: ""))
+        XCTAssertEqual(StatusItemController.presentation(lidRemaining: nil, awake: .on(until: now.addingTimeInterval(5400)), now: now),
+                       .init(icon: .awake, title: "1:30"))
+        XCTAssertEqual(StatusItemController.presentation(lidRemaining: 7200, awake: .off, now: now),
+                       .init(icon: .lid, title: "2:00"))
+    }
+
+    func testLeftClickTogglesExceptDuringALidSession() {
+        XCTAssertEqual(StatusItemController.clickAction(isRightClick: false, controlHeld: false, lidActive: false), .toggleAwake)
+        XCTAssertEqual(StatusItemController.clickAction(isRightClick: true, controlHeld: false, lidActive: false), .showMenu)
+        XCTAssertEqual(StatusItemController.clickAction(isRightClick: false, controlHeld: true, lidActive: false), .showMenu)
+        XCTAssertEqual(StatusItemController.clickAction(isRightClick: false, controlHeld: false, lidActive: true), .showMenu)
+    }
+
+    func testLidSessionFoldsAwakeModeInAndLeavesNothingHeld() async {
+        let h = Harness()
+        h.clamshell.closed = false
+        let m = h.makeManager(closedLidClock: true)
+        let a = FakeAwakeAssertion()
+        let awake = AwakeController(assertion: a, clock: { h.clock.now })
+        let c = StatusItemController(manager: m, status: PlaceholderStatus(), awake: awake, showSettings: {})
+        awake.turnOn(for: nil)
+        await m.start(duration: 3600)
+        c.stateChanged()
+        XCTAssertEqual(awake.state, .off, "Awake mode folds into lid mode")
+        XCTAssertTrue(a.isHeld, "lid open: the screen stays on")
+        h.clamshell.closed = true
+        await m.lidClosedClock()
+        c.stateChanged()
+        XCTAssertFalse(a.isHeld, "lid closed: the display may sleep")
+        _ = await m.end(reason: .user)
+        c.stateChanged()
+        XCTAssertFalse(a.isHeld)
+        XCTAssertEqual(awake.state, .off, "ending the lid session does not bring Awake mode back")
+    }
+}

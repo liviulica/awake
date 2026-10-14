@@ -1,14 +1,13 @@
 import CoreGraphics
-import SwiftUI
 import XCTest
 @testable import Insomnia
 
 /// The marks, checked on rendered geometry. The app icon: the menu bar's
 /// open eye (`EyeMarkGeometry` at progress 1) on the charcoal tile, the pupil
 /// on the axis inside the lens, nothing touching the outline, the drawn mark
-/// centred on the tile, and the lashes left out only at 16 pixels. The menu
-/// bar's eye: shaded shut with lashes below while idle, open with a pupil
-/// and lashes above while running, monochrome in both states.
+/// centred on the tile, and the lashes left out only at 16 pixels. The eye's
+/// geometry: five lashes that swap sides, the pupil inside the lens, and a
+/// lid that shades exactly the lens.
 final class BrandingTests: XCTestCase {
     private let grid = CGRect(x: 0, y: 0, width: EyeLensGeometry.designSize, height: EyeLensGeometry.designSize)
 
@@ -225,55 +224,6 @@ final class BrandingTests: XCTestCase {
         0.2126 * rgb.red + 0.7152 * rgb.green + 0.0722 * rgb.blue
     }
 
-    @MainActor
-    func testIdleMarkIsAShadedClosedEyeWithLashesBelowInLightAndDark() throws {
-        for (scheme, reduceMotion) in product([ColorScheme.light, .dark], [true, false]) {
-            let view = EyeMarkView(isRunning: false, reduceMotion: reduceMotion, size: 17)
-            let px = try Raster.render(view, scheme: scheme, scale: 2)
-            let ink = px.count { $0.alpha > 0.5 }
-            XCTAssertGreaterThan(ink, 150, "\(scheme): too little ink for a shaded lens at 17pt")
-            XCTAssertLessThan(ink, px.total / 2, "\(scheme): the mark must not flood its frame")
-
-            let probes = Probes(size: 17, scale: 2)
-            XCTAssertGreaterThan(px.alpha(probes.outline), 0.5, "\(scheme): outline missing at \(probes.outline)")
-            // `.primary` is the system label colour, which is itself only 85% opaque.
-            XCTAssertGreaterThan(px.alpha(probes.interior), 0.7, "\(scheme): the closed lens is shaded in at \(probes.interior)")
-            XCTAssertGreaterThan(px.alpha(probes.pupil), 0.7, "\(scheme): the shading covers the pupil at \(probes.pupil)")
-            XCTAssertGreaterThan(px.alpha(probes.lashBelow), 0.5, "\(scheme): lashes hang below the closed eye at \(probes.lashBelow)")
-            XCTAssertLessThan(px.alpha(probes.lashAbove), 0.05, "\(scheme): no lashes above the closed eye at \(probes.lashAbove)")
-            let ink0 = px.rgb(probes.interior)
-            XCTAssertLessThan(ink0.saturation, 0.1, "\(scheme): the mark is monochrome: \(ink0)")
-            switch scheme {
-            case .light: XCTAssertLessThan(ink0.luminance, 0.3, "light: ink is dark")
-            case .dark: XCTAssertGreaterThan(ink0.luminance, 0.7, "dark: ink is light")
-            @unknown default: XCTFail("unexpected scheme")
-            }
-        }
-    }
-
-    @MainActor
-    func testRunningMarkIsAnOpenEyeWithAPupilAndLashesAboveAndStaysMonochrome() throws {
-        let probes = Probes(size: 17, scale: 2)
-        for (scheme, reduceMotion) in product([ColorScheme.light, .dark], [true, false]) {
-            let idle = try Raster.render(EyeMarkView(isRunning: false, reduceMotion: reduceMotion), scheme: scheme, scale: 2)
-            let active = try Raster.render(EyeMarkView(isRunning: true, reduceMotion: reduceMotion), scheme: scheme, scale: 2)
-
-            XCTAssertLessThan(active.alpha(probes.interior), 0.05, "\(scheme): the open lens is clear between pupil and outline at \(probes.interior)")
-            XCTAssertGreaterThan(active.alpha(probes.pupil), 0.7, "\(scheme): pupil missing at \(probes.pupil)")
-            XCTAssertGreaterThan(active.alpha(probes.outline), 0.5, "\(scheme): outline missing while running at \(probes.outline)")
-            XCTAssertGreaterThan(active.alpha(probes.lashAbove), 0.5, "\(scheme): lashes stand above the open eye at \(probes.lashAbove)")
-            XCTAssertLessThan(active.alpha(probes.lashBelow), 0.05, "\(scheme): no lashes below the open eye at \(probes.lashBelow)")
-            XCTAssertLessThan(active.count { $0.alpha > 0.5 }, idle.count { $0.alpha > 0.5 }, "\(scheme): opening the eye removes the shading")
-
-            // No tint in either state: the running mark takes the same label colour as the idle one.
-            let pupil = active.rgb(probes.pupil)
-            let shade = idle.rgb(probes.pupil)
-            XCTAssertLessThan(pupil.saturation, 0.1, "\(scheme): running mark is monochrome: \(pupil)")
-            XCTAssertLessThan(shade.saturation, 0.1, "\(scheme): idle mark is monochrome: \(shade)")
-            XCTAssertEqual(pupil.luminance, shade.luminance, accuracy: 0.05, "\(scheme): both states share one ink")
-        }
-    }
-
     func testLashesAreFiveStrokesThatSwapSidesAndThePupilSitsInsideTheLens() {
         let lens = EyeMarkGeometry.lens(in: grid)
         let axisY = grid.midY
@@ -387,87 +337,7 @@ final class BrandingTests: XCTestCase {
         XCTAssertEqual(overlap, 0, "the pupil must not touch the eye outline")
     }
 
-    // MARK: - The blink
-
-    /// The blink has to be seen: the lid lifts on a long spring and drops on
-    /// a slightly shorter, better-damped one; the pupil arrives a beat after
-    /// the lid starts and bounces a little, and shrinks straight away on
-    /// close. Under Reduce Motion everything is one 0.3 s crossfade.
-    @MainActor
-    func testTheBlinkRunsOnSeparateLidAndPupilCurvesInEachDirection() {
-        XCTAssertEqual(Motion.blink(opening: true, reduceMotion: false), .spring(response: 0.95, dampingFraction: 0.9))
-        XCTAssertEqual(Motion.blink(opening: false, reduceMotion: false), .spring(response: 0.8, dampingFraction: 0.95))
-        XCTAssertEqual(Motion.blink(opening: true, reduceMotion: false), Motion.blink)
-        XCTAssertEqual(Motion.blink(opening: false, reduceMotion: false), Motion.blinkClose)
-        XCTAssertGreaterThan(Motion.blinkResponse, Motion.baseResponse)
-        XCTAssertGreaterThan(Motion.blinkCloseResponse, Motion.baseResponse)
-
-        XCTAssertEqual(Motion.pupil(opening: true, reduceMotion: false), .spring(response: 0.5, dampingFraction: 0.6).delay(0.2))
-        XCTAssertEqual(Motion.pupil(opening: false, reduceMotion: false), .easeOut(duration: 0.4))
-        XCTAssertEqual(Motion.pupilOpenDelay, 0.2)
-        XCTAssertLessThan(Motion.pupilOpenDelay, Motion.blinkResponse, "the pupil starts while the lid is still lifting")
-
-        for opening in [true, false] {
-            XCTAssertEqual(Motion.blink(opening: opening, reduceMotion: true), .easeInOut(duration: 0.3))
-            XCTAssertEqual(Motion.pupil(opening: opening, reduceMotion: true), .easeInOut(duration: 0.3))
-        }
-        XCTAssertEqual(Motion.reducedBlinkDuration, 0.3)
-    }
-
-    /// One state value drives the pupil: full and present in the open eye,
-    /// shrunk and gone in the closed one. Under Reduce Motion it never
-    /// scales; only its opacity crosses over.
-    @MainActor
-    func testThePupilShrinksAwayWhenTheEyeClosesAndNeverScalesUnderReduceMotion() {
-        XCTAssertEqual(Motion.pupilClosedScale, 0.6)
-        let open = EyeMarkView(isRunning: true, reduceMotion: false)
-        let closed = EyeMarkView(isRunning: false, reduceMotion: false)
-        XCTAssertEqual(open.pupilScale, 1)
-        XCTAssertEqual(open.pupilOpacity, 1)
-        XCTAssertEqual(closed.pupilScale, 0.6)
-        XCTAssertEqual(closed.pupilOpacity, 0)
-
-        let reducedOpen = EyeMarkView(isRunning: true, reduceMotion: true)
-        let reducedClosed = EyeMarkView(isRunning: false, reduceMotion: true)
-        XCTAssertEqual(reducedOpen.pupilScale, 1)
-        XCTAssertEqual(reducedClosed.pupilScale, 1, "no pupil scaling at all under Reduce Motion")
-        XCTAssertEqual(reducedOpen.pupilOpacity, 1)
-        XCTAssertEqual(reducedClosed.pupilOpacity, 0)
-    }
-
-    /// The opening spring peaks at about 1.04 and an interrupted blink can
-    /// stop anywhere, so the drawn pupil is clipped to the lens: nothing of
-    /// it, at any scale, lands outside the outline.
-    @MainActor
-    func testThePupilIsClippedToTheLensHoweverFarItOvershoots() throws {
-        let size = 96
-        let rect = CGRect(x: 0, y: 0, width: size, height: size)
-        let lens = EyeMarkGeometry.lens(in: rect)
-        func outsideLens(_ px: Raster) -> Int {
-            var n = 0
-            for y in 0..<size {
-                for x in 0..<size where px.alpha(x, y) > 0.5 && !lens.contains(CGPoint(x: CGFloat(x) + 0.5, y: CGFloat(y) + 0.5)) { n += 1 }
-            }
-            return n
-        }
-        func render<V: View>(_ view: V) throws -> Raster {
-            try Raster.render(view.frame(width: CGFloat(size), height: CGFloat(size)), scheme: .light, scale: 1)
-        }
-
-        let rest = try render(EyePupilLayer(scale: 1, opacity: 1))
-        let peak = try render(EyePupilLayer(scale: 1.04, opacity: 1))
-        XCTAssertEqual(outsideLens(rest), 0)
-        XCTAssertEqual(outsideLens(peak), 0, "the overshoot peak stays inside the lens")
-        XCTAssertGreaterThan(peak.count { $0.alpha > 0.5 }, rest.count { $0.alpha > 0.5 }, "the clip does not eat a pupil that fits")
-
-        // Far beyond any real overshoot, the clip is what keeps it in: the
-        // same pupil unclipped would show outside the outline.
-        let wild = try render(EyePupilLayer(scale: 1.6, opacity: 1))
-        let unclipped = try render(EyePupil().fill(.black).scaleEffect(1.6, anchor: EyePupilLayer.anchor))
-        XCTAssertGreaterThan(outsideLens(unclipped), 0, "the control should overshoot the lens")
-        XCTAssertEqual(outsideLens(wild), 0, "clipped, the pupil never leaves the lens")
-        XCTAssertGreaterThan(wild.count { $0.alpha > 0.5 }, 0)
-    }
+    // MARK: - The lid geometry
 
     /// The lid's progress is left unclamped in the view so the spring can
     /// overshoot; the geometry bounds what is drawn instead.
@@ -505,10 +375,6 @@ final class BrandingTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func product<A, B>(_ a: [A], _ b: [B]) -> [(A, B)] {
-        a.flatMap { x in b.map { (x, $0) } }
-    }
-
     private func subpathCount(_ path: CGPath) -> Int {
         var moves = 0
         path.applyWithBlock { element in
@@ -533,38 +399,9 @@ final class BrandingTests: XCTestCase {
         }
         return points
     }
-
-    /// Grid points worth probing, mapped into a rendered view of `size`
-    /// points at `scale`: derived from the paths' own bounding boxes so the
-    /// test follows the geometry rather than pinning magic numbers.
-    private struct Probes {
-        let outline: (Int, Int)
-        /// Between the pupil's right edge and the outline: shaded when closed, clear when open.
-        let interior: (Int, Int)
-        let pupil: (Int, Int)
-        /// Midway along the centre lash in each position.
-        let lashAbove: (Int, Int)
-        let lashBelow: (Int, Int)
-
-        init(size: CGFloat, scale: CGFloat) {
-            let rect = CGRect(x: 0, y: 0, width: size, height: size)
-            let eyeBox = EyeMarkGeometry.lens(in: rect).boundingBoxOfPath
-            let pupilBox = EyeMarkGeometry.pupil(in: rect).boundingBoxOfPath
-            let aboveBox = EyeMarkGeometry.lashes(in: rect, side: .above).boundingBoxOfPath
-            let belowBox = EyeMarkGeometry.lashes(in: rect, side: .below).boundingBoxOfPath
-            let unit = size / EyeLensGeometry.designSize
-            func px(_ x: CGFloat, _ y: CGFloat) -> (Int, Int) { (Int((x * scale).rounded()), Int((y * scale).rounded())) }
-            outline = px(eyeBox.minX + 0.3 * unit, eyeBox.midY)
-            interior = px((pupilBox.maxX + eyeBox.maxX) / 2, eyeBox.midY)
-            pupil = px(EyeMarkGeometry.pupilCenter.x * unit, EyeMarkGeometry.pupilCenter.y * unit)
-            lashAbove = px(aboveBox.midX, aboveBox.minY + EyeMarkGeometry.lashLength / 2 * unit)
-            lashBelow = px(belowBox.midX, belowBox.maxY - EyeMarkGeometry.lashLength / 2 * unit)
-        }
-    }
 }
 
-/// RGBA8 bitmap with the design's y-down orientation, drawn by CoreGraphics
-/// or filled from a rendered SwiftUI view.
+/// RGBA8 bitmap with the design's y-down orientation, drawn by CoreGraphics.
 struct Raster {
     struct RGB: CustomStringConvertible {
         let red: CGFloat
@@ -611,18 +448,6 @@ struct Raster {
             draw(ctx)
         }
         data = bytes
-    }
-
-    /// Renders a SwiftUI view under `scheme` at `scale` into a bitmap whose
-    /// (0,0) is the view's top-left.
-    @MainActor
-    static func render<V: View>(_ view: V, scheme: ColorScheme, scale: CGFloat) throws -> Raster {
-        let renderer = ImageRenderer(content: view.environment(\.colorScheme, scheme))
-        renderer.scale = scale
-        let image = try XCTUnwrap(renderer.cgImage, "ImageRenderer produced no image")
-        return Raster(width: image.width, height: image.height) { ctx in
-            ctx.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
-        }
     }
 
     private func offset(_ x: Int, _ y: Int) -> Int {

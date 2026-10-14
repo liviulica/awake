@@ -1116,7 +1116,7 @@ final class LidActionsTests: XCTestCase {
         XCTAssertEqual(h.audio.volume, 0.6)
         XCTAssertFalse(h.audio.muted)
         XCTAssertEqual(try h.store.loadState()?.savedAudioOutputs.map(\.withoutSaveID), [Self.headsetSaved])
-        let lines = StatusItemController.menuItems(manager: m, status: RecordingStatusSource()).map(\.title)
+        let lines = StatusItemController.menuItems(manager: m, status: PlaceholderStatus(), awake: AwakeController(assertion: FakeAwakeAssertion()), now: h.clock.now).map(\.title)
         XCTAssertTrue(lines.contains("\u{26A0} USB Headset is still muted from a lid close; Awake restores it when it reconnects"), "\(lines)")
         XCTAssertTrue(lines.contains("Stop waiting for USB Headset"), "\(lines)")
 

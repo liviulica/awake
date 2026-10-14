@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Menu bar app. The status item is an `NSStatusItem` hosting SwiftUI, and
+/// Menu bar app. The status item is a plain `NSStatusItem`, and
 /// the settings window is an `NSWindow` this app opens itself (see
 /// `SettingsWindow`), so there is no SwiftUI scene with any content in it.
 /// `App` still requires one, hence the empty `Settings`. main.swift starts
@@ -23,6 +23,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let secrets: any HotspotSecretStore
     let locationPermission: LocationPermission
     let loginItem = LoginItem()
+    /// Awake mode (spec "Interaction"): the left-click hold.
+    let awake = AwakeController(assertion: IOPMAwakeAssertion())
     private var statusItem: StatusItemController?
     private var settingsWindow: SettingsWindow?
     private var terminating = false
@@ -81,7 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }
         settingsWindow = settings
-        statusItem = StatusItemController(manager: manager, status: status) { [weak settings] in
+        statusItem = StatusItemController(manager: manager, status: status, awake: awake) { [weak settings] in
             settings?.show()
         }
         Task { await manager.reconcile() }
@@ -102,6 +104,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !terminating else { return .terminateCancel }
         terminating = true
+        // Awake mode ends with the quit, right away: it needs no cleanup,
+        // and a deferred session end below must not keep it running.
+        awake.turnOff(reason: "quit")
         Task {
             let outcome = await manager.end(reason: .quit)
             if outcome.letsQuitGo, !manager.closedLidSleepOwed {
