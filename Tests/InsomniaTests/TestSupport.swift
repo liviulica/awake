@@ -861,6 +861,7 @@ struct Harness {
         display: (any DisplayDimming)? = nil,
         keyboard: (any KeyboardBacklighting)? = nil,
         sleepGuard: (any SleepGuarding)? = nil,
+        closedLidClock: Bool = false,
         bootSession: String = SignalProcessControl.bootSession
     ) -> SessionManager {
         let c = clock
@@ -886,6 +887,7 @@ struct Harness {
             keptRecheckDelay: keptRecheckDelay,
             keptRecheckAttempts: keptRecheckAttempts,
             keptRecheckSlowDelay: keptRecheckSlowDelay,
+            closedLidClock: closedLidClock,
             bootSession: bootSession
         )
     }

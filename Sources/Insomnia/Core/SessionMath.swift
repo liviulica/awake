@@ -21,9 +21,56 @@ enum SessionMath {
         Session(startedAt: now, endsAt: endsAt(start: now, duration: duration, maxDuration: maxDuration))
     }
 
+    /// How far ahead a paused session's `endsAt` lease reaches. Renewed
+    /// every minute while the app runs; if the app dies the session expires
+    /// within this window and the recovery agent restores sleep.
+    static let pauseLease: TimeInterval = 300
+
+    /// Fresh session started with the lid open (or unknown): the closed-lid
+    /// clock waits for the lid to close, and `endsAt` is a lease.
+    static func newPausedSession(now: Date, duration: TimeInterval, maxDuration: TimeInterval) -> Session {
+        Session(startedAt: now, endsAt: now.addingTimeInterval(pauseLease), pausedRemaining: clamp(duration, maxDuration: maxDuration))
+    }
+
+    /// Lid opened: stop the clock and keep what was left.
+    static func paused(_ s: Session, now: Date) -> Session {
+        guard !s.isPaused else { return s }
+        var p = s
+        p.pausedRemaining = s.remaining(at: now)
+        p.endsAt = now.addingTimeInterval(pauseLease)
+        return p
+    }
+
+    /// Lid closed: run the clock on what was left.
+    static func resumed(_ s: Session, now: Date) -> Session {
+        guard let left = s.pausedRemaining else { return s }
+        var r = s
+        r.pausedRemaining = nil
+        r.endsAt = now.addingTimeInterval(left)
+        return r
+    }
+
+    /// A paused session's lease, moved to `pauseLease` from `now`. A running
+    /// session is returned unchanged.
+    static func leaseRenewed(_ s: Session, now: Date) -> Session {
+        guard s.isPaused else { return s }
+        var r = s
+        r.endsAt = now.addingTimeInterval(pauseLease)
+        return r
+    }
+
     /// Push `endsAt` out by `extra` seconds, never past `now + maxDuration`.
     /// Extending an already-expired session restarts the countdown from `now`.
+    /// A paused session gains closed-lid time instead, never past
+    /// `maxDuration` of it; its lease is left as it is.
     static func extended(_ session: Session, by extra: TimeInterval, now: Date, maxDuration: TimeInterval) -> Session {
+        if let left = session.pausedRemaining {
+            var s = session
+            let newLeft = min(left + max(extra, 0), max(maxDuration, minimumDuration))
+            s.extensions.append(newLeft - left)
+            s.pausedRemaining = newLeft
+            return s
+        }
         let base = max(session.endsAt, now)
         let ceiling = now.addingTimeInterval(max(maxDuration, minimumDuration))
         let proposed = base.addingTimeInterval(max(extra, 0))

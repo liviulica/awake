@@ -18,6 +18,39 @@ final class SessionMathTests: XCTestCase {
         XCTAssertEqual(end, t0.addingTimeInterval(maxDuration))
     }
 
+    func testPauseKeepsWhatIsLeftAndResumeRunsOnIt() {
+        let running = Session(startedAt: t0, endsAt: t0.addingTimeInterval(3600))
+        let p = SessionMath.paused(running, now: t0.addingTimeInterval(600))
+        XCTAssertEqual(p.pausedRemaining, 3000)
+        XCTAssertEqual(p.endsAt, t0.addingTimeInterval(600 + SessionMath.pauseLease))
+        XCTAssertEqual(SessionMath.paused(p, now: t0.addingTimeInterval(900)), p, "pausing twice changes nothing")
+        let r = SessionMath.resumed(p, now: t0.addingTimeInterval(7200))
+        XCTAssertNil(r.pausedRemaining)
+        XCTAssertEqual(r.endsAt, t0.addingTimeInterval(7200 + 3000))
+        XCTAssertEqual(SessionMath.resumed(r, now: t0.addingTimeInterval(7300)), r, "resuming a running clock changes nothing")
+    }
+
+    func testLeaseRenewalMovesOnlyAPausedSession() {
+        let p = SessionMath.newPausedSession(now: t0, duration: 3600, maxDuration: maxDuration)
+        XCTAssertEqual(p.pausedRemaining, 3600)
+        let renewed = SessionMath.leaseRenewed(p, now: t0.addingTimeInterval(60))
+        XCTAssertEqual(renewed.endsAt, t0.addingTimeInterval(60 + SessionMath.pauseLease))
+        XCTAssertEqual(renewed.pausedRemaining, 3600)
+        let running = Session(startedAt: t0, endsAt: t0.addingTimeInterval(3600))
+        XCTAssertEqual(SessionMath.leaseRenewed(running, now: t0.addingTimeInterval(60)), running)
+    }
+
+    func testExtendWhilePausedAddsClosedTimeAndLeavesTheLease() {
+        let p = SessionMath.newPausedSession(now: t0, duration: 3600, maxDuration: maxDuration)
+        let e = SessionMath.extended(p, by: 1800, now: t0.addingTimeInterval(120), maxDuration: maxDuration)
+        XCTAssertEqual(e.pausedRemaining, 5400)
+        XCTAssertEqual(e.endsAt, p.endsAt)
+        XCTAssertEqual(e.extensions, [1800])
+        let capped = SessionMath.extended(e, by: maxDuration, now: t0, maxDuration: maxDuration)
+        XCTAssertEqual(capped.pausedRemaining, maxDuration)
+        XCTAssertEqual(capped.extensions, [1800, maxDuration - 5400])
+    }
+
     func testExtendAddsToEndAndRecordsExtension() {
         let s = Session(startedAt: t0, endsAt: t0.addingTimeInterval(3600))
         let e = SessionMath.extended(s, by: 1800, now: t0.addingTimeInterval(600), maxDuration: maxDuration)

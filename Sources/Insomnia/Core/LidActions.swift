@@ -97,6 +97,11 @@ final class LidActions {
             manager.pauseCountdown()
         }
         if !ran { Log.error("lid close actions skipped: recovery lock busy") }
+        // The closed-lid clock starts. Its own transaction, after this one
+        // (a nested one would wait on itself); it follows the lid as it
+        // reads then, so a crossed close and open settle on the real lid.
+        guard manager.isActive, !Task.isCancelled else { return }
+        await manager.lidClosedClock()
     }
 
     func onOpen() async {
@@ -107,6 +112,8 @@ final class LidActions {
         await manager.undoLidActions()
         guard manager.isActive, !Task.isCancelled else { return }
         manager.resumeCountdown()
+        // The closed-lid clock pauses on what is left.
+        await manager.lidOpenedClock()
     }
 
     // MARK: Private

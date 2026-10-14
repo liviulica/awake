@@ -226,7 +226,9 @@ final class StatusItemController: NSObject {
     }
 
     private func managerChanged() {
-        reminder.sync(endsAt: manager.session?.endsAt)
+        // Only while the closed-lid clock runs: a paused session's endsAt
+        // is a lease, not the end.
+        reminder.sync(endsAt: manager.session.flatMap { $0.isPaused ? nil : $0.endsAt })
         if let next = Self.phase(forActive: manager.isActive, phase: model.phase) {
             switch next {
             case .idle, .running:
@@ -504,7 +506,7 @@ final class StatusItemController: NSObject {
             // manager catches up (pmset takes a moment).
             let projected = SessionMath.extended(s, by: duration, now: now, maxDuration: manager.config.maxDuration)
             model.pendingProjection = nil
-            model.pendingCountdown = SessionMath.formatCountdown(remaining: projected.remaining(at: now), shape: projected.countdownShape)
+            model.pendingCountdown = SessionMath.formatCountdown(remaining: projected.closedLidRemaining(at: now), shape: projected.countdownShape)
         } else {
             // No session yet: the manager has to arm the recovery agent and
             // disable sleep first, and either can take seconds or refuse. Show

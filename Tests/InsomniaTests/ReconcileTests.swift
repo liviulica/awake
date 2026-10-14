@@ -390,7 +390,10 @@ final class ReconcileTests: XCTestCase {
             backstop: real.backstop,
             notifier: real.notifier,
             clamshell: { false },
-            clock: { Date() }
+            clock: { Date() },
+            // Wall-clock timer: with the closed-lid clock this open-lid
+            // session would be paused and never end by the timer.
+            closedLidClock: false
         )
         // Bypass clamping by writing a near-expired session and reconciling.
         // session.json keeps whole seconds, so a fractional deadline would

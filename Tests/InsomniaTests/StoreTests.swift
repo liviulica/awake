@@ -27,6 +27,21 @@ final class StoreTests: XCTestCase {
         XCTAssertEqual(try store.loadSession(), s)
     }
 
+    func testPausedSessionRoundTrips() throws {
+        let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+        let s = Session(startedAt: t0, endsAt: t0.addingTimeInterval(SessionMath.pauseLease), pausedRemaining: 1800)
+        try store.saveSession(s)
+        XCTAssertEqual(try store.loadSession(), s)
+    }
+
+    /// An Insomnia-era session.json has no pausedRemaining: a running clock.
+    func testSessionWithoutPausedRemainingDecodesAsRunning() throws {
+        let json = #"{"startedAt":"2026-10-14T10:00:00Z","endsAt":"2026-10-14T12:00:00Z","extensions":[]}"#
+        let s = try Store.makeDecoder().decode(Session.self, from: Data(json.utf8))
+        XCTAssertNil(s.pausedRemaining)
+        XCTAssertFalse(s.isPaused)
+    }
+
     func testStateRoundTripPreservesOptionals() throws {
         var st = RuntimeState()
         st.sleepDisabledByUs = true

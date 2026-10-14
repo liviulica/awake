@@ -87,6 +87,28 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertTrue(fx.exists(fx.session))
     }
 
+    /// A paused lid session (lid open, closed-lid clock stopped) keeps a
+    /// short lease in endsAt and an extra pausedRemaining key; the backstop
+    /// reads only endsAt and leaves it alone while the lease holds.
+    func testPausedSessionWithALeaseAheadIsNoOpWithoutForce() throws {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
+        let now = Date()
+        let json = #"{"startedAt":"\#(f.string(from: now.addingTimeInterval(-600)))","endsAt":"\#(f.string(from: now.addingTimeInterval(240)))","extensions":[],"pausedRemaining":1800}"#
+        try json.write(to: fx.session, atomically: true, encoding: .utf8)
+        let dirty = #"{"sleepDisabledByUs":true,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false}"#
+        try fx.writeState(dirty)
+
+        let r = try fx.run(fx.backstop)
+
+        XCTAssertEqual(r.status, 0, r.stderr)
+        XCTAssertEqual(fx.calls(), [])
+        XCTAssertEqual(try String(contentsOf: fx.state, encoding: .utf8), dirty)
+        XCTAssertTrue(fx.exists(fx.session))
+    }
+
     func testForceEndsValidSession() throws {
         try fx.writeSession(endsAt: Date(timeIntervalSinceNow: 3600))
         try fx.writeState(#"{"sleepDisabledByUs":true,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false}"#)

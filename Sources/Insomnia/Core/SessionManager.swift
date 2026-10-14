@@ -449,6 +449,12 @@ final class SessionManager {
     @ObservationIgnored var services: AppServices?
 
     @ObservationIgnored private var deadlineTimer: Timer?
+    /// Renews a paused session's `endsAt` lease every minute; nil while the
+    /// closed-lid clock runs (spec "Lid mode", closed-lid clock).
+    @ObservationIgnored private var leaseTimer: Timer?
+    /// The session timer counts only closed-lid time (Decision 11). False
+    /// keeps Insomnia's wall-clock timer exactly.
+    @ObservationIgnored private let closedLidClock: Bool
     @ObservationIgnored private var countdownTimer: Timer?
     @ObservationIgnored private var retryTimer: Timer?
     /// Set by a timer or floor-rule end. Cleared once the sleep is asked,
@@ -567,6 +573,7 @@ final class SessionManager {
         keptRecheckDelay: Duration = .seconds(3),
         keptRecheckAttempts: Int = 20,
         keptRecheckSlowDelay: Duration = .seconds(60),
+        closedLidClock: Bool = true,
         bootSession: String = SignalProcessControl.bootSession
     ) {
         self.paths = paths
@@ -591,6 +598,7 @@ final class SessionManager {
         self.keptRecheckAttempts = keptRecheckAttempts
         self.keptRecheckSlowDelay = keptRecheckSlowDelay
         self.bootSession = bootSession
+        self.closedLidClock = closedLidClock
 
         try? paths.createDirectories()
         var loadedState: RuntimeState?
@@ -1217,7 +1225,11 @@ final class SessionManager {
         // The person wants the Mac awake now.
         closedLidSleepOwed = false
         let now = clock()
-        let new = SessionMath.newSession(now: now, duration: duration, maxDuration: config.maxDuration)
+        // With the closed-lid clock, a start with the lid open (or unknown)
+        // waits for the lid to close: paused, with a lease for `endsAt`.
+        let new = closedLidClock && clamshell() != true
+            ? SessionMath.newPausedSession(now: now, duration: duration, maxDuration: config.maxDuration)
+            : SessionMath.newSession(now: now, duration: duration, maxDuration: config.maxDuration)
         // What was on disk before this attempt, read under the lock. A
         // rollback puts exactly this back: an entry an earlier failed restore
         // left behind is evidence, not something this start may clear.
@@ -1285,8 +1297,11 @@ final class SessionManager {
         lastError = nil
         countdownPaused = clamshell() == true
         foreignSleepWarning = nil
-        Log.info("session started until \(iso(new.endsAt)) (\(Int(duration))s requested)")
+        Log.info(new.isPaused
+            ? "session started paused (lid open) with \(Int(new.closedLidRemaining(at: now)))s of closed-lid time, lease until \(iso(new.endsAt)) (\(Int(duration))s requested)"
+            : "session started until \(iso(new.endsAt)) (\(Int(duration))s requested)")
         await armDeadline(new.endsAt)
+        syncLeaseTimer()
         applyAppNapInJournal()
         // Every observer lives in AppServices.
         services?.start(for: self)
@@ -1322,8 +1337,11 @@ final class SessionManager {
         }
         session = updated
         lastError = nil
-        Log.info("session extended by \(Int(extra))s until \(iso(updated.endsAt))")
+        Log.info(updated.isPaused
+            ? "session extended by \(Int(extra))s to \(Int(updated.closedLidRemaining(at: clock())))s of closed-lid time (paused)"
+            : "session extended by \(Int(extra))s until \(iso(updated.endsAt))")
         await armDeadline(updated.endsAt)
+        syncLeaseTimer()
     }
 
     /// Full session end: delete the session file first (so a crash here leaves
@@ -2732,7 +2750,28 @@ final class SessionManager {
                 Log.info("reconcile: lid \(lidClosed == nil ? "unknown" : "closed"), keeping lid-close actions")
             }
             countdownPaused = lidClosed == true
-            await armDeadline(s.endsAt)
+            // The closed-lid clock follows the lid as it is now: it may have
+            // moved while the app was not running. Backstop armed above.
+            var kept = s
+            if closedLidClock {
+                let now = clock()
+                let adjusted = lidClosed == true ? SessionMath.resumed(s, now: now)
+                    : (lidClosed == false ? SessionMath.paused(s, now: now) : s)
+                if adjusted != s {
+                    do {
+                        try store.saveSession(adjusted)
+                        session = adjusted
+                        kept = adjusted
+                        Log.info(adjusted.isPaused
+                            ? "reconcile: lid open, closed-lid clock paused with \(Int(adjusted.closedLidRemaining(at: now)))s left"
+                            : "reconcile: lid closed, closed-lid clock running until \(iso(adjusted.endsAt))")
+                    } catch {
+                        Log.error("reconcile: could not update the lid timer: \(error.localizedDescription)")
+                    }
+                }
+            }
+            await armDeadline(kept.endsAt)
+            syncLeaseTimer()
             applyAppNapInJournal()
             services?.start(for: self)
             return
@@ -2958,11 +2997,89 @@ final class SessionManager {
             countdownText = ""
             return
         }
-        let remaining = s.remaining(at: clock())
+        let remaining = s.closedLidRemaining(at: clock())
         let minute = SessionMath.formatRemaining(remaining)
         if remainingText != minute { remainingText = minute }
         let second = SessionMath.formatCountdown(remaining: remaining, shape: s.countdownShape)
         if countdownText != second { countdownText = second }
+    }
+
+    // MARK: Closed-lid clock
+
+    /// Lid closed: the closed-lid clock runs (spec "Lid mode"). Skipped when
+    /// the lid reads open again by the time this runs: the hooks run after
+    /// the lid transactions, so a close and an open can cross, and the
+    /// clock follows the lid as it is.
+    func lidClosedClock() async {
+        guard clamshell() != false else { return }
+        await moveClock("lid closed") { SessionMath.resumed($0, now: $1) }
+    }
+
+    /// Lid opened: the clock pauses on what is left. Skipped when the lid
+    /// reads closed again by the time this runs.
+    func lidOpenedClock() async {
+        guard clamshell() != true else { return }
+        await moveClock("lid opened") { SessionMath.paused($0, now: $1) }
+    }
+
+    /// Keeps a paused session's lease ahead of now. The lease timer and the
+    /// deadline timer (when a lease runs out) call it.
+    func renewLeaseIfPaused() async {
+        guard session?.isPaused == true else { return }
+        await moveClock("lease", logged: false) { SessionMath.leaseRenewed($0, now: $1) }
+    }
+
+    /// One session.json write under the recovery lock, like an extend: the
+    /// agent is confirmed loaded before the deadline on disk moves. Lease
+    /// renewals (every minute) are not `logged`.
+    private func moveClock(_ why: String, logged: Bool = true, _ change: @escaping @MainActor @Sendable (Session, Date) -> Session) async {
+        guard closedLidClock, session != nil else { return }
+        let ticket = endTicket
+        _ = await exclusive("closed-lid clock (\(why))") {
+            guard let current = self.session, self.endTicket == ticket else { return }
+            let updated = change(current, self.clock())
+            guard updated != current else { return }
+            do {
+                try await self.backstop.arm()
+            } catch {
+                self.fail("could not confirm backstop for the lid timer: \(error.localizedDescription)")
+                return
+            }
+            guard self.endTicket == ticket, self.session == current else {
+                Log.info("closed-lid clock (\(why)) abandoned: the session changed meanwhile")
+                return
+            }
+            do {
+                try self.store.saveSession(updated)
+            } catch {
+                self.fail("could not update the lid timer: \(error.localizedDescription)")
+                return
+            }
+            self.session = updated
+            if logged {
+                Log.info(updated.isPaused
+                    ? "closed-lid clock paused (\(why)) with \(Int(updated.closedLidRemaining(at: self.clock())))s left"
+                    : "closed-lid clock running (\(why)) until \(self.iso(updated.endsAt))")
+            }
+            await self.armDeadline(updated.endsAt)
+            self.syncLeaseTimer()
+        }
+    }
+
+    /// A 60 s lease renewal while paused; none while the clock runs.
+    private func syncLeaseTimer() {
+        guard session?.isPaused == true else {
+            leaseTimer?.invalidate()
+            leaseTimer = nil
+            return
+        }
+        guard leaseTimer == nil else { return }
+        let t = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in await self?.renewLeaseIfPaused() }
+        }
+        t.tolerance = 5
+        RunLoop.main.add(t, forMode: .common)
+        leaseTimer = t
     }
 
     // MARK: Private
@@ -2996,7 +3113,13 @@ final class SessionManager {
         let timer = Timer(fire: endsAt, interval: 0, repeats: false) { [weak self] _ in
             Task { @MainActor in
                 guard let self, let s = self.session, s.isExpired(at: self.clock()) else { return }
-                await self.end(reason: .timer)
+                // A paused session is never ended by the clock: its endsAt
+                // is a lease, which is renewed instead.
+                if s.isPaused {
+                    await self.renewLeaseIfPaused()
+                } else {
+                    await self.end(reason: .timer)
+                }
             }
         }
         timer.tolerance = 1
@@ -3030,6 +3153,8 @@ final class SessionManager {
     private func stopTimers() {
         deadlineTimer?.invalidate()
         deadlineTimer = nil
+        leaseTimer?.invalidate()
+        leaseTimer = nil
         countdownTimer?.invalidate()
         countdownTimer = nil
     }
