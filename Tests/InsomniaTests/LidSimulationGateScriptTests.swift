@@ -19,7 +19,8 @@ final class LidSimulationGateScriptTests: XCTestCase {
 
     private static let watcherSymbol = "0000000100012340 T _$s8Insomnia13LidSimulationC5startyyF"
     private static let otherSymbol = "0000000100001000 T _$s8Insomnia14SessionManagerC5startyyF"
-    private static let watcherStrings = "lid SIMULATED: closed\nLid simulation build: lid events come from a file"
+    private static let watcherStrings = "lid SIMULATED: closed\nLid simulation build: lid events come from a file\n" + controlStrings
+    private static let controlStrings = "Test mode: commands from test-control, simulated sleep guard"
     private static let otherStrings = "launched\nRestore incomplete"
 
     override func setUpWithError() throws {
@@ -79,6 +80,31 @@ final class LidSimulationGateScriptTests: XCTestCase {
         XCTAssertNotEqual(r.status, 0, r.stdout + r.stderr)
         XCTAssertTrue(r.stderr.contains("expected the lid simulation to be absent"), r.stderr)
         XCTAssertFalse(r.stdout.contains("compiled out of the plain release build"), r.stdout)
+    }
+
+    /// The smoke test's control channel (TestControl.swift) is gated like
+    /// the watcher: a plain build that has it fails.
+    func testFailsWhenThePlainBuildHasTheControlChannel() throws {
+        try write(plain, nm: Self.otherSymbol, strings: Self.otherStrings + "\n" + Self.controlStrings)
+
+        let r = try runGate()
+
+        XCTAssertNotEqual(r.status, 0, r.stdout + r.stderr)
+        XCTAssertTrue(r.stdout.contains("plain release build (\(plain.path)/Insomnia): 1 occurrence(s) of \"test-control\""), r.stdout)
+        XCTAssertTrue(r.stderr.contains("expected the lid simulation to be absent"), r.stderr)
+        XCTAssertFalse(r.stdout.contains("compiled out of the plain release build"), r.stdout)
+    }
+
+    /// The opt-in build must have the channel, so the absent check above is
+    /// known to look for text that a build with the channel contains.
+    func testFailsWhenTheOptInBuildLacksTheControlChannel() throws {
+        try write(sim, nm: Self.otherSymbol + "\n" + Self.watcherSymbol, strings: Self.otherStrings + "\nlid SIMULATED: closed\nLid simulation build: lid events come from a file")
+
+        let r = try runGate()
+
+        XCTAssertNotEqual(r.status, 0, r.stdout + r.stderr)
+        XCTAssertTrue(r.stdout.contains("INSOMNIA_LID_SIMULATION build (\(sim.path)/Insomnia): 0 occurrence(s) of \"test-control\""), r.stdout)
+        XCTAssertTrue(r.stderr.contains("expected the lid simulation to be present"), r.stderr)
     }
 
     /// A plain binary that nm or strings cannot read, or reads as nothing,

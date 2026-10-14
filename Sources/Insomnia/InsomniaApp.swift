@@ -28,9 +28,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: StatusItemController?
     private var settingsWindow: SettingsWindow?
     private var terminating = false
+    #if DEBUG || INSOMNIA_LID_SIMULATION
+    /// The smoke test's mode (`TestMode`): nil unless the environment asks
+    /// for it, so a lid simulation build otherwise runs like a release one.
+    private let testMode: TestMode?
+    private var testControl: TestControl?
+    #endif
 
     override init() {
+        #if DEBUG || INSOMNIA_LID_SIMULATION
+        let testMode = TestMode.requested()
+        self.testMode = testMode
+        let manager = testMode?.makeManager() ?? SessionManager.live()
+        #else
         let manager = SessionManager.live()
+        #endif
         self.manager = manager
         secrets = KeychainHotspotSecretStore(keychain: KeychainStore()) {
             manager.config.hotspotSSID
@@ -86,6 +98,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = StatusItemController(manager: manager, status: status, awake: awake) { [weak settings] in
             settings?.show()
         }
+        #if DEBUG || INSOMNIA_LID_SIMULATION
+        if let testMode {
+            Log.info(TestMode.marker)
+            let control = TestControl(mode: testMode, manager: manager, awake: awake) {
+                // Not from the main actor's queue: terminate waits for the
+                // deferred reply (applicationShouldTerminate) in a nested
+                // run loop, and the end that sends it runs on that queue,
+                // which cannot drain while it is inside one of its own jobs.
+                // A run loop block runs outside it, as a menu click does.
+                RunLoop.main.perform {
+                    MainActor.assumeIsolated { NSApplication.shared.terminate(nil) }
+                }
+            }
+            control.start()
+            testControl = control
+        }
+        #endif
         // Awake mode runs hotspot failover when the setting is on. A lid
         // session (which includes screen mode) runs its own.
         awake.onChange = { [weak self] _ in self?.reconcileAwakeFailover() }

@@ -1,7 +1,8 @@
 #!/bin/bash
 # Proves on the built binaries, not on the compilation condition, that the
-# scripts/simulate-lid.sh watcher is compiled out of a plain release build
-# and in only with -DINSOMNIA_LID_SIMULATION (what build-app.sh adds
+# scripts/simulate-lid.sh watcher and the smoke test's control channel
+# (TestControl.swift, TestMode.swift) are compiled out of a plain release
+# build and in only with -DINSOMNIA_LID_SIMULATION (what build-app.sh adds
 # for INSOMNIA_LID_SIMULATION=1). CI runs this after its release build step,
 # with the same flags, so the plain build here is that binary rather than
 # a rebuild; it can be run locally the same way. It builds into .build
@@ -17,9 +18,12 @@ NM=/usr/bin/nm
 STRINGS=/usr/bin/strings
 SIM_SCRATCH=.build/lid-simulation
 # The watcher class (Insomnia.LidSimulation, a class: mangled ...13LidSimulationC),
-# its log lines and the build marker shown in the status menu and Settings.
+# its log lines, the build marker shown in the status menu and Settings,
+# and the control channel's file name, which its test mode marker
+# (TestMode.marker) carries. A literal of 15 bytes or fewer is stored in
+# the code, not as a string, so the marker is what strings(1) finds.
 SYMBOL='13LidSimulationC'
-TEXTS=("lid SIMULATED" "Lid simulation build:")
+TEXTS=("lid SIMULATED" "Lid simulation build:" "test-control")
 # The flags of CI's "Build release" step; a warning in either build fails.
 RELEASE_FLAGS=(-c release -Xswiftc -warnings-as-errors)
 
@@ -76,4 +80,4 @@ check() { # label binary present|absent
 check "plain release build ($plain)" "$plain" absent
 check "INSOMNIA_LID_SIMULATION build ($sim)" "$sim" present
 (( failed == 0 )) || exit 1
-echo "lid simulation: compiled out of the plain release build, in with INSOMNIA_LID_SIMULATION"
+echo "lid simulation and test control channel: compiled out of the plain release build, in with INSOMNIA_LID_SIMULATION"

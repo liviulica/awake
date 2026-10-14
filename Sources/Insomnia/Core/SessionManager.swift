@@ -660,6 +660,27 @@ final class SessionManager {
 
     /// Production wiring.
     static func live(paths: Paths = .fromEnvironment()) -> SessionManager {
+        live(
+            paths: paths,
+            sleepGuard: PmsetSleepGuard(),
+            backstop: LaunchdBackstop(paths: paths),
+            clamshell: { LidObserver.readClamshellState() },
+            closedLidSleep: IOKitClosedLidSleep(),
+            lidSimulation: LidSimulationBuild.makeWatcher()
+        )
+    }
+
+    /// Production wiring with the parts that need root, launchctl or the
+    /// hinge passed in. `live(paths:)` passes the real ones; only the test
+    /// build's `TestMode` passes others.
+    static func live(
+        paths: Paths,
+        sleepGuard: any SleepGuarding,
+        backstop: any BackstopScheduling,
+        clamshell: @escaping @Sendable () -> Bool?,
+        closedLidSleep: any ClosedLidSleeping,
+        lidSimulation: (any LidSimulating)?
+    ) -> SessionManager {
         let notifier = Notifier()
         let audio = CoreAudioControl()
         let display = DisplayServicesDimmer()
@@ -667,15 +688,16 @@ final class SessionManager {
         let processControl = SignalProcessControl()
         let m = SessionManager(
             paths: paths,
-            sleepGuard: PmsetSleepGuard(),
+            sleepGuard: sleepGuard,
             processControl: processControl,
-            backstop: LaunchdBackstop(paths: paths),
+            backstop: backstop,
             audio: audio,
             display: display,
             keyboard: keyboard,
             appNap: CFAppNapPreferences(),
             notifier: notifier,
-            closedLidSleep: IOKitClosedLidSleep()
+            clamshell: clamshell,
+            closedLidSleep: closedLidSleep
         )
         let services = AppServices(
             paths: paths,
@@ -683,7 +705,8 @@ final class SessionManager {
             audio: audio,
             processControl: processControl,
             display: display,
-            keyboard: keyboard
+            keyboard: keyboard,
+            lidSimulation: lidSimulation
         )
         m.services = services
         services.logStartupSnapshot()
