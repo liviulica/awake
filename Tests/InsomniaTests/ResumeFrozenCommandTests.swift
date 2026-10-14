@@ -255,7 +255,7 @@ final class ResumeFrozenCommandTests: XCTestCase {
 
     /// The executable SwiftPM built next to this test bundle.
     private var builtBinary: URL {
-        Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("Awake")
+        Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("Insomnia")
     }
 
     /// Runs the real binary in the mode with `input` as standard input, and
@@ -296,7 +296,7 @@ final class ResumeFrozenCommandTests: XCTestCase {
     /// test's own running pid is never stopped, so it is "gone" too).
     func testBuiltBinaryAnswersWithoutStartingTheAppOrSignaling() throws {
         guard FileManager.default.isExecutableFile(atPath: builtBinary.path) else {
-            throw XCTSkip("no built Awake executable at \(builtBinary.path)")
+            throw XCTSkip("no built SwiftPM executable at \(builtBinary.path)")
         }
         let usage = try runBinary(input: "4242\n")
         XCTAssertEqual(usage.status, 64)
@@ -338,7 +338,7 @@ final class ResumeFrozenCommandTests: XCTestCase {
     /// defer, so its pid cannot be reused before the kill.
     func testBuiltBinaryResumesAStoppedChildOfThisTest() throws {
         guard FileManager.default.isExecutableFile(atPath: builtBinary.path) else {
-            throw XCTSkip("no built Awake executable at \(builtBinary.path)")
+            throw XCTSkip("no built SwiftPM executable at \(builtBinary.path)")
         }
         let boot = SignalProcessControl.bootSession
         guard !boot.isEmpty else { throw XCTSkip("kern.bootsessionuuid unreadable") }
@@ -386,7 +386,7 @@ final class ResumeFrozenCommandTests: XCTestCase {
     /// 64, and fails the SIGALRM assertion.
     func testBuiltBinaryEndsItselfWhenItsLifetimeIsUp() throws {
         guard FileManager.default.isExecutableFile(atPath: builtBinary.path) else {
-            throw XCTSkip("no built Awake executable at \(builtBinary.path)")
+            throw XCTSkip("no built SwiftPM executable at \(builtBinary.path)")
         }
         for parent in [ParentAlarm.default, .ignored, .blocked] {
             let end = try spawnWithOpenInput(lifetime: "1", parent: parent)
