@@ -959,7 +959,7 @@ final class NetworkFailover {
         let outputs = satisfied ? machine.pathSatisfied(at: now) : machine.pathUnsatisfied(at: now)
         if outputs.isEmpty { return }
         // A new outage starts the switch-back backoff over.
-        if !satisfied { cancelSwitchBack() }
+        if !satisfied { noteOutageStart() }
         if !satisfied { Log.info("wifi path unsatisfied") }
         await apply(outputs)
     }
@@ -1001,6 +1001,15 @@ final class NetworkFailover {
     private(set) var switchBackDelay: TimeInterval = 60
     private var switchBackFailures = 0
     private var switchBackRunning = false
+    /// When a switch-back last changed networks itself (rejoining home, or
+    /// going back to the hotspot).
+    private var lastSwitchBackActionAt: Date?
+    /// Whether the outage in progress was started by a switch-back's own
+    /// network change, so its recovery keeps the backoff.
+    private var outageSelfInduced = false
+    /// An outage this soon after a switch-back's own action is taken to be
+    /// the switch-back's doing, not a new failure.
+    static let selfInducedOutageWindow: TimeInterval = 30
 
     private func readSSID() async -> String? {
         if let ssidReader { return await ssidReader() }
@@ -1041,6 +1050,7 @@ final class NetworkFailover {
                 return
             }
             guard self.epoch == epoch, !Task.isCancelled else { return }
+            lastSwitchBackActionAt = clock()
             guard try await hotspotJoiner.rejoinKnownNetwork(ssid: home, interfaceName: iface) else {
                 rescheduleSwitchBack(epoch: epoch)
                 return
@@ -1067,6 +1077,7 @@ final class NetworkFailover {
         } else {
             Log.info("previous Wi-Fi has no internet; back to the hotspot")
             switchBackFailures += 1
+            lastSwitchBackActionAt = clock()
             await joinHotspot()
             rescheduleSwitchBack(epoch: epoch)
         }
@@ -1074,8 +1085,24 @@ final class NetworkFailover {
 
     /// Starts the switch-back attempts from the first wait.
     private func scheduleSwitchBack() {
-        switchBackFailures = 0
-        scheduleSwitchBack(after: Self.switchBackDelay(afterFailures: 0))
+        // After an outage the switch-back caused, the backoff carries on.
+        if !outageSelfInduced { switchBackFailures = 0 }
+        outageSelfInduced = false
+        scheduleSwitchBack(after: Self.switchBackDelay(afterFailures: switchBackFailures))
+    }
+
+    /// An outage has just started. One the switch-back's own network change
+    /// caused (a tick running, or one just done) pauses the attempts and
+    /// keeps the backoff; any other starts it over.
+    private func noteOutageStart() {
+        let recent = lastSwitchBackActionAt.map { clock().timeIntervalSince($0) < Self.selfInducedOutageWindow } ?? false
+        outageSelfInduced = switchBackRunning || recent
+        if outageSelfInduced {
+            switchBackTimer?.invalidate()
+            switchBackTimer = nil
+        } else {
+            cancelSwitchBack()
+        }
     }
 
     /// Next attempt, unless the session ended meanwhile.
@@ -1104,6 +1131,8 @@ final class NetworkFailover {
         switchBackTimer = nil
         switchBackFailures = 0
         switchBackDelay = Self.switchBackDelay(afterFailures: 0)
+        lastSwitchBackActionAt = nil
+        outageSelfInduced = false
     }
 
     private func scheduleProbe(after: TimeInterval) {

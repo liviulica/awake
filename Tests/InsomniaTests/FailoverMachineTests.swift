@@ -13,6 +13,7 @@ final class RecordingHotspotJoiner: HotspotJoining, @unchecked Sendable {
     private var _visible: Set<String> = []
     private var _rejoined: [String] = []
     private var _visibleError = false
+    private var _onRejoin: (@MainActor @Sendable () async -> Void)?
     var result = true
     var calls: [Call] { lock.withLock { _calls } }
     var visible: Set<String> {
@@ -20,6 +21,11 @@ final class RecordingHotspotJoiner: HotspotJoining, @unchecked Sendable {
         set { lock.withLock { _visible = newValue } }
     }
     var rejoined: [String] { lock.withLock { _rejoined } }
+    /// Runs inside `rejoinKnownNetwork`, as the network changes a rejoin causes.
+    var onRejoin: (@MainActor @Sendable () async -> Void)? {
+        get { lock.withLock { _onRejoin } }
+        set { lock.withLock { _onRejoin = newValue } }
+    }
     /// Makes `isVisible` throw, as a failed scan does.
     var visibleError: Bool {
         get { lock.withLock { _visibleError } }
@@ -37,10 +43,12 @@ final class RecordingHotspotJoiner: HotspotJoining, @unchecked Sendable {
     }
 
     func rejoinKnownNetwork(ssid: String, interfaceName: String) async throws -> Bool {
-        lock.withLock {
+        let (visible, hook): (Bool, (@MainActor @Sendable () async -> Void)?) = lock.withLock {
             _rejoined.append(ssid)
-            return _visible.contains(ssid)
+            return (_visible.contains(ssid), _onRejoin)
         }
+        await hook?()
+        return visible
     }
 }
 
@@ -483,6 +491,7 @@ final class NetworkFailoverDriverTests: XCTestCase {
     }
 
     private static let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+    private var testClock = FakeClock(NetworkFailoverDriverTests.t0)
 
     /// A driver that knew "Home" and is now on the "Phone" hotspot.
     private func onTheHotspot(
@@ -492,8 +501,9 @@ final class NetworkFailoverDriverTests: XCTestCase {
         wifiInterface: String? = "en0"
     ) async -> (driver: NetworkFailover, ssid: Locked<String?>) {
         let ssid = Locked<String?>("Home")
+        testClock = FakeClock(Self.t0)
         let n = driver(keychain: keychain, joiner: joiner, notifier: RecordingNotifier(),
-                       clock: FakeClock(Self.t0), probe: probe, ssid: ssid, wifiInterface: wifiInterface)
+                       clock: testClock, probe: probe, ssid: ssid, wifiInterface: wifiInterface)
         await n.recordHomeNetwork()
         ssid.value = "Phone"
         return (n, ssid)
@@ -557,9 +567,63 @@ final class NetworkFailoverDriverTests: XCTestCase {
         let (n, _) = await onTheHotspot(joiner: joiner, keychain: keychain, probe: FakeProbe([false]))
         await n.switchBackTick()
         XCTAssertEqual(n.switchBackDelay, 120)
+        testClock.advance(NetworkFailover.selfInducedOutageWindow + 1)
         await n.simulate(satisfied: false)
         XCTAssertEqual(n.switchBackDelay, 60)
         XCTAssertNil(n.switchBackTimer)
+        n.stop()
+    }
+
+    /// Answers from a switch the test flips.
+    private final class SwitchableProbe: ReachabilityProbing, @unchecked Sendable {
+        let answer = Locked(true)
+        func isInternetReachable() async -> Bool { answer.value }
+    }
+
+    /// Wi-Fi blinks out and back on the hotspot, as a rejoin can make it do.
+    private func blink(_ n: NetworkFailover, probe: SwitchableProbe) async {
+        probe.answer.value = true
+        await n.simulate(satisfied: false)
+        await n.simulate(satisfied: true)
+        probe.answer.value = false
+    }
+
+    func testOutagesTheSwitchBackCausesKeepTheBackoff() async throws {
+        let joiner = RecordingHotspotJoiner()
+        joiner.visible = ["Home"]
+        let keychain = FakeKeychainStore()
+        try keychain.set(service: KeychainStore.service, account: "Phone", value: "pw")
+        let probe = SwitchableProbe()
+        probe.answer.value = false
+        let (n, _) = await onTheHotspot(joiner: joiner, keychain: keychain, probe: probe)
+        // The rejoin itself blinks the path while the tick runs.
+        joiner.onRejoin = { await self.blink(n, probe: probe) }
+        await n.switchBackTick()
+        XCTAssertEqual(n.switchBackDelay, 120, "the blink during the tick did not reset the count")
+        // The fallback join blinks it just after the tick.
+        joiner.onRejoin = nil
+        await blink(n, probe: probe)
+        XCTAssertEqual(n.switchBackDelay, 120, "recovery schedules with the current backoff, not 60")
+        await n.switchBackTick()
+        XCTAssertEqual(n.switchBackDelay, 240)
+        await blink(n, probe: probe)
+        XCTAssertEqual(n.switchBackDelay, 240)
+        n.stop()
+    }
+
+    func testAGenuineOutageResetsTheBackoff() async throws {
+        let joiner = RecordingHotspotJoiner()
+        joiner.visible = ["Home"]
+        let keychain = FakeKeychainStore()
+        try keychain.set(service: KeychainStore.service, account: "Phone", value: "pw")
+        let probe = SwitchableProbe()
+        probe.answer.value = false
+        let (n, _) = await onTheHotspot(joiner: joiner, keychain: keychain, probe: probe)
+        await n.switchBackTick()
+        XCTAssertEqual(n.switchBackDelay, 120)
+        testClock.advance(NetworkFailover.selfInducedOutageWindow + 1)
+        await blink(n, probe: probe)
+        XCTAssertEqual(n.switchBackDelay, 60)
         n.stop()
     }
 
