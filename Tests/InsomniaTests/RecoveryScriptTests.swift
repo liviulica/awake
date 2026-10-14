@@ -79,12 +79,68 @@ final class RecoveryScriptTests: XCTestCase {
         let dirty = #"{"sleepDisabledByUs":true,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false}"#
         try fx.writeState(dirty)
 
+        fx.setMode("pgrep", "0")
         let r = try fx.run(fx.backstop)
 
         XCTAssertEqual(r.status, 0, r.stderr)
-        XCTAssertEqual(fx.calls(), [])
+        XCTAssertEqual(fx.calls(), ["pgrep -x Awake"])
         XCTAssertEqual(try String(contentsOf: fx.state, encoding: .utf8), dirty)
         XCTAssertTrue(fx.exists(fx.session))
+    }
+
+    func testValidSessionWithAppRunningIsLeftAlone() throws {
+        try fx.writeSession(endsAt: Date(timeIntervalSinceNow: 3600))
+        try fx.writeState(#"{"sleepDisabledByUs":true,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false}"#)
+        fx.setMode("pgrep", "0")
+        let r = try fx.run(fx.backstop, [])
+        XCTAssertEqual(r.status, 0, r.stderr)
+        XCTAssertEqual(fx.calls(), ["pgrep -x Awake"])
+        XCTAssertFalse(fx.exists(fx.absentMarker))
+    }
+
+    func testFirstRunWithoutTheAppOnlyStartsTheClock() throws {
+        try fx.writeSession(endsAt: Date(timeIntervalSinceNow: 3600))
+        try fx.writeState(#"{"sleepDisabledByUs":true,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false}"#)
+        fx.setMode("pgrep", "1")
+        let r = try fx.run(fx.backstop, [])
+        XCTAssertEqual(r.status, 0, r.stderr)
+        XCTAssertEqual(fx.calls(), ["pgrep -x Awake"])
+        XCTAssertTrue(fx.exists(fx.absentMarker))
+        XCTAssertTrue(fx.exists(fx.session), "the session is not ended on the first sighting")
+    }
+
+    func testAppGoneForTwoMinutesEndsTheSession() throws {
+        try fx.writeSession(endsAt: Date(timeIntervalSinceNow: 3600))
+        try fx.writeState(#"{"sleepDisabledByUs":true,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false}"#)
+        fx.setMode("pgrep", "1")
+        let then = Int(Date().timeIntervalSince1970) - 121
+        try "\(then)\n".write(to: fx.absentMarker, atomically: true, encoding: .utf8)
+        let r = try fx.run(fx.backstop, [])
+        XCTAssertEqual(r.status, 0, r.stderr)
+        XCTAssertEqual(fx.calls(), ["pgrep -x Awake", "sudo -n \(fx.fakePmset) -a disablesleep 0"])
+        XCTAssertFalse(fx.exists(fx.session))
+        XCTAssertFalse(fx.exists(fx.absentMarker))
+        XCTAssertTrue(fx.log().contains("app not running for"), fx.log())
+    }
+
+    func testAppSeenAgainResetsTheClock() throws {
+        try fx.writeSession(endsAt: Date(timeIntervalSinceNow: 3600))
+        try fx.writeState(#"{"sleepDisabledByUs":true,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false}"#)
+        try "\(Int(Date().timeIntervalSince1970) - 600)\n".write(to: fx.absentMarker, atomically: true, encoding: .utf8)
+        fx.setMode("pgrep", "0")
+        _ = try fx.run(fx.backstop, [])
+        XCTAssertFalse(fx.exists(fx.absentMarker))
+        XCTAssertTrue(fx.exists(fx.session))
+    }
+
+    func testAPgrepThatDoesNotAnswerCountsAsRunning() throws {
+        try fx.writeSession(endsAt: Date(timeIntervalSinceNow: 3600))
+        try fx.writeState(#"{"sleepDisabledByUs":true,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false}"#)
+        try "\(Int(Date().timeIntervalSince1970) - 600)\n".write(to: fx.absentMarker, atomically: true, encoding: .utf8)
+        fx.setMode("pgrep", "hang")
+        _ = try fx.run(fx.backstop, [])
+        XCTAssertTrue(fx.exists(fx.session), "never end a session on a guess")
+        XCTAssertFalse(fx.exists(fx.absentMarker))
     }
 
     /// A paused lid session (lid open, closed-lid clock stopped) keeps a
@@ -101,10 +157,11 @@ final class RecoveryScriptTests: XCTestCase {
         let dirty = #"{"sleepDisabledByUs":true,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false}"#
         try fx.writeState(dirty)
 
+        fx.setMode("pgrep", "0")
         let r = try fx.run(fx.backstop)
 
         XCTAssertEqual(r.status, 0, r.stderr)
-        XCTAssertEqual(fx.calls(), [])
+        XCTAssertEqual(fx.calls(), ["pgrep -x Awake"])
         XCTAssertEqual(try String(contentsOf: fx.state, encoding: .utf8), dirty)
         XCTAssertTrue(fx.exists(fx.session))
     }
@@ -772,10 +829,11 @@ final class RecoveryScriptTests: XCTestCase {
         try fx.writeSession(endsAt: Date(timeIntervalSinceNow: 3600))
         try fx.writeState(#"{"sleepDisabledByUs":true,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false}"#)
 
+        fx.setMode("pgrep", "0")
         let r = try fx.run(fx.backstop)
 
         XCTAssertEqual(r.status, 0, r.stderr + fx.log())
-        XCTAssertEqual(fx.calls(), [])
+        XCTAssertEqual(fx.calls(), ["pgrep -x Awake"])
         XCTAssertTrue(fx.exists(fx.session))
         XCTAssertEqual(try fx.stateJSON()["sleepDisabledByUs"] as? Bool, true)
     }
@@ -883,10 +941,11 @@ final class RecoveryScriptTests: XCTestCase {
 
         try write(endsAt: Date(timeIntervalSinceNow: 3600))
         try fx.writeState(dirty)
+        fx.setMode("pgrep", "0")
         let future = try fx.run(fx.backstop)
 
         XCTAssertEqual(future.status, 0, future.stderr + fx.log())
-        XCTAssertEqual(fx.calls(), [])
+        XCTAssertEqual(fx.calls(), ["pgrep -x Awake"])
         XCTAssertTrue(fx.exists(fx.session))
         XCTAssertEqual(try String(contentsOf: fx.state, encoding: .utf8), dirty)
 
@@ -894,7 +953,7 @@ final class RecoveryScriptTests: XCTestCase {
         let past = try fx.run(fx.backstop)
 
         XCTAssertEqual(past.status, 0, past.stderr + fx.log())
-        XCTAssertEqual(fx.calls(), ["sudo -n \(fx.fakePmset) -a disablesleep 0"])
+        XCTAssertEqual(fx.calls(), ["pgrep -x Awake", "sudo -n \(fx.fakePmset) -a disablesleep 0"])
         XCTAssertEqual(try fx.stateJSON()["sleepDisabledByUs"] as? Bool, false)
         XCTAssertFalse(fx.exists(fx.session))
         XCTAssertEqual(try movedAsideSessions(), [], "an expired session is removed, not moved aside as malformed")
@@ -6263,6 +6322,8 @@ private final class ScriptFixture {
     var state: URL { home.appendingPathComponent("state.json") }
     var config: URL { home.appendingPathComponent("config.json") }
     var lock: URL { home.appendingPathComponent(".recovery.lock") }
+    /// The app-absence marker the backstop keeps between runs.
+    var absentMarker: URL { home.appendingPathComponent("app-absent-since") }
     /// backstop.sh as install.sh seals it into the bundle.
     var installedBackstop: URL { app.appendingPathComponent("Contents/Resources/backstop.sh") }
     /// The writable copy installs before the sealed layout left here.
@@ -6454,6 +6515,8 @@ private final class ScriptFixture {
             "DEFAULTS": bin.appendingPathComponent("defaults").path,
             "DATE": bin.appendingPathComponent("date").path,
             "MV": bin.appendingPathComponent("mv").path,
+            "PGREP": bin.appendingPathComponent("pgrep").path,
+            "APP_ABSENT_SECONDS": "120",
             "LOCK_TIMEOUT_SECONDS": "1",
             "COMMAND_TIMEOUT_SECONDS": "1",
             "KILL_GRACE_SECONDS": "1",

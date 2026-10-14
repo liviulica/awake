@@ -27,7 +27,11 @@
 # the lock file's inode.
 #
 # Decision, driven only by what the journal says was changed:
-#   - session.json valid (endsAt in the future) and no --force: exit 0.
+#   - session.json valid (endsAt in the future) and no --force: exit 0 while
+#     the app runs (pgrep -x; a pgrep that does not answer counts as running).
+#     The first run that finds it gone writes app-absent-since; once it has
+#     been gone APP_ABSENT_SECONDS (2 minutes) the session is ended as if
+#     --force was given. Paused lid sessions are valid sessions too.
 #   - state.json missing or clean: nothing is undone and nothing privileged
 #     runs; an expired session.json is removed. Exit 0. Entries in
 #     savedAudioOutputs alone count as clean (see below).
@@ -174,6 +178,7 @@ DEFAULTS=/usr/bin/defaults
 DATE=/bin/date
 MKDIR=/bin/mkdir
 RM=/bin/rm
+PGREP=/usr/bin/pgrep
 MV=/bin/mv
 CP=/bin/cp
 MKTEMP=/usr/bin/mktemp
@@ -194,6 +199,11 @@ LOCK_TIMEOUT_SECONDS=10
 # sent SIGTERM, and how long it then gets to exit before this run fails closed.
 COMMAND_TIMEOUT_SECONDS=30
 KILL_GRACE_SECONDS=3
+# A valid session whose app has not been running for this long is ended
+# (spec "Recovery"): with a 24 h session, waiting for the deadline could
+# leave a crashed app's Mac sleepless for a day.
+APP_PROCESS_NAME=Awake
+APP_ABSENT_SECONDS=120
 
 force=0
 for arg in "$@"; do
@@ -214,6 +224,9 @@ fi
 SESSION="$APP_SUPPORT/session.json"
 STATE="$APP_SUPPORT/state.json"
 LOCK="$APP_SUPPORT/.recovery.lock"
+# Epoch seconds of the first run that found the app gone. Not .backstop.*:
+# that prefix is swept by run_bounded.
+ABSENT_MARKER="$APP_SUPPORT/app-absent-since"
 LOG="$LOG_DIR/awake.log"
 
 log() { # level message
@@ -871,8 +884,29 @@ if [[ -e "$SESSION" ]]; then
   fi
 fi
 
-if [[ "$session_state" == valid ]] && (( force == 0 )); then
-  exit 0
+if [[ "$session_state" != valid ]]; then
+  "$RM" -f "$ABSENT_MARKER"
+elif (( force == 0 )); then
+  app_rc=0
+  run_bounded "$PGREP" -x "$APP_PROCESS_NAME" >/dev/null 2>&1 || app_rc=$?
+  if (( app_rc != 1 )); then
+    # Running, or pgrep did not answer: a session is never ended on a guess.
+    "$RM" -f "$ABSENT_MARKER"
+    exit 0
+  fi
+  now="$("$DATE" -u +%s)"
+  since=""
+  if [[ -f "$ABSENT_MARKER" ]]; then since="$(head -n 1 "$ABSENT_MARKER" 2>/dev/null || true)"; fi
+  if [[ ! "$since" =~ ^[0-9]+$ ]]; then
+    printf '%s\n' "$now" > "$ABSENT_MARKER"
+    exit 0
+  fi
+  if (( now - since < APP_ABSENT_SECONDS )); then
+    exit 0
+  fi
+  log info "app not running for $(( now - since )) s with a session valid until $ends_at; ending it"
+  "$RM" -f "$ABSENT_MARKER"
+  force=1
 fi
 
 # --- Read the journal --------------------------------------------------------

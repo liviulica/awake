@@ -33,6 +33,9 @@ struct Paths: Sendable, Equatable {
         self.appBundle = appBundle
     }
 
+    /// Epoch seconds of the first backstop run that found the app gone.
+    var appAbsentMarker: URL { appSupport.appendingPathComponent("app-absent-since") }
+
     /// Relocated layout rooted at one directory (used for AWAKE_HOME).
     init(root: URL) {
         self.init(

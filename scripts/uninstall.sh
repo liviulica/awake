@@ -1013,7 +1013,7 @@ done
 if (( PURGE == 1 )); then
   step "Purging Awake's files in $APP_SUPPORT and $LOG_DIR"
   remove_owned "$SESSION" "$APP_SUPPORT/config.json" "$APP_SUPPORT/backstop.sh" \
-        "$APP_SUPPORT/unfinished-command.json" \
+        "$APP_SUPPORT/unfinished-command.json" "$APP_SUPPORT/app-absent-since" \
         "$LOG_DIR/awake.log" "$LOG_DIR/awake.log.1" \
         "$LOG_DIR/handoffs.log" "$LOG_DIR/handoffs.log.1"
   (( ${#kept_brightness[@]} > 0 )) || remove_owned "$STATE"
