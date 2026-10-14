@@ -6,7 +6,7 @@ import Observation
 /// right-click (or any click during a lid session) opens the menu. A plain
 /// NSStatusItem with no hosted view and no key window: nothing here takes
 /// the keyboard, and the item's width changes only when the countdown
-/// appears or goes.
+/// appears or goes, or gains or loses a digit (crossing 10:00).
 @MainActor
 final class StatusItemController: NSObject {
     /// What the item shows: the icon and the countdown next to it (empty
@@ -105,6 +105,15 @@ final class StatusItemController: NSObject {
     /// stray click.
     static func clickAction(isRightClick: Bool, controlHeld: Bool, lidActive: Bool) -> ClickAction {
         isRightClick || controlHeld || lidActive ? .showMenu : .toggleAwake
+    }
+
+    /// Takes the item off the menu bar and stops the countdown tick. The
+    /// app never calls it (the item lives as long as the app); tests do, so
+    /// no repeating timer or stray item outlives them.
+    func stop() {
+        tick?.invalidate()
+        tick = nil
+        NSStatusBar.system.removeStatusItem(statusItem)
     }
 
     // MARK: State
@@ -319,8 +328,9 @@ final class StatusItemController: NSObject {
     }
 
     /// "Custom…": a duration typed as "90", "1h30m" or "2h" (DurationParser).
-    /// Nil when cancelled or unreadable; capped at 24 hours. A modal alert,
-    /// so the field has the keyboard only while the person is typing in it.
+    /// Nil when cancelled or unreadable; `menuStartLid` caps it at 24 hours.
+    /// A modal alert, so the field has the keyboard only while the person is
+    /// typing in it.
     private func askCustomDuration() -> TimeInterval? {
         let alert = NSAlert()
         alert.messageText = "Keep awake with the lid closed for how long?"
@@ -337,6 +347,6 @@ final class StatusItemController: NSObject {
             Log.info("custom lid duration not understood: \(field.stringValue.count) characters")
             return nil
         }
-        return min(seconds, Config.lidMaxDuration)
+        return seconds
     }
 }
