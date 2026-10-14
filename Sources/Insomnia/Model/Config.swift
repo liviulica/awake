@@ -8,8 +8,11 @@ struct Config: Codable, Equatable, Sendable {
     /// Preset durations in seconds, shown as chips.
     var presets: [TimeInterval] = Config.defaultPresets
     var defaultPreset: TimeInterval = 4 * 3600
-    /// Hard ceiling on a session, including extensions. 30 days.
-    var maxDuration: TimeInterval = 30 * 24 * 3600
+    /// Hard ceiling on a lid session: 24 hours (spec "Interaction"). An
+    /// extension never pushes the end past `now + maxDuration`.
+    var maxDuration: TimeInterval = Config.lidMaxDuration
+
+    static let lidMaxDuration: TimeInterval = 24 * 3600
 
     // Lid-close actions
     /// Bundle ids to SIGSTOP while the lid is closed.
@@ -247,5 +250,14 @@ extension Config {
         }
         guard (lowPowerFloor, endFloor) != before else { return nil }
         return "battery floors corrected: lowPowerFloor \(before.0) -> \(lowPowerFloor), endFloor \(before.1) -> \(endFloor)"
+    }
+
+    /// Insomnia allowed 30 days; Awake allows 24 hours. A config.json an
+    /// earlier build saved is brought down to the ceiling once and saved.
+    mutating func normalizeMaxDuration() -> String? {
+        guard maxDuration > Config.lidMaxDuration || maxDuration < SessionMath.minimumDuration else { return nil }
+        let before = maxDuration
+        maxDuration = Config.lidMaxDuration
+        return "maxDuration \(Int(before)) s -> \(Int(maxDuration)) s"
     }
 }

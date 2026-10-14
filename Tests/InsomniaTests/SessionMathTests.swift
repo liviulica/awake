@@ -2,7 +2,7 @@ import XCTest
 @testable import Insomnia
 
 final class SessionMathTests: XCTestCase {
-    let maxDuration: TimeInterval = 30 * 24 * 3600
+    let maxDuration: TimeInterval = 24 * 3600
     let t0 = Date(timeIntervalSince1970: 1_800_000_000)
 
     func testClampFloorAndCeiling() {
@@ -27,9 +27,9 @@ final class SessionMathTests: XCTestCase {
     }
 
     func testExtendIsClampedToMaxFromNow() {
-        let s = Session(startedAt: t0, endsAt: t0.addingTimeInterval(29 * 24 * 3600))
+        let s = Session(startedAt: t0, endsAt: t0.addingTimeInterval(23 * 3600))
         let now = t0.addingTimeInterval(3600)
-        let e = SessionMath.extended(s, by: 5 * 24 * 3600, now: now, maxDuration: maxDuration)
+        let e = SessionMath.extended(s, by: 5 * 3600, now: now, maxDuration: maxDuration)
         XCTAssertEqual(e.endsAt, now.addingTimeInterval(maxDuration))
     }
 

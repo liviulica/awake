@@ -10,8 +10,6 @@ struct SettingsView: View {
     /// Launch at login as macOS reports it, not as config.json remembers it.
     let loginItem: LoginItem
 
-    @State private var newPreset = ""
-    @State private var presetError: String?
     @State private var newFreezeBundle = ""
     @State private var newAgentBundle = ""
     /// The password field, saving, what was saved, and the notice under
@@ -23,7 +21,6 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            sessionSection
             lidSection
             agentSection
             powerSection
@@ -93,61 +90,6 @@ struct SettingsView: View {
     }
 
     // MARK: Sections
-
-    private var sessionSection: some View {
-        Section("Session") {
-            ForEach(manager.config.presets, id: \.self) { p in
-                HStack {
-                    Text(chipLabel(for: p))
-                        .monospacedDigit()
-                    Spacer()
-                    if p == manager.config.defaultPreset {
-                        Text("default").font(.caption).foregroundStyle(.secondary)
-                    }
-                    removeButton {
-                        update { $0.presets.removeAll { $0 == p } }
-                    }
-                }
-            }
-            HStack {
-                TextField("Add preset (30m, 2h, 1h30m, 3d)", text: $newPreset)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit(addPreset)
-                Button("Add", action: addPreset)
-                    .disabled(DurationParser.seconds(from: newPreset) == nil)
-            }
-            if let presetError {
-                Text(presetError).font(.caption).foregroundStyle(.red)
-            }
-            Picker("Default preset", selection: bind(\.defaultPreset)) {
-                ForEach(manager.config.presets, id: \.self) { p in
-                    Text(chipLabel(for: p)).tag(p)
-                }
-                if !manager.config.presets.contains(manager.config.defaultPreset) {
-                    Text(chipLabel(for: manager.config.defaultPreset)).tag(manager.config.defaultPreset)
-                }
-            }
-            LabeledContent("Maximum session") {
-                Text(chipLabel(for: manager.config.maxDuration)).foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private func addPreset() {
-        guard let s = DurationParser.seconds(from: newPreset) else { return }
-        guard s <= manager.config.maxDuration else {
-            presetError = "Presets cannot exceed \(chipLabel(for: manager.config.maxDuration))."
-            return
-        }
-        presetError = nil
-        update {
-            if !$0.presets.contains(s) {
-                $0.presets.append(s)
-                $0.presets.sort()
-            }
-        }
-        newPreset = ""
-    }
 
     /// Under the mute toggle and in the README. Apple Platform Security,
     /// "Hardware microphone disconnect".

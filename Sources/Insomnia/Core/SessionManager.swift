@@ -610,6 +610,7 @@ final class SessionManager {
             // Settings keeps the end floor below the Low Power Mode floor; a
             // hand-edited config.json may not. Fix it here and write it back.
             var corrections = c.normalizeFloors().map { [$0] } ?? []
+            if let max = c.normalizeMaxDuration() { corrections.append(max) }
             // Once for a config.json an earlier build saved: written back
             // with the mark, so a setting the user turns back stays back.
             let earlierBuild = !c.lidCloseDefaultsApplied

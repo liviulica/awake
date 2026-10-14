@@ -12,12 +12,25 @@ final class ConfigTests: XCTestCase {
         return c
     }
 
+    func testMaxDurationDefaultsTo24Hours() {
+        XCTAssertEqual(Config().maxDuration, 24 * 3600)
+        XCTAssertEqual(Config.lidMaxDuration, 24 * 3600)
+    }
+
+    func testAnOlderThirtyDayMaxIsClampedOnLoad() {
+        var c = Config()
+        c.maxDuration = 30 * 24 * 3600
+        XCTAssertNotNil(c.normalizeMaxDuration())
+        XCTAssertEqual(c.maxDuration, 24 * 3600)
+        XCTAssertNil(c.normalizeMaxDuration(), "a second pass changes nothing")
+    }
+
     func testDefaults() {
         let c = Config()
         XCTAssertEqual(c.presets, [1800, 3600, 7200, 14400, 28800, 43200, 86400, 259200])
         XCTAssertEqual(c.lowPowerFloor, 40)
         XCTAssertEqual(c.endFloor, 10)
-        XCTAssertEqual(c.maxDuration, 30 * 24 * 3600)
+        XCTAssertEqual(c.maxDuration, 24 * 3600)
         XCTAssertEqual(c.freezeList, ["com.tinyspeck.slackmacgap", "net.whatsapp.WhatsApp", "com.hnc.Discord"])
         XCTAssertTrue(c.agentList.contains("com.apple.Terminal"))
         XCTAssertTrue(c.agentList.contains("com.t3tools.t3code"))
