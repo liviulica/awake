@@ -2,10 +2,10 @@
 # Runs the timing-sensitive tests over and over on a loaded machine, to show
 # they do not depend on how fast the machine is. Each class (or single test)
 # below runs RUNS times in a row with `swift test --filter`, while
-# LOAD_PROCESSES copies of `yes > /dev/null` keep the CPU busy. The load
-# processes are killed on every exit. Every run is reported as PASS or FAIL;
-# a FAIL prints the failing lines of that run, and the script exits 1 if any
-# run failed.
+# LOAD_PROCESSES copies of `yes > /dev/null` (one per core unless set in the
+# environment) keep the CPU busy. The load processes are killed on every
+# exit. Every run is reported as PASS or FAIL; a FAIL prints the failing
+# lines of that run, and the script exits 1 if any run failed.
 #
 # RecoveryScriptTests is slow as a class, so only its timing-sensitive tests
 # are listed. Pass test filters as arguments to stress those instead, e.g.
@@ -14,7 +14,10 @@
 #
 # Usage: scripts/stress-tests.sh [filter ...]
 set -euo pipefail
-cd "$(dirname "$0")/.."
+case "$0" in
+  */*) cd "${0%/*}/.." ;;
+  *) cd .. ;;
+esac
 
 # Fixed tool paths, never taken from PATH, as in the other scripts.
 SWIFT=/usr/bin/swift
@@ -24,8 +27,11 @@ MKTEMP=/usr/bin/mktemp
 RM=/bin/rm
 SED=/usr/bin/sed
 CAT=/bin/cat
+SYSCTL=/usr/sbin/sysctl
 RUNS=10
-LOAD_PROCESSES=4
+# One load process per core unless LOAD_PROCESSES is set in the environment.
+NCPU="$("$SYSCTL" -n hw.ncpu)"
+LOAD_PROCESSES="${LOAD_PROCESSES:-$NCPU}"
 
 # `swift test --filter` matches "Module.Class/test"; the trailing slash keeps
 # ClosedLidClockTests from also matching ClosedLidClockLidActionsTests.

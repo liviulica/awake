@@ -273,6 +273,10 @@ final class ClosedLidClockTests: XCTestCase {
         await m.reconcile()
         XCTAssertEqual(m.scheduledDeadline, lease)
         XCTAssertEqual(m.session?.endsAt, lease, "the lease was moved before it ran out")
+        // Relies on reconcile not suspending after armDeadline: the deadline
+        // timer only fires once the main actor is free, so it cannot run
+        // before the clock moves past the lease here. Had it fired earlier,
+        // it would have found the lease unexpired and never fired again.
         clock.now = lease.addingTimeInterval(1)
         await pollUntil("the deadline timer never acted on the expired lease") { (m.session?.endsAt ?? .distantFuture) > lease }
         XCTAssertTrue(m.isActive, "a paused session is never ended by the clock")

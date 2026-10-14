@@ -229,7 +229,7 @@ final class PowerMonitorTests: XCTestCase {
         monitor.start()
         defer { monitor.stop() }
         XCTAssertEqual(monitor.battery, .percent(80))
-        XCTAssertEqual(wait.pending, 0, "a readable battery is not rechecked")
+        XCTAssertFalse(monitor.recheckScheduled, "a readable battery is not rechecked")
         reads.next = (.unreadable(misses: 1), false)
         monitor.refreshBattery()
         XCTAssertEqual(monitor.battery, .unreadable(misses: 1))
@@ -270,7 +270,7 @@ final class PowerMonitorTests: XCTestCase {
         await runRecheck(wait, reads)
         XCTAssertEqual(monitor.battery, .percent(80), "recovery never seen")
         XCTAssertEqual(changes, 2)
-        XCTAssertEqual(wait.pending, 0, "still re-reading a readable battery")
+        XCTAssertFalse(monitor.recheckScheduled, "still re-reading a readable battery")
     }
 
     /// Misses before a stop are not consecutive with the next start.
@@ -300,12 +300,13 @@ final class PowerMonitorTests: XCTestCase {
         monitor.stop()
         XCTAssertEqual(wait.cancelled, 1, "stop left the recheck waiting")
         XCTAssertEqual(wait.pending, 0)
+        XCTAssertFalse(monitor.recheckScheduled)
         let after = reads.count
         await pollUntil("the cancelled recheck never returned") { wait.returned == returned + 1 }
         XCTAssertEqual(reads.count, after, "re-read after stop")
         // Not started: a refresh schedules nothing.
         monitor.refreshBattery()
         XCTAssertEqual(reads.count, after + 1)
-        XCTAssertEqual(wait.pending, 0)
+        XCTAssertFalse(monitor.recheckScheduled, "a stopped monitor scheduled a recheck")
     }
 }

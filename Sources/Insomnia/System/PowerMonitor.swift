@@ -51,6 +51,10 @@ final class PowerMonitor {
     private var thermalObserver: NSObjectProtocol?
     private var running = false
     private var recheck: Task<Void, Never>?
+    /// Whether a recheck is scheduled. Set in the same step that decides
+    /// it, so tests read it right after the call instead of waiting for
+    /// the recheck task to start.
+    var recheckScheduled: Bool { recheck != nil }
 
     /// `reader`, `recheckDelay`, `wait` and `systemEvents` are injection
     /// points for tests; the defaults read IOKit, wait 30 s between re-reads
