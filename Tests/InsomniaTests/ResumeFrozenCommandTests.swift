@@ -255,11 +255,11 @@ final class ResumeFrozenCommandTests: XCTestCase {
 
     /// The executable SwiftPM built next to this test bundle.
     private var builtBinary: URL {
-        Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("Insomnia")
+        Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("Awake")
     }
 
     /// Runs the real binary in the mode with `input` as standard input, and
-    /// with INSOMNIA_HOME in a temp dir so its log line (if any) never
+    /// with AWAKE_HOME in a temp dir so its log line (if any) never
     /// touches ~/Library. Standard input, output and error are files: nothing
     /// to drain, nothing to deadlock, whatever the size.
     private func runBinary(_ arguments: [String] = ["--resume-frozen", "30"], input: String) throws -> (status: Int32, stdout: String, stderr: String) {
@@ -278,7 +278,7 @@ final class ResumeFrozenCommandTests: XCTestCase {
         let p = Process()
         p.executableURL = builtBinary
         p.arguments = arguments
-        p.environment = ["INSOMNIA_HOME": home.root.path, "PATH": "/usr/bin:/bin"]
+        p.environment = ["AWAKE_HOME": home.root.path, "PATH": "/usr/bin:/bin"]
         p.standardInput = stdin
         p.standardOutput = stdout
         p.standardError = stderr
@@ -296,12 +296,12 @@ final class ResumeFrozenCommandTests: XCTestCase {
     /// test's own running pid is never stopped, so it is "gone" too).
     func testBuiltBinaryAnswersWithoutStartingTheAppOrSignaling() throws {
         guard FileManager.default.isExecutableFile(atPath: builtBinary.path) else {
-            throw XCTSkip("no built Insomnia executable at \(builtBinary.path)")
+            throw XCTSkip("no built Awake executable at \(builtBinary.path)")
         }
         let usage = try runBinary(input: "4242\n")
         XCTAssertEqual(usage.status, 64)
         XCTAssertEqual(usage.stdout, "usage\n")
-        XCTAssertTrue(usage.stderr.contains("usage: Insomnia --resume-frozen"), usage.stderr)
+        XCTAssertTrue(usage.stderr.contains("usage: Awake --resume-frozen"), usage.stderr)
 
         // A child that has already exited: its pid is gone.
         let child = Process()
@@ -338,7 +338,7 @@ final class ResumeFrozenCommandTests: XCTestCase {
     /// defer, so its pid cannot be reused before the kill.
     func testBuiltBinaryResumesAStoppedChildOfThisTest() throws {
         guard FileManager.default.isExecutableFile(atPath: builtBinary.path) else {
-            throw XCTSkip("no built Insomnia executable at \(builtBinary.path)")
+            throw XCTSkip("no built Awake executable at \(builtBinary.path)")
         }
         let boot = SignalProcessControl.bootSession
         guard !boot.isEmpty else { throw XCTSkip("kern.bootsessionuuid unreadable") }
@@ -386,7 +386,7 @@ final class ResumeFrozenCommandTests: XCTestCase {
     /// 64, and fails the SIGALRM assertion.
     func testBuiltBinaryEndsItselfWhenItsLifetimeIsUp() throws {
         guard FileManager.default.isExecutableFile(atPath: builtBinary.path) else {
-            throw XCTSkip("no built Insomnia executable at \(builtBinary.path)")
+            throw XCTSkip("no built Awake executable at \(builtBinary.path)")
         }
         for parent in [ParentAlarm.default, .ignored, .blocked] {
             let end = try spawnWithOpenInput(lifetime: "1", parent: parent)
@@ -443,7 +443,7 @@ final class ResumeFrozenCommandTests: XCTestCase {
             ? ["/bin/bash", "-c", #"trap '' ALRM; exec "$0" "$@""#, binary, "--resume-frozen", lifetime]
             : [binary, "--resume-frozen", lifetime]
         let argv: [UnsafeMutablePointer<CChar>?] = arguments.map { strdup($0) } + [nil]
-        let environment = ["INSOMNIA_HOME=\(home.root.path)", "PATH=/usr/bin:/bin"]
+        let environment = ["AWAKE_HOME=\(home.root.path)", "PATH=/usr/bin:/bin"]
         let envp: [UnsafeMutablePointer<CChar>?] = environment.map { strdup($0) } + [nil]
         defer { (argv + envp).forEach { free($0) } }
 

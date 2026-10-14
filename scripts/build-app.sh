@@ -1,10 +1,10 @@
 #!/bin/bash
-# Build Insomnia and assemble an ad-hoc signed Insomnia.app. install.sh runs this for
+# Build Awake and assemble an ad-hoc signed Awake.app. install.sh runs this for
 # source installs, and .github/workflows/release.yml runs it for the
 # downloadable package, so both produce the same bundle.
 #
 # Usage: scripts/build-app.sh --output DIR
-#   Writes DIR/Insomnia.app, replacing a bundle already at that path. DIR is
+#   Writes DIR/Awake.app, replacing a bundle already at that path. DIR is
 #   created if needed. Prints the bundle path last.
 #
 # The signature is always ad-hoc (`codesign --sign -`): releases are ad-hoc
@@ -64,11 +64,11 @@ BIN="$("$SWIFT" build -c release ${BUILD_FLAGS[@]+"${BUILD_FLAGS[@]}"} --show-bi
 [[ -x "$BIN" ]] || { echo "binary not found at $BIN" >&2; exit 1; }
 
 # 2. Bundle ------------------------------------------------------------------
-APP="$OUTPUT/Insomnia.app"
+APP="$OUTPUT/Awake.app"
 step "Assembling $APP"
 "$RM" -rf "$APP"
 "$MKDIR" -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-"$CP" "$BIN" "$APP/Contents/MacOS/Insomnia"
+"$CP" "$BIN" "$APP/Contents/MacOS/Awake"
 "$CP" "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 "$CP" "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 # backstop.sh goes into the bundle before it is signed, so the signature's

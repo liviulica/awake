@@ -1,13 +1,13 @@
 import Foundation
 import os
 
-/// Unified logging plus a plain-text line appended to insomnia.log, which is
+/// Unified logging plus a plain-text line appended to awake.log, which is
 /// shared with backstop.sh so one file tells the whole story.
 ///
 /// The unified log is readable by every program running as the user (and
 /// by anyone with a sysdiagnose), so message bodies go there as private
 /// data: `log show` prints `<private>` in their place. The bodies name
-/// SSIDs, tmux targets, process names and bundle ids. insomnia.log keeps
+/// SSIDs, tmux targets, process names and bundle ids. awake.log keeps
 /// the full text for the user; its permissions are its own protection.
 enum Log {
     static let logger = Logger(subsystem: Paths.bundleIdentifier, category: "core")
@@ -25,17 +25,17 @@ enum Log {
 
     static func append(level: String, _ message: String, paths: Paths = .fromEnvironment()) {
         let now = Date().formatted(.iso8601.year().month().day().dateTimeSeparator(.standard).time(includingFractionalSeconds: false).timeZone(separator: .omitted))
-        let line = "\(now) [\(level)] insomnia: \(message)\n"
+        let line = "\(now) [\(level)] awake: \(message)\n"
         lock.lock()
         defer { lock.unlock() }
         do {
-            // Owner-only, and rotated to insomnia.log.1 past OwnerOnly.maxLogBytes.
+            // Owner-only, and rotated to awake.log.1 past OwnerOnly.maxLogBytes.
             // A chmod or rotation that fails is thrown after the line is
             // written, so it reaches the unified log below.
             try OwnerOnly.appendToLog(line, at: paths.logFile)
         } catch {
             // The description carries a path under the home directory.
-            logger.error("insomnia.log: \(error.localizedDescription, privacy: .private)")
+            logger.error("awake.log: \(error.localizedDescription, privacy: .private)")
         }
     }
 }

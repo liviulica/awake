@@ -62,7 +62,7 @@ final class StatusItemController: NSObject {
     var hostWidth: CGFloat { hostingView?.frame.width ?? 0 }
 
     /// Autosave name so macOS remembers where the user drags the item.
-    static let autosaveName = "insomnia.status"
+    static let autosaveName = "awake.status"
 
     init(
         manager: SessionManager,

@@ -115,7 +115,7 @@ struct StatusRootView: View {
                 Motion.snappy(reduceMotion: reduceMotion)
             }
             .onTapGesture(perform: onTapIcon)
-            .accessibilityLabel("Insomnia")
+            .accessibilityLabel("Awake")
     }
 
     /// All three slots are in the layout whenever they are present;

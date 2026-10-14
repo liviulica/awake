@@ -120,14 +120,14 @@ final class PackagingTests: XCTestCase {
     /// Contents/Resources), ad-hoc signed afterwards so the resource seal
     /// covers the script. The executable is a copy of /usr/bin/true. Nothing
     /// here touches an installed app, a LaunchAgent or a keychain.
-    private func makeSignedBundle(named name: String = "Insomnia") throws -> URL {
+    private func makeSignedBundle(named name: String = "Awake") throws -> URL {
         let fm = FileManager.default
         let bundle = scratch.appendingPathComponent("\(name).app", isDirectory: true)
         try fm.createDirectory(at: bundle.appendingPathComponent("Contents/MacOS"), withIntermediateDirectories: true)
         try fm.createDirectory(at: bundle.appendingPathComponent("Contents/Resources"), withIntermediateDirectories: true)
         try fm.copyItem(atPath: "/usr/bin/true", toPath: bundle.appendingPathComponent("Contents/MacOS/\(name)").path)
         let info: [String: Any] = [
-            "CFBundleExecutable": name, "CFBundleIdentifier": "com.kgarg.insomnia.packaging-test",
+            "CFBundleExecutable": name, "CFBundleIdentifier": "app.chargingpixels.awake.packaging-test",
             "CFBundlePackageType": "APPL", "CFBundleShortVersionString": "0.0.1",
         ]
         try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
@@ -198,7 +198,7 @@ final class PackagingTests: XCTestCase {
         let requirement = try CodeRequirement.designated(ofCodeAt: bundle)
         let home = scratch.appendingPathComponent("home", isDirectory: true)
         let ran = home.appendingPathComponent("backstop.ran")
-        let log = home.appendingPathComponent("Library/Logs/Insomnia/insomnia.log")
+        let log = home.appendingPathComponent("Library/Logs/Awake/awake.log")
 
         let intact = try runAgent(requirement: requirement, bundle: bundle, home: home)
         XCTAssertEqual(intact.status, 0, intact.output)
@@ -370,9 +370,9 @@ final class PackagingTests: XCTestCase {
         let r = try run("/bin/bash", [script.path, "--output", out.path], environment: ["PATH": "/usr/bin:/bin", "HOME": scratch.path])
 
         XCTAssertEqual(r.status, 0, r.output)
-        let bundle = out.appendingPathComponent("Insomnia.app")
+        let bundle = out.appendingPathComponent("Awake.app")
         XCTAssertEqual(r.output.components(separatedBy: "\n").filter { !$0.isEmpty }.last, bundle.path, "the bundle path is printed last")
-        for rel in ["Contents/MacOS/Insomnia", "Contents/Info.plist", "Contents/Resources/AppIcon.icns", "Contents/Resources/backstop.sh", "Contents/_CodeSignature/CodeResources"] {
+        for rel in ["Contents/MacOS/Awake", "Contents/Info.plist", "Contents/Resources/AppIcon.icns", "Contents/Resources/backstop.sh", "Contents/_CodeSignature/CodeResources"] {
             XCTAssertTrue(FileManager.default.fileExists(atPath: bundle.appendingPathComponent(rel).path), rel)
         }
         let perms = try FileManager.default.attributesOfItem(atPath: Paths.backstopScript(inBundle: bundle).path)[.posixPermissions] as? Int
@@ -390,7 +390,7 @@ final class PackagingTests: XCTestCase {
     func testBuildAppReplacesABundleAlreadyInTheOutputDirectory() throws {
         let (script, _) = try patchedBuildApp(recordingCodesign: false)
         let out = scratch.appendingPathComponent("out", isDirectory: true)
-        let stale = out.appendingPathComponent("Insomnia.app/Contents/Resources/stale.txt")
+        let stale = out.appendingPathComponent("Awake.app/Contents/Resources/stale.txt")
         try FileManager.default.createDirectory(at: stale.deletingLastPathComponent(), withIntermediateDirectories: true)
         try "old".write(to: stale, atomically: true, encoding: .utf8)
 
@@ -412,7 +412,7 @@ final class PackagingTests: XCTestCase {
         let r = try run("/bin/bash", [script.path, "--output", "dist"], environment: ["PATH": "/usr/bin:/bin", "HOME": scratch.path], currentDirectory: caller)
 
         XCTAssertEqual(r.status, 0, r.output)
-        let bundle = caller.appendingPathComponent("dist/Insomnia.app")
+        let bundle = caller.appendingPathComponent("dist/Awake.app")
         XCTAssertTrue(FileManager.default.fileExists(atPath: bundle.appendingPathComponent("Contents/Info.plist").path), "written under the caller's directory: \(r.output)")
         let checkout = script.deletingLastPathComponent().deletingLastPathComponent()
         XCTAssertFalse(FileManager.default.fileExists(atPath: checkout.appendingPathComponent("dist").path), "nothing written into the checkout")
@@ -428,7 +428,7 @@ final class PackagingTests: XCTestCase {
     func testBuildAppAlwaysSignsAdHoc() throws {
         let (script, calls) = try patchedBuildApp(recordingCodesign: true)
         let out = scratch.appendingPathComponent("out", isDirectory: true)
-        let bundle = out.appendingPathComponent("Insomnia.app").path
+        let bundle = out.appendingPathComponent("Awake.app").path
 
         for identity in [nil, "Developer ID Application: Example (ABCDE12345)"] as [String?] {
             try? FileManager.default.removeItem(at: calls)
@@ -454,7 +454,7 @@ final class PackagingTests: XCTestCase {
     func testBuildAppRemovesCreatesAndCopiesOnlyThroughItsFixedPathTools() throws {
         let (script, calls) = try patchedBuildApp(recordingCodesign: true)
         let out = scratch.appendingPathComponent("out", isDirectory: true)
-        let app = out.appendingPathComponent("Insomnia.app").path
+        let app = out.appendingPathComponent("Awake.app").path
         let shadow = scratch.appendingPathComponent("shadow", isDirectory: true)
         try FileManager.default.createDirectory(at: shadow, withIntermediateDirectories: true)
         for name in ["rm", "mkdir", "cp", "chmod"] {
@@ -479,7 +479,7 @@ final class PackagingTests: XCTestCase {
         ] {
             XCTAssertTrue(recorded.contains(call), "\(call) not in \(recorded)")
         }
-        XCTAssertTrue(recorded.contains { $0.hasPrefix("cp ") && $0.hasSuffix(" \(app)/Contents/MacOS/Insomnia") }, "\(recorded)")
+        XCTAssertTrue(recorded.contains { $0.hasPrefix("cp ") && $0.hasSuffix(" \(app)/Contents/MacOS/Awake") }, "\(recorded)")
     }
 
     func testBuildAppNeedsAnOutputDirectory() throws {

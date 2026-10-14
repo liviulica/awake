@@ -32,7 +32,7 @@ actor AsyncGate {
     }
 }
 
-/// The throwaway INSOMNIA_HOME the InsomniaTestHome loader set when this
+/// The throwaway AWAKE_HOME the InsomniaTestHome loader set when this
 /// bundle loaded, before XCTest discovered any test. `Log.append` and
 /// `SessionManager.live` read the variable at call time and fall back to
 /// the real ~/Library when it is unset, so it is set at load and never
@@ -48,14 +48,14 @@ enum ProcessTestHome {
         return URL(fileURLWithPath: String(cString: raw), isDirectory: true)
     }()
 
-    /// Where INSOMNIA_HOME points right now, as the app would resolve it.
+    /// Where AWAKE_HOME points right now, as the app would resolve it.
     static var current: String? {
         guard let value = getenv(Paths.environmentKey) else { return nil }
         return String(cString: value)
     }
 }
 
-/// Creates a temp INSOMNIA_HOME and points the process environment at it.
+/// Creates a temp AWAKE_HOME and points the process environment at it.
 /// `destroy()` hands the variable back to `ProcessTestHome` rather than
 /// unsetting it, so nothing falls through to the real ~/Library afterwards.
 final class TempHome {

@@ -375,7 +375,7 @@ final class UIStatusTests: XCTestCase {
         XCTAssertEqual(prompt.title, "Quit and relaunch Chrome?")
         XCTAssertEqual(
             prompt.message,
-            "Insomnia quits Chrome and opens it again with the two flags that stop it throttling hidden windows. Your windows and tabs come back only if Chrome is set to reopen them on startup. If Chrome has not quit after 10 s, nothing is relaunched."
+            "Awake quits Chrome and opens it again with the two flags that stop it throttling hidden windows. Your windows and tabs come back only if Chrome is set to reopen them on startup. If Chrome has not quit after 10 s, nothing is relaunched."
         )
         XCTAssertEqual(RelaunchPrompt.confirmTitle, "Quit and relaunch")
         XCTAssertEqual(RelaunchPrompt.cancelTitle, "Cancel")

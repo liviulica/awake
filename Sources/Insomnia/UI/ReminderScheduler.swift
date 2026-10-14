@@ -62,7 +62,7 @@ final class ReminderScheduler {
         content.title = "5 minutes left"
         content.body = body
         content.sound = .default
-        let request = UNNotificationRequest(identifier: "insomnia.reminder", content: content, trigger: nil)
+        let request = UNNotificationRequest(identifier: "awake.reminder", content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request) { error in
             if let error {
                 Log.error("reminder notification failed: \(error.localizedDescription)")

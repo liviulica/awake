@@ -60,7 +60,7 @@ final class LaunchdBackstopTests: XCTestCase {
         let calls = calls, loaded = loaded, loadedJob = loadedJob, loadedInterval = loadedInterval, bootstrapFails = bootstrapFails, bootoutFails = bootoutFails
         let onBootout = onBootout, onBootstrapped = onBootstrapped, trustedPlistAtBootstrap = trustedPlistAtBootstrap
         let trusted = home.paths.backstopPlist
-        let label = "com.insomnia.backstop"
+        let label = "app.chargingpixels.awake.recovery"
         // What launchd itself enforces on a path argument (proven against a
         // disposable label, see the class comment on the regression test):
         // it must end in `.plist` and hold a readable plist with the label.
@@ -130,9 +130,9 @@ final class LaunchdBackstopTests: XCTestCase {
     /// interval` only for a job with a StartInterval.
     static func printOutput(arguments: [String], runInterval: Int?) -> String {
         """
-        gui/501/com.insomnia.backstop = {
+        gui/501/app.chargingpixels.awake.recovery = {
         \tactive count = 0
-        \tpath = /Users/tester/Library/LaunchAgents/.com.insomnia.backstop.staging/com.insomnia.backstop.candidate-1.plist
+        \tpath = /Users/tester/Library/LaunchAgents/.app.chargingpixels.awake.recovery.staging/app.chargingpixels.awake.recovery.candidate-1.plist
         \ttype = LaunchAgent
         \tstate = not running
 
@@ -188,13 +188,13 @@ final class LaunchdBackstopTests: XCTestCase {
 
     /// An older build's plist: RunAtLoad only, no polling, writable script.
     private func writeStalePlist() throws {
-        try writePlist(["Label": "com.insomnia.backstop", "ProgramArguments": ["/bin/bash", legacyScriptPath], "RunAtLoad": true])
+        try writePlist(["Label": "app.chargingpixels.awake.recovery", "ProgramArguments": ["/bin/bash", legacyScriptPath], "RunAtLoad": true])
     }
 
     /// The polling agent as installed before this layout: bash on a writable
     /// copy in Application Support, no verification.
     private func writeLegacyPollingPlist() throws {
-        try writePlist(["Label": "com.insomnia.backstop", "ProgramArguments": ["/bin/bash", legacyScriptPath], "RunAtLoad": true, "StartInterval": 60])
+        try writePlist(["Label": "app.chargingpixels.awake.recovery", "ProgramArguments": ["/bin/bash", legacyScriptPath], "RunAtLoad": true, "StartInterval": 60])
     }
 
     private var expectedArguments: [String] {
@@ -202,14 +202,14 @@ final class LaunchdBackstopTests: XCTestCase {
     }
 
     func testPlistIsAPersistentPollingAgentThatVerifiesTheBundleFirst() {
-        let target = BackstopTarget(bundle: URL(fileURLWithPath: "/x/Insomnia.app", isDirectory: true), requirement: "cdhash H\"ab\"")
-        let d = LaunchdBackstop.plistDictionary(label: "com.insomnia.backstop", target: target)
-        XCTAssertEqual(d["Label"] as? String, "com.insomnia.backstop")
-        XCTAssertEqual(d["ProgramArguments"] as? [String], ["/bin/sh", "-c", LaunchdBackstop.agentProgram, "sh", "cdhash H\"ab\"", "/x/Insomnia.app"])
+        let target = BackstopTarget(bundle: URL(fileURLWithPath: "/x/Awake.app", isDirectory: true), requirement: "cdhash H\"ab\"")
+        let d = LaunchdBackstop.plistDictionary(label: "app.chargingpixels.awake.recovery", target: target)
+        XCTAssertEqual(d["Label"] as? String, "app.chargingpixels.awake.recovery")
+        XCTAssertEqual(d["ProgramArguments"] as? [String], ["/bin/sh", "-c", LaunchdBackstop.agentProgram, "sh", "cdhash H\"ab\"", "/x/Awake.app"])
         XCTAssertEqual(d["RunAtLoad"] as? Bool, true)
         XCTAssertEqual(d["StartInterval"] as? Int, 60)
         XCTAssertNil(d["StartCalendarInterval"], "a per-deadline trigger would need a reload per extension")
-        XCTAssertEqual(target.script.path, "/x/Insomnia.app/Contents/Resources/backstop.sh")
+        XCTAssertEqual(target.script.path, "/x/Awake.app/Contents/Resources/backstop.sh")
     }
 
     /// The program itself: verify the bundle ($2) against the requirement
@@ -222,7 +222,7 @@ final class LaunchdBackstopTests: XCTestCase {
         let exec = try XCTUnwrap(p.range(of: #"&& exec /bin/bash "$2/Contents/Resources/backstop.sh""#))
         XCTAssertLessThan(verify.lowerBound, exec.lowerBound, "exec must follow a successful verify")
         XCTAssertTrue(p.hasSuffix("; exit 1"), "a failed verification ends the program: \(p)")
-        XCTAssertTrue(p.contains(#">> "$HOME/Library/Logs/Insomnia/insomnia.log""#), "the refusal is logged where the app logs")
+        XCTAssertTrue(p.contains(#">> "$HOME/Library/Logs/Awake/awake.log""#), "the refusal is logged where the app logs")
         XCTAssertFalse(p.contains("'"), "install.sh holds the program in single quotes")
         XCTAssertFalse(p.contains("\n"), "one line, so install.sh's AGENT_PROGRAM line stays one line")
         XCTAssertEqual(p.components(separatedBy: "/bin/bash").count, 2, "exactly one exec target: the sealed script")
@@ -246,9 +246,9 @@ final class LaunchdBackstopTests: XCTestCase {
     /// Running from a bundle pins that bundle; `swift run` falls back to the
     /// installed one so a development build still arms a verifiable agent.
     func testBundleIsTheRunningOneOrElseTheInstalledOne() {
-        let running = URL(fileURLWithPath: "/Applications/Insomnia.app/", isDirectory: true)
-        XCTAssertEqual(LaunchdBackstop.runningOrInstalledBundle(paths: home.paths, running: running).path, "/Applications/Insomnia.app")
-        let debugBinary = URL(fileURLWithPath: "/x/.build/debug/Insomnia")
+        let running = URL(fileURLWithPath: "/Applications/Awake.app/", isDirectory: true)
+        XCTAssertEqual(LaunchdBackstop.runningOrInstalledBundle(paths: home.paths, running: running).path, "/Applications/Awake.app")
+        let debugBinary = URL(fileURLWithPath: "/x/.build/debug/Awake")
         XCTAssertEqual(LaunchdBackstop.runningOrInstalledBundle(paths: home.paths, running: debugBinary), home.paths.appBundle)
         XCTAssertEqual(home.paths.backstopScript.path, home.paths.appBundle.path + "/Contents/Resources/backstop.sh")
     }
@@ -258,13 +258,13 @@ final class LaunchdBackstopTests: XCTestCase {
         try await b.arm()
         // No plist on disk yet, so launchctl is not even asked: write and load.
         XCTAssertEqual(calls.value.map { Array($0[0...2]) }, [
-            ["/bin/launchctl", "bootout", "gui/501/com.insomnia.backstop"],
+            ["/bin/launchctl", "bootout", "gui/501/app.chargingpixels.awake.recovery"],
             ["/bin/launchctl", "bootstrap", "gui/501"],
         ])
         let plist = try plistOnDisk()
         XCTAssertEqual(plist["StartInterval"] as? Int, 60)
         XCTAssertEqual(plist["ProgramArguments"] as? [String], expectedArguments)
-        XCTAssertEqual(try launchAgentsEntries(), ["com.insomnia.backstop.plist"], "candidate left next to the published plist")
+        XCTAssertEqual(try launchAgentsEntries(), ["app.chargingpixels.awake.recovery.plist"], "candidate left next to the published plist")
     }
 
     /// Upgrading from the layout that ran a writable copy: the loaded agent
@@ -327,7 +327,7 @@ final class LaunchdBackstopTests: XCTestCase {
         XCTAssertNotEqual(bootstrap[3], home.paths.backstopPlist.path, "bootstrapped from the trusted path: it was rewritten before launchd loaded it")
         XCTAssertEqual(trustedPlistAtBootstrap.value, [stale], "trusted plist changed before bootstrap succeeded")
         XCTAssertEqual(try plistOnDisk()["StartInterval"] as? Int, 60)
-        XCTAssertEqual(try launchAgentsEntries(), ["com.insomnia.backstop.plist"])
+        XCTAssertEqual(try launchAgentsEntries(), ["app.chargingpixels.awake.recovery.plist"])
     }
 
     /// Regression for the blank timer after Enter: every arm() failed with
@@ -348,7 +348,7 @@ final class LaunchdBackstopTests: XCTestCase {
         try await b.arm()
         XCTAssertEqual(calls.value.map { $0[1] }, ["bootout", "bootstrap"])
         let bootout = try XCTUnwrap(calls.value.first { $0[1] == "bootout" })
-        XCTAssertEqual(Array(bootout.dropFirst()), ["bootout", "gui/501/com.insomnia.backstop"], "boot out by service target: a candidate path is refused when it has no .plist suffix and is pointless once it does")
+        XCTAssertEqual(Array(bootout.dropFirst()), ["bootout", "gui/501/app.chargingpixels.awake.recovery"], "boot out by service target: a candidate path is refused when it has no .plist suffix and is pointless once it does")
         let bootstrap = try XCTUnwrap(calls.value.first { $0[1] == "bootstrap" })
         let candidate = URL(fileURLWithPath: bootstrap[3])
         XCTAssertTrue(candidate.lastPathComponent.hasSuffix(".plist"), "launchctl refuses to bootstrap \(candidate.lastPathComponent) (EIO)")
@@ -357,7 +357,7 @@ final class LaunchdBackstopTests: XCTestCase {
         XCTAssertEqual(stagingDir.deletingLastPathComponent().path, home.paths.launchAgents.path, "the candidate must live one level below the trusted plist so publishing is a rename on the same filesystem")
         XCTAssertEqual(try plistOnDisk()["StartInterval"] as? Int, 60)
         XCTAssertTrue(loaded.value)
-        XCTAssertEqual(try launchAgentsEntries(), ["com.insomnia.backstop.plist"], "staging directory not removed after publishing")
+        XCTAssertEqual(try launchAgentsEntries(), ["app.chargingpixels.awake.recovery.plist"], "staging directory not removed after publishing")
     }
 
     func testArmIsANoopWhenLoadedWithCurrentPlist() async throws {
@@ -365,7 +365,7 @@ final class LaunchdBackstopTests: XCTestCase {
         try await b.arm()
         calls.value = []
         try await b.arm()
-        XCTAssertEqual(calls.value, [["/bin/launchctl", "print", "gui/501/com.insomnia.backstop"]], "a loaded agent was reloaded, opening a window with no agent")
+        XCTAssertEqual(calls.value, [["/bin/launchctl", "print", "gui/501/app.chargingpixels.awake.recovery"]], "a loaded agent was reloaded, opening a window with no agent")
     }
 
     /// Plist current but the job not loaded (logged out and in without the
@@ -430,16 +430,16 @@ final class LaunchdBackstopTests: XCTestCase {
             LaunchdBackstop.LoadedJob(arguments: expectedArguments, runInterval: 60)
         )
         let captured = """
-        gui/501/com.insomnia.backstop = {
+        gui/501/app.chargingpixels.awake.recovery = {
         \tactive count = 0
-        \tpath = /Users/tester/Library/LaunchAgents/com.insomnia.backstop.plist
+        \tpath = /Users/tester/Library/LaunchAgents/app.chargingpixels.awake.recovery.plist
         \ttype = LaunchAgent
         \tstate = not running
 
         \tprogram = /bin/bash
         \targuments = {
         \t\t/bin/bash
-        \t\t/Users/tester/Library/Application Support/Insomnia/backstop.sh
+        \t\t/Users/tester/Library/Application Support/Awake/backstop.sh
         \t}
 
         \tinherited environment = {
@@ -452,7 +452,7 @@ final class LaunchdBackstopTests: XCTestCase {
 
         \tenvironment = {
         \t\tOSLogRateLimit => 64
-        \t\tXPC_SERVICE_NAME => com.insomnia.backstop
+        \t\tXPC_SERVICE_NAME => app.chargingpixels.awake.recovery
         \t}
 
         \tdomain = gui/501 [100022]
@@ -467,7 +467,7 @@ final class LaunchdBackstopTests: XCTestCase {
         \t\ttype = resource
         \t\tstate = active
         \t\tactive count = 1
-        \t\tname = com.insomnia.backstop
+        \t\tname = app.chargingpixels.awake.recovery
         \t}
 
         \tspawn type = daemon (3)
@@ -481,7 +481,7 @@ final class LaunchdBackstopTests: XCTestCase {
         """
         XCTAssertEqual(
             LaunchdBackstop.loadedJob(fromPrint: captured),
-            LaunchdBackstop.LoadedJob(arguments: ["/bin/bash", "/Users/tester/Library/Application Support/Insomnia/backstop.sh"], runInterval: 60)
+            LaunchdBackstop.LoadedJob(arguments: ["/bin/bash", "/Users/tester/Library/Application Support/Awake/backstop.sh"], runInterval: 60)
         )
         let nonPolling = "gui/501/com.apple.webkit.webpushd = {\n\tactive count = 0\n\tpath = /System/Volumes/Preboot/Cryptexes/App/System/Library/LaunchAgents/com.apple.webkit.webpushd.plist\n\ttype = LaunchAgent\n\tstate = not running\n\n\tprogram = /System/Cryptexes/App/usr/libexec/webpushd\n\targuments = {\n\t\t/System/Cryptexes/App/usr/libexec/webpushd\n\t\t--machServiceName\n\t\tcom.apple.webkit.webpushd.service\n\t}\n\n\tstderr path = /dev/null\n"
         XCTAssertEqual(
@@ -492,7 +492,7 @@ final class LaunchdBackstopTests: XCTestCase {
             LaunchdBackstop.loadedJob(fromPrint: "x = {\n\targuments = {\n\t\t/bin/sh\n\t}\n\trun interval = 1 minute\n}\n")?.runInterval, .some(nil),
             "an interval in another form reads as none"
         )
-        XCTAssertNil(LaunchdBackstop.loadedJob(fromPrint: "gui/501/com.insomnia.backstop = {\n\tprogram = /bin/sh\n\trun interval = 60 seconds\n}\n"), "no arguments block")
+        XCTAssertNil(LaunchdBackstop.loadedJob(fromPrint: "gui/501/app.chargingpixels.awake.recovery = {\n\tprogram = /bin/sh\n\trun interval = 60 seconds\n}\n"), "no arguments block")
         XCTAssertNil(LaunchdBackstop.loadedJob(fromPrint: "x = {\n\targuments = {\n\t\t/bin/sh\n"), "no closing line")
         XCTAssertNil(LaunchdBackstop.loadedJob(fromPrint: "x = {\n\targuments = {\n\t\t/bin/sh\n\tprogram = /bin/sh\n\t}\n}\n"), "a line that is not an argument")
         XCTAssertNil(LaunchdBackstop.loadedJob(fromPrint: "x = {\n\targuments = {\n\t\t/bin/sh\n\t}\n\targuments = {\n\t\t/bin/zsh\n\t}\n}\n"), "two arguments blocks")
@@ -621,7 +621,7 @@ final class LaunchdBackstopTests: XCTestCase {
         XCTAssertEqual(calls.value.map { $0[1] }, ["bootout", "bootstrap"], "old job accepted as the polling agent")
         XCTAssertEqual(try plistOnDisk()["StartInterval"] as? Int, 60)
         XCTAssertTrue(loaded.value)
-        XCTAssertEqual(try launchAgentsEntries(), ["com.insomnia.backstop.plist"], "leftover candidate not swept once writes worked again")
+        XCTAssertEqual(try launchAgentsEntries(), ["app.chargingpixels.awake.recovery.plist"], "leftover candidate not swept once writes worked again")
     }
 
     /// launchd loaded the desired job but the trusted plist could not be
@@ -646,7 +646,7 @@ final class LaunchdBackstopTests: XCTestCase {
         XCTAssertEqual(calls.value.map { $0[1] }, ["bootout", "bootstrap"])
         XCTAssertEqual(try plistOnDisk()["StartInterval"] as? Int, 60)
         XCTAssertTrue(loaded.value)
-        XCTAssertEqual(try launchAgentsEntries(), ["com.insomnia.backstop.plist"])
+        XCTAssertEqual(try launchAgentsEntries(), ["app.chargingpixels.awake.recovery.plist"])
     }
 
     func testArmFailsWhenBootstrapFails() async throws {

@@ -10,7 +10,7 @@ private let backslash = "\\"
 /// Behavioural tests for scripts/backstop.sh and scripts/uninstall.sh.
 ///
 /// Each test runs a private COPY of the production script against a
-/// throwaway INSOMNIA_HOME. The copy has its fixed tool-path constants
+/// throwaway AWAKE_HOME. The copy has its fixed tool-path constants
 /// (sudo, pmset, ps, kill, sysctl, pgrep, pkill, osascript, launchctl,
 /// defaults) and its app-bundle / sudoers paths rewritten to point inside
 /// the fixture, so nothing privileged runs, no real process is signaled, no
@@ -114,7 +114,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(fx.calls(), [
             "sudo -n \(fx.fakePmset) -a disablesleep 0",
             "sudo -n \(fx.fakePmset) -b lowpowermode 0",
-            "Insomnia --resume-frozen 2 < 4242 \(started) 17 \(fx.bootUUID)",
+            "Awake --resume-frozen 2 < 4242 \(started) 17 \(fx.bootUUID)",
         ], "an entry with microseconds is resumed by the app binary, never by ps and kill")
         let s = try fx.stateJSON()
         XCTAssertEqual(s["sleepDisabledByUs"] as? Bool, false)
@@ -142,7 +142,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertNotEqual(r.status, 0)
         XCTAssertEqual(fx.calls(), [
             "sudo -n \(fx.fakePmset) -a disablesleep 0",
-            "Insomnia --resume-frozen 2 < 111 \(started) 1 \(fx.bootUUID); 222 \(started) 2 \(fx.bootUUID)",
+            "Awake --resume-frozen 2 < 111 \(started) 1 \(fx.bootUUID); 222 \(started) 2 \(fx.bootUUID)",
         ], "both entries in one call, no ps and no kill")
         let s = try fx.stateJSON()
         XCTAssertEqual(s["sleepDisabledByUs"] as? Bool, false, "an unrelated stuck pid must not hold sleep disabled")
@@ -201,7 +201,7 @@ final class RecoveryScriptTests: XCTestCase {
         let r = try fx.run(fx.backstop)
 
         XCTAssertEqual(r.status, 0, r.stderr)
-        XCTAssertFalse(fx.calls().contains { $0.hasPrefix("kill") || $0.hasPrefix("Insomnia") }, "\(fx.calls())")
+        XCTAssertFalse(fx.calls().contains { $0.hasPrefix("kill") || $0.hasPrefix("Awake") }, "\(fx.calls())")
         XCTAssertFalse(fx.calls().contains("ps -o lstart=,stat=,uid= -p 304"), "another boot needs no lookup")
         let s = try fx.stateJSON()
         XCTAssertEqual((s["frozenProcesses"] as? [Any])?.count, 0)
@@ -220,7 +220,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(s["sleepDisabledByUs"] as? Bool, false, "sleep is still restored")
         XCTAssertEqual(s["savedOutputVolume"] as? Double, 0.5)
         XCTAssertEqual(s["savedMuted"] as? Bool, true)
-        XCTAssertTrue(fx.log().contains("Open Insomnia"), fx.log())
+        XCTAssertTrue(fx.log().contains("Open Awake"), fx.log())
         XCTAssertFalse(fx.log().contains("journal cleared"), fx.log())
     }
 
@@ -287,7 +287,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(s["sleepDisabledByUs"] as? Bool, false)
         XCTAssertEqual(s["savedDisplayBrightness"] as? Double, 0.75)
         XCTAssertEqual(s["savedKeyboardBrightness"] as? Double, 0.25)
-        XCTAssertTrue(fx.log().contains("Open Insomnia"), fx.log())
+        XCTAssertTrue(fx.log().contains("Open Awake"), fx.log())
         XCTAssertTrue(fx.log().contains("display brightness"), fx.log())
         XCTAssertTrue(fx.log().contains("keyboard backlight"), fx.log())
         XCTAssertFalse(fx.log().contains("journal cleared"), fx.log())
@@ -346,7 +346,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(s["savedKeyboardBrightness"] as? Double, 0.25)
         XCTAssertEqual(s["keyboardRestoreRefused"] as? Bool, true)
         XCTAssertTrue(fx.log().contains("saved display brightness,saved keyboard backlight kept: the app's private-call guard refused that restore on this macOS"), fx.log())
-        XCTAssertFalse(fx.log().contains("Open Insomnia"), fx.log())
+        XCTAssertFalse(fx.log().contains("Open Awake"), fx.log())
         XCTAssertFalse(fx.log().contains("[error]"), fx.log())
     }
 
@@ -385,7 +385,7 @@ final class RecoveryScriptTests: XCTestCase {
         let r = try fx.run(fx.backstop)
 
         XCTAssertNotEqual(r.status, 0, r.stderr + fx.log())
-        XCTAssertTrue(fx.log().contains("saved keyboard backlight can only be restored by the app; kept. Open Insomnia"), fx.log())
+        XCTAssertTrue(fx.log().contains("saved keyboard backlight can only be restored by the app; kept. Open Awake"), fx.log())
         XCTAssertTrue(fx.log().contains("saved display brightness kept: the app's private-call guard refused"), fx.log())
         XCTAssertEqual(try fx.stateJSON()["savedKeyboardBrightness"] as? Double, 0.4)
     }
@@ -1173,7 +1173,7 @@ final class RecoveryScriptTests: XCTestCase {
         let r = try fx.run(fx.uninstall, ["--purge"])
 
         XCTAssertEqual(r.status, 0, r.stderr + r.stdout)
-        XCTAssertTrue(r.stdout.contains("Left \(fx.config.path): it is not a regular file, so Insomnia did not write it."), r.stdout)
+        XCTAssertTrue(r.stdout.contains("Left \(fx.config.path): it is not a regular file, so Awake did not write it."), r.stdout)
         XCTAssertTrue(fx.exists(fx.config))
         XCTAssertFalse(fx.exists(fx.app))
     }
@@ -1190,13 +1190,13 @@ final class RecoveryScriptTests: XCTestCase {
         let victimDir = fx.root.appendingPathComponent("victim", isDirectory: true)
         try FileManager.default.createDirectory(at: victimDir, withIntermediateDirectories: true)
         let victim = victimDir.appendingPathComponent(name)
-        try "not Insomnia's".write(to: victim, atomically: true, encoding: .utf8)
+        try "not Awake's".write(to: victim, atomically: true, encoding: .utf8)
 
-        let r = try fx.run(fx.uninstall, ["--purge"], extraEnvironment: ["INSOMNIA_HOME": home.path])
+        let r = try fx.run(fx.uninstall, ["--purge"], extraEnvironment: ["AWAKE_HOME": home.path])
 
         XCTAssertEqual(r.status, 0, r.stderr + r.stdout)
         XCTAssertFalse(fx.exists(home.appendingPathComponent(name)))
-        XCTAssertEqual(try String(contentsOf: victim, encoding: .utf8), "not Insomnia's")
+        XCTAssertEqual(try String(contentsOf: victim, encoding: .utf8), "not Awake's")
     }
 
     /// With the journal still dirty the uninstall stops as before, names the
@@ -1288,7 +1288,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertTrue(fx.exists(fx.home), "--purge must not run before recovery is verified")
         XCTAssertEqual(try fx.stateJSON()["savedOutputVolume"] as? Double, 0.25)
         XCTAssertTrue(r.stderr.contains("saved audio"), r.stderr)
-        XCTAssertTrue(r.stderr.contains("open Insomnia.app"), r.stderr)
+        XCTAssertTrue(r.stderr.contains("open Awake.app"), r.stderr)
     }
 
     /// A brightness the app kept after a refused restore does not stop the
@@ -1350,7 +1350,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertTrue(fx.exists(fx.home), "--purge must not run before recovery is verified")
         XCTAssertEqual(try fx.stateJSON()["savedDisplayBrightness"] as? Double, 0.6)
         XCTAssertTrue(r.stderr.contains("display brightness"), r.stderr)
-        XCTAssertTrue(r.stderr.contains("open Insomnia.app"), r.stderr)
+        XCTAssertTrue(r.stderr.contains("open Awake.app"), r.stderr)
     }
 
     /// Uninstall's own journal check sees App Nap entries the backstop
@@ -1562,7 +1562,7 @@ final class RecoveryScriptTests: XCTestCase {
 
         XCTAssertNotEqual(r.status, 0)
         XCTAssertLessThan(elapsed, 30, "one bounded print, not the fake's 60 s hang")
-        XCTAssertTrue(r.stderr.contains("'launchctl print' did not answer within 5s; cannot tell whether com.insomnia.backstop is still loaded"), r.stderr)
+        XCTAssertTrue(r.stderr.contains("'launchctl print' did not answer within 5s; cannot tell whether app.chargingpixels.awake.recovery is still loaded"), r.stderr)
         XCTAssertTrue(fx.calls().contains("launchctl FD9-OPEN"), "\(fx.calls())")
         XCTAssertTrue(fx.hungProcessGone("launchctl", within: 0))
         XCTAssertFalse(fx.calls().contains { $0.hasPrefix("sudo rm") }, "\(fx.calls())")
@@ -1590,7 +1590,7 @@ final class RecoveryScriptTests: XCTestCase {
 
         XCTAssertNotEqual(r.status, 0)
         XCTAssertLessThan(elapsed, 30)
-        XCTAssertTrue(r.stderr.contains("pgrep did not answer within 5s; treating Insomnia as running."), r.stderr)
+        XCTAssertTrue(r.stderr.contains("pgrep did not answer within 5s; treating Awake as running."), r.stderr)
         XCTAssertTrue(fx.calls().contains("pgrep FD9-OPEN"), "\(fx.calls())")
         XCTAssertTrue(fx.hungProcessGone("pgrep", within: 0))
         XCTAssertFalse(fx.calls().contains { $0.hasPrefix("sudo") || $0.hasPrefix("launchctl") }, "\(fx.calls())")
@@ -1685,7 +1685,7 @@ final class RecoveryScriptTests: XCTestCase {
             let label = installedCopy ? "installed copy" : "no installed copy"
             XCTAssertEqual(r.status, 0, "\(label): \(r.stderr) \(f.log())")
             XCTAssertFalse(f.calls().contains("installed backstop --force"), "\(label): \(f.calls())")
-            XCTAssertTrue(f.calls().contains("Insomnia --resume-frozen 2 < 5311 1789388423 11 \(f.bootUUID)"), "\(label): \(f.calls())")
+            XCTAssertTrue(f.calls().contains("Awake --resume-frozen 2 < 5311 1789388423 11 \(f.bootUUID)"), "\(label): \(f.calls())")
             XCTAssertFalse(f.exists(f.app), label)
             XCTAssertFalse(f.exists(f.state), label)
         }
@@ -1708,7 +1708,7 @@ final class RecoveryScriptTests: XCTestCase {
 
             let label = version ?? "no key"
             XCTAssertNotEqual(r.status, 0, label)
-            XCTAssertEqual(f.calls().filter { $0.hasPrefix("Insomnia ") }, [], "\(label): the binary ran")
+            XCTAssertEqual(f.calls().filter { $0.hasPrefix("Awake ") }, [], "\(label): the binary ran")
             XCTAssertTrue(f.log().contains("pid 5311 needs the app binary for its microsecond identity check, but \(f.appInfo.path) declares InsomniaResumeFrozenVersion"), "\(label): \(f.log())")
             XCTAssertTrue(r.stderr.contains("Uninstall stopped BEFORE removing anything"), "\(label): \(r.stderr)")
             XCTAssertTrue(r.stderr.contains("frozen processes are still journaled"), "\(label): \(r.stderr)")
@@ -1800,7 +1800,7 @@ final class RecoveryScriptTests: XCTestCase {
     func testUninstallPurgeRemovesOwnedFilesAndEmptyDirectoriesOnly() throws {
         try fx.installMachinery()
         try fx.writeState(#"{"sleepDisabledByUs":false,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false}"#)
-        for rotated in ["Logs/handoffs.log", "Logs/insomnia.log.1", "Logs/handoffs.log.1"] {
+        for rotated in ["Logs/handoffs.log", "Logs/awake.log.1", "Logs/handoffs.log.1"] {
             try "older lines\n".write(to: fx.home.appendingPathComponent(rotated), atomically: true, encoding: .utf8)
         }
         try fx.writeMarkerBackstop(at: fx.legacyBackstop, name: "legacy")
@@ -1809,7 +1809,7 @@ final class RecoveryScriptTests: XCTestCase {
 
         XCTAssertEqual(r.status, 0, r.stderr + r.stdout)
         for gone in [fx.state, fx.config, fx.logFile, fx.home.appendingPathComponent("Logs/handoffs.log"),
-                     fx.home.appendingPathComponent("Logs/insomnia.log.1"), fx.home.appendingPathComponent("Logs/handoffs.log.1"),
+                     fx.home.appendingPathComponent("Logs/awake.log.1"), fx.home.appendingPathComponent("Logs/handoffs.log.1"),
                      fx.installedBackstop, fx.legacyBackstop, fx.plist, fx.app, fx.sudoers] {
             XCTAssertFalse(fx.exists(gone), gone.path)
         }
@@ -1818,11 +1818,11 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertTrue(fx.exists(fx.lock), "the lock file is the documented leftover")
         XCTAssertEqual(try fx.contents(of: fx.home), [".recovery.lock"], "nothing but the lock remains")
         XCTAssertTrue(fx.exists(fx.appsDir))
-        XCTAssertTrue(fx.exists(fx.bin), "nothing outside the Insomnia tree is deleted")
+        XCTAssertTrue(fx.exists(fx.bin), "nothing outside the Awake tree is deleted")
     }
 
     func testUninstallPurgeNeverDeletesFilesItDidNotCreate() throws {
-        // INSOMNIA_HOME pointing at a directory that also holds other things:
+        // AWAKE_HOME pointing at a directory that also holds other things:
         // the exact owned files go, everything else and the directories stay.
         try fx.installMachinery()
         try fx.writeState(#"{"sleepDisabledByUs":false,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false}"#)
@@ -1868,17 +1868,17 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(r.status, 0, r.stderr + r.stdout)
         XCTAssertFalse(fx.exists(fx.app))
         XCTAssertEqual(try fx.contents(of: fx.appsDir), leftovers.keptInApps, "only install.sh's own leftovers are removed")
-        XCTAssertTrue(fx.exists(leftovers.linkTarget.appendingPathComponent("Insomnia.app/Contents/MacOS/Insomnia")), "a symlink's target is never touched")
+        XCTAssertTrue(fx.exists(leftovers.linkTarget.appendingPathComponent("Awake.app/Contents/MacOS/Awake")), "a symlink's target is never touched")
         XCTAssertTrue(fx.calls().contains("kill -0 4242") && fx.calls().contains("kill -0 4343"), "asked through $KILL: \(fx.calls())")
-        XCTAssertTrue(r.stdout.contains("kept \(fx.appsDir.path)/.Insomnia.app.staging.4343.BBBBBB"), r.stdout)
+        XCTAssertTrue(r.stdout.contains("kept \(fx.appsDir.path)/.Awake.app.staging.4343.BBBBBB"), r.stdout)
         let launchAgents = fx.plist.deletingLastPathComponent()
-        XCTAssertEqual(try fx.contents(of: launchAgents), [".com.insomnia.backstop.staging", "com.other.agent.plist"])
-        XCTAssertEqual(try fx.contents(of: launchAgents.appendingPathComponent(".com.insomnia.backstop.staging")), ["notes.txt"], "a file that is not a candidate stays, and so does its directory")
+        XCTAssertEqual(try fx.contents(of: launchAgents), [".app.chargingpixels.awake.recovery.staging", "com.other.agent.plist"])
+        XCTAssertEqual(try fx.contents(of: launchAgents.appendingPathComponent(".app.chargingpixels.awake.recovery.staging")), ["notes.txt"], "a file that is not a candidate stays, and so does its directory")
 
         // With no foreign file left, the staging directory itself goes.
-        try FileManager.default.removeItem(at: launchAgents.appendingPathComponent(".com.insomnia.backstop.staging/notes.txt"))
+        try FileManager.default.removeItem(at: launchAgents.appendingPathComponent(".app.chargingpixels.awake.recovery.staging/notes.txt"))
         try fx.installMachinery()
-        try "<plist/>".write(to: launchAgents.appendingPathComponent(".com.insomnia.backstop.staging/com.insomnia.backstop.candidate-77.plist"), atomically: true, encoding: .utf8)
+        try "<plist/>".write(to: launchAgents.appendingPathComponent(".app.chargingpixels.awake.recovery.staging/app.chargingpixels.awake.recovery.candidate-77.plist"), atomically: true, encoding: .utf8)
         let again = try fx.run(fx.uninstall)
         XCTAssertEqual(again.status, 0, again.stderr + again.stdout)
         XCTAssertEqual(try fx.contents(of: launchAgents), ["com.other.agent.plist"])
@@ -1902,14 +1902,14 @@ final class RecoveryScriptTests: XCTestCase {
             }
             let launchAgents = fx.plist.deletingLastPathComponent()
             let before = try fx.contents(of: launchAgents)
-            let staged = try fx.contents(of: launchAgents.appendingPathComponent(".com.insomnia.backstop.staging"))
+            let staged = try fx.contents(of: launchAgents.appendingPathComponent(".app.chargingpixels.awake.recovery.staging"))
 
             let r = try fx.run(fx.uninstall)
 
             XCTAssertEqual(r.status, 1, "\(stop): \(r.stderr + r.stdout)")
-            XCTAssertEqual(try fx.contents(of: fx.appsDir), (leftovers.removable + leftovers.keptInApps + ["Insomnia.app"]).sorted(), stop)
+            XCTAssertEqual(try fx.contents(of: fx.appsDir), (leftovers.removable + leftovers.keptInApps + ["Awake.app"]).sorted(), stop)
             XCTAssertEqual(try fx.contents(of: launchAgents), before, stop)
-            XCTAssertEqual(try fx.contents(of: launchAgents.appendingPathComponent(".com.insomnia.backstop.staging")), staged, stop)
+            XCTAssertEqual(try fx.contents(of: launchAgents.appendingPathComponent(".app.chargingpixels.awake.recovery.staging")), staged, stop)
             XCTAssertFalse(fx.calls().contains { $0.hasPrefix("kill ") }, "\(stop): \(fx.calls())")
         }
     }
@@ -1920,24 +1920,24 @@ final class RecoveryScriptTests: XCTestCase {
     /// directory: candidate plists of install.sh, of the app and of older
     /// builds, plus another agent's plist and a stray file.
     private func writeInstallerLeftovers() throws -> (removable: [String], keptInApps: [String], linkTarget: URL) {
-        let removable = [".Insomnia.app.previous", ".Insomnia.app.staging.4242.AAAAAA"]
-        let live = ".Insomnia.app.staging.4343.BBBBBB"
-        let unlike = [".Insomnia.app.staging.4242", ".Insomnia.app.staging.4242.AAAAAA.old", ".Insomnia.app.staging.x4242.AAAAAA",
-                      ".Insomnia.app.previous.old", "Other.app", ".Other.app.previous"]
-        let link = ".Insomnia.app.staging.4242.CCCCCC"
+        let removable = [".Awake.app.previous", ".Awake.app.staging.4242.AAAAAA"]
+        let live = ".Awake.app.staging.4343.BBBBBB"
+        let unlike = [".Awake.app.staging.4242", ".Awake.app.staging.4242.AAAAAA.old", ".Awake.app.staging.x4242.AAAAAA",
+                      ".Awake.app.previous.old", "Other.app", ".Other.app.previous"]
+        let link = ".Awake.app.staging.4242.CCCCCC"
         for name in removable + [live] + unlike {
-            try fx.writeBundle(at: fx.appsDir.appendingPathComponent(name).appendingPathComponent("Insomnia.app"), marker: "left")
+            try fx.writeBundle(at: fx.appsDir.appendingPathComponent(name).appendingPathComponent("Awake.app"), marker: "left")
         }
         let elsewhere = fx.root.appendingPathComponent("elsewhere", isDirectory: true)
-        try fx.writeBundle(at: elsewhere.appendingPathComponent("Insomnia.app"), marker: "not the installer's")
+        try fx.writeBundle(at: elsewhere.appendingPathComponent("Awake.app"), marker: "not the installer's")
         try FileManager.default.createSymbolicLink(at: fx.appsDir.appendingPathComponent(link), withDestinationURL: elsewhere)
 
         let launchAgents = fx.plist.deletingLastPathComponent()
-        let staging = launchAgents.appendingPathComponent(".com.insomnia.backstop.staging", isDirectory: true)
+        let staging = launchAgents.appendingPathComponent(".app.chargingpixels.awake.recovery.staging", isDirectory: true)
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
-        for url in [staging.appendingPathComponent("com.insomnia.backstop.candidate-4242.plist"),
-                    staging.appendingPathComponent("com.insomnia.backstop.candidate-0F2C9A54-1B7E-4D7A-9C11-5E3B2A7D9F00.plist"),
-                    launchAgents.appendingPathComponent("com.insomnia.backstop.candidate-0F2C9A54-1B7E-4D7A-9C11-5E3B2A7D9F01"),
+        for url in [staging.appendingPathComponent("app.chargingpixels.awake.recovery.candidate-4242.plist"),
+                    staging.appendingPathComponent("app.chargingpixels.awake.recovery.candidate-0F2C9A54-1B7E-4D7A-9C11-5E3B2A7D9F00.plist"),
+                    launchAgents.appendingPathComponent("app.chargingpixels.awake.recovery.candidate-0F2C9A54-1B7E-4D7A-9C11-5E3B2A7D9F01"),
                     staging.appendingPathComponent("notes.txt"),
                     launchAgents.appendingPathComponent("com.other.agent.plist")] {
             try "<plist/>".write(to: url, atomically: true, encoding: .utf8)
@@ -1978,7 +1978,7 @@ final class RecoveryScriptTests: XCTestCase {
         try fx.writeState(#"{"sleepDisabledByUs":false,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false}"#)
         try fx.writeMarkerBackstop(at: fx.installedBackstop, name: "sealed")
         let shared = fx.root.appendingPathComponent("shared-tmp", isDirectory: true)
-        let unpacked = shared.appendingPathComponent("Insomnia-0.1.0-macos", isDirectory: true)
+        let unpacked = shared.appendingPathComponent("Awake-0.1.0-macos", isDirectory: true)
         try FileManager.default.createDirectory(at: unpacked, withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: fx.uninstall, to: unpacked.appendingPathComponent("uninstall.sh"))
         try fx.writeMarkerBackstop(at: shared.appendingPathComponent("scripts/backstop.sh"), name: "planted")
@@ -2003,7 +2003,7 @@ final class RecoveryScriptTests: XCTestCase {
     /// it, and in a zip folder unpacked inside a checkout, which has
     /// Package.swift above it but is not scripts/.
     func testUninstallFromAZipRunsTheSealedCopyNotABackstopPlantedBesideIt() throws {
-        for folder in ["shared-tmp/Insomnia-0.1.0-macos", "shared-tmp/scripts", "repo/Insomnia-0.1.0-macos"] {
+        for folder in ["shared-tmp/Awake-0.1.0-macos", "shared-tmp/scripts", "repo/Awake-0.1.0-macos"] {
             fx.destroy()
             fx = try ScriptFixture()
             try fx.installMachinery()
@@ -2039,7 +2039,7 @@ final class RecoveryScriptTests: XCTestCase {
         try fx.writeState(#"{"sleepDisabledByUs":true,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false}"#)
         try FileManager.default.removeItem(at: fx.installedBackstop)
         try fx.writeMarkerBackstop(at: fx.legacyBackstop, name: "legacy")
-        let unpacked = fx.root.appendingPathComponent("shared-tmp/Insomnia-0.1.0-macos", isDirectory: true)
+        let unpacked = fx.root.appendingPathComponent("shared-tmp/Awake-0.1.0-macos", isDirectory: true)
         try FileManager.default.createDirectory(at: unpacked, withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: fx.uninstall, to: unpacked.appendingPathComponent("uninstall.sh"))
         try fx.writeMarkerBackstop(at: unpacked.appendingPathComponent("backstop.sh"), name: "planted")
@@ -2204,7 +2204,7 @@ final class RecoveryScriptTests: XCTestCase {
     func testUninstallPurgeKeepsADirectoryNamedLikeARotatedLogAndFinishes() throws {
         try fx.installMachinery()
         try fx.writeState(#"{"sleepDisabledByUs":false,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false}"#)
-        let rotatedDir = fx.home.appendingPathComponent("Logs/insomnia.log.1", isDirectory: true)
+        let rotatedDir = fx.home.appendingPathComponent("Logs/awake.log.1", isDirectory: true)
         try FileManager.default.createDirectory(at: rotatedDir, withIntermediateDirectories: true)
         try "theirs".write(to: rotatedDir.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
         try "older lines\n".write(to: fx.home.appendingPathComponent("Logs/handoffs.log.1"), atomically: true, encoding: .utf8)
@@ -2212,7 +2212,7 @@ final class RecoveryScriptTests: XCTestCase {
         let r = try fx.run(fx.uninstall, ["--purge"])
 
         XCTAssertEqual(r.status, 0, r.stderr + r.stdout)
-        XCTAssertTrue(r.stdout.contains("Left \(rotatedDir.path): it is not a regular file, so Insomnia did not write it."), r.stdout)
+        XCTAssertTrue(r.stdout.contains("Left \(rotatedDir.path): it is not a regular file, so Awake did not write it."), r.stdout)
         XCTAssertTrue(r.stdout.hasSuffix("Done.\n"), r.stdout)
         XCTAssertTrue(fx.exists(rotatedDir.appendingPathComponent("a.txt")))
         for gone in [fx.state, fx.config, fx.logFile, fx.home.appendingPathComponent("Logs/handoffs.log.1")] {
@@ -3048,7 +3048,7 @@ final class RecoveryScriptTests: XCTestCase {
             let label = immutable ? "immutable" : "rename fails"
             XCTAssertNotEqual(r.status, 0, label)
             XCTAssertTrue(f.calls().contains("sudo -n \(f.fakePmset) -a disablesleep 0"), "\(label): \(f.calls())")
-            XCTAssertTrue(f.calls().contains { $0.hasPrefix("Insomnia --resume-frozen") && $0.contains("4242 1789388423 17") }, "\(label): \(f.calls())")
+            XCTAssertTrue(f.calls().contains { $0.hasPrefix("Awake --resume-frozen") && $0.contains("4242 1789388423 17") }, "\(label): \(f.calls())")
             XCTAssertFalse(f.calls().contains { $0.contains("lowpowermode") }, "\(label): \(f.calls())")
             let log = f.log()
             XCTAssertTrue(log.contains("could not publish this boot for the kept display entry's record to \(f.state.path); Low Power Mode left on, keeping journal entry for retry"), log)
@@ -3194,7 +3194,7 @@ final class RecoveryScriptTests: XCTestCase {
         let r = try fx.run(fx.backstop)
 
         XCTAssertEqual(r.status, 0, r.stderr)
-        XCTAssertEqual(fx.calls(), ["Insomnia --resume-frozen 2 < 5100 \(started) 654321 \(fx.bootUUID)"])
+        XCTAssertEqual(fx.calls(), ["Awake --resume-frozen 2 < 5100 \(started) 654321 \(fx.bootUUID)"])
         XCTAssertEqual((try fx.stateJSON()["frozenProcesses"] as? [Any])?.count, 0)
         XCTAssertEqual(try fx.stateJSON()["dockerFrozen"] as? Bool, false)
         XCTAssertTrue(fx.log().contains("SIGCONT sent to pid 5100 by the app binary"), fx.log())
@@ -3211,7 +3211,7 @@ final class RecoveryScriptTests: XCTestCase {
         let r = try fx.run(fx.backstop)
 
         XCTAssertEqual(r.status, 0, r.stderr)
-        XCTAssertEqual(fx.calls(), ["Insomnia --resume-frozen 2 < 5101 \(started) 0 \(fx.bootUUID)"])
+        XCTAssertEqual(fx.calls(), ["Awake --resume-frozen 2 < 5101 \(started) 0 \(fx.bootUUID)"])
     }
 
     func testAppBinaryGoneClearsTheEntryWithoutSignal() throws {
@@ -3301,7 +3301,7 @@ final class RecoveryScriptTests: XCTestCase {
             let r = try fx.run(fx.backstop)
 
             XCTAssertNotEqual(r.status, 0, label)
-            XCTAssertEqual(fx.calls().filter { !$0.hasPrefix("Insomnia --resume-frozen") }, [], label)
+            XCTAssertEqual(fx.calls().filter { !$0.hasPrefix("Awake --resume-frozen") }, [], label)
             XCTAssertEqual(try onlyFrozenEntry()?["pid"] as? Int, 5105, label)
             XCTAssertEqual(try fx.stateJSON()["dockerFrozen"] as? Bool, true, label)
             XCTAssertTrue(fx.exists(fx.session), label)
@@ -3355,7 +3355,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(fx.calls(), [
             "ps -o lstart=,stat=,uid= -p 5109",
             "kill -CONT 5109",
-            "Insomnia --resume-frozen 2 < 5108 \(started) 8 \(fx.bootUUID)",
+            "Awake --resume-frozen 2 < 5108 \(started) 8 \(fx.bootUUID)",
         ])
         XCTAssertEqual((try fx.stateJSON()["frozenProcesses"] as? [Any])?.count, 0)
     }
@@ -3385,7 +3385,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertNotEqual(r.status, 0)
         XCTAssertEqual(fx.calls(), [
             "ps -o lstart=,stat=,uid= -p 5204",
-            "Insomnia --resume-frozen 2 < 5201 \(started) 1 \(fx.bootUUID); 5203 \(started) 3 \(fx.bootUUID); 5205 \(started) 5 \(fx.bootUUID); 5206 \(started) 6 \(fx.bootUUID)",
+            "Awake --resume-frozen 2 < 5201 \(started) 1 \(fx.bootUUID); 5203 \(started) 3 \(fx.bootUUID); 5205 \(started) 5 \(fx.bootUUID); 5206 \(started) 6 \(fx.bootUUID)",
         ])
         let frozen = try XCTUnwrap(try fx.stateJSON()["frozenProcesses"] as? [[String: Any]])
         XCTAssertEqual(frozen.map { $0["pid"] as? Int }, [5201, 5202, 5205], "journal order, not settle order")
@@ -3470,7 +3470,7 @@ final class RecoveryScriptTests: XCTestCase {
             fx.clearCalls()
             let r = try run()
             XCTAssertEqual(r.status, 0, r.stderr + fx.log())
-            XCTAssertEqual(fx.calls(), ["Insomnia --resume-frozen 2 < 5304 1789388423 4 \(fx.bootUUID)"])
+            XCTAssertEqual(fx.calls(), ["Awake --resume-frozen 2 < 5304 1789388423 4 \(fx.bootUUID)"])
             let fd9 = try String(contentsOf: fx.root.appendingPathComponent("insomnia.fd9"), encoding: .utf8)
             XCTAssertEqual(fd9.trimmingCharacters(in: .whitespacesAndNewlines), String(lockInode), "the binary did not get the lock on fd 9")
         }
@@ -3501,7 +3501,7 @@ final class RecoveryScriptTests: XCTestCase {
             try? Data().write(to: release)
             shell.wait()
         }
-        let call = "Insomnia --resume-frozen 31 < 5309 1789388423 9 \(fx.bootUUID)"
+        let call = "Awake --resume-frozen 31 < 5309 1789388423 9 \(fx.bootUUID)"
         guard waitUntil(10, { self.fx.calls().contains(call) }) else {
             return XCTFail("the binary never started, so the backstop was not signaled: \(fx.calls()) \(fx.log())")
         }
@@ -3513,11 +3513,11 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(status & 0x7f, SIGKILL, "the backstop did not end by SIGKILL (wait status \(status))")
 
         XCTAssertFalse(try fx.lockIsFree(), "the lock was free while the binary of a killed run could still send SIGCONT")
-        XCTAssertFalse(fx.calls().contains("Insomnia released"))
+        XCTAssertFalse(fx.calls().contains("Awake released"))
 
         try Data().write(to: release)
         XCTAssertTrue(try fx.waitUntilLockIsFree(10), "the lock stayed held after the binary ended")
-        XCTAssertTrue(fx.calls().contains("Insomnia released"))
+        XCTAssertTrue(fx.calls().contains("Awake released"))
         XCTAssertEqual(try onlyFrozenEntry()?["pid"] as? Int, 5309, "the killed run published nothing")
     }
 
@@ -3538,7 +3538,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertGreaterThan(fx.slowPolls(), 0, "the script polled through the slow sleep")
         XCTAssertGreaterThan(elapsed, 4, "the binary had its whole limit")
         XCTAssertLessThan(elapsed, 9, "4 s, up to a second and a slow poll late, and the slow poll that sees it end")
-        XCTAssertEqual(fx.calls(), ["Insomnia --resume-frozen 5 < 5311 1789388423 11 \(fx.bootUUID)"])
+        XCTAssertEqual(fx.calls(), ["Awake --resume-frozen 5 < 5311 1789388423 11 \(fx.bootUUID)"])
         XCTAssertEqual(try onlyFrozenEntry()?["pid"] as? Int, 5311)
         XCTAssertTrue(try fx.lockIsFree())
         let log = fx.log()
@@ -3775,7 +3775,7 @@ final class RecoveryScriptTests: XCTestCase {
         let r = try fx.run(fx.uninstall, ["--purge"])
 
         XCTAssertNotEqual(r.status, 0)
-        XCTAssertTrue(fx.calls().contains("launchctl print gui/\(fx.uid)/com.insomnia.backstop"), "\(fx.calls())")
+        XCTAssertTrue(fx.calls().contains("launchctl print gui/\(fx.uid)/app.chargingpixels.awake.recovery"), "\(fx.calls())")
         XCTAssertFalse(fx.calls().contains { $0.hasPrefix("sudo rm") }, "\(fx.calls())")
         XCTAssertTrue(fx.exists(fx.plist), "the agent file stays while launchd still lists the job")
         XCTAssertTrue(fx.exists(fx.sudoers))
@@ -4184,7 +4184,7 @@ final class RecoveryScriptTests: XCTestCase {
         let calls = fx.calls()
         XCTAssertFalse(calls.contains { $0.hasPrefix("launchctl bootout") }, "the loaded agent is left alone: \(calls)")
         XCTAssertFalse(calls.contains { $0.hasPrefix("launchctl bootstrap") }, "\(calls)")
-        XCTAssertTrue(calls.contains("launchctl print gui/\(fx.uid)/com.insomnia.backstop"), "the claim about the agent is checked: \(calls)")
+        XCTAssertTrue(calls.contains("launchctl print gui/\(fx.uid)/app.chargingpixels.awake.recovery"), "the claim about the agent is checked: \(calls)")
         XCTAssertEqual(try String(contentsOf: fx.plist, encoding: .utf8), "trusted", "the trusted plist is untouched")
         XCTAssertEqual(try fx.stateJSON()["sleepDisabledByUs"] as? Bool, true, "ownership retained")
         XCTAssertTrue(r.stderr.contains("left as it was"), r.stderr)
@@ -4193,7 +4193,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertTrue(r.stderr.contains("/scripts/backstop.sh --force"), "manual step named, the checkout's copy: \(r.stderr)")
         XCTAssertTrue(r.stderr.contains("not replaced"), r.stderr)
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "previous", "the bundle the retained agent pins stays in place")
-        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Insomnia.app"], "the staged build is discarded and nothing is set aside")
+        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Awake.app"], "the staged build is discarded and nothing is set aside")
         XCTAssertTrue(r.stderr.contains("discarded"), r.stderr)
         XCTAssertTrue(try fx.lockIsFree(), "the transaction ends with the script")
 
@@ -4306,9 +4306,9 @@ final class RecoveryScriptTests: XCTestCase {
             "new bundle under the new agent's load, previous bundle under the previous agent's reload: \(fx.calls())"
         )
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "previous", "the previous bundle is back for the previous agent")
-        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Insomnia.app"], "no staged or set-aside bundle is left")
+        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Awake.app"], "no staged or set-aside bundle is left")
         XCTAssertTrue(r.stderr.contains("put back"), r.stderr)
-        XCTAssertEqual(try fx.contents(of: fx.plist.deletingLastPathComponent()), ["com.insomnia.backstop.plist"], "no staged leftovers")
+        XCTAssertEqual(try fx.contents(of: fx.plist.deletingLastPathComponent()), ["app.chargingpixels.awake.recovery.plist"], "no staged leftovers")
     }
 
     func testInstallReplacesTheAgentAfterCleanRecovery() throws {
@@ -4325,7 +4325,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(r.status, 0, r.stderr + r.stdout)
         let calls = fx.calls()
         XCTAssertTrue(calls.contains("sudo -n \(fx.fakePmset) -a disablesleep 0"), "recovery ran with the new backstop: \(calls)")
-        XCTAssertTrue(calls.contains("launchctl bootout gui/\(fx.uid)/com.insomnia.backstop"), "\(calls)")
+        XCTAssertTrue(calls.contains("launchctl bootout gui/\(fx.uid)/app.chargingpixels.awake.recovery"), "\(calls)")
         let bootstraps = calls.filter { $0.hasPrefix("launchctl bootstrap") }
         XCTAssertEqual(bootstraps.count, 1, "\(calls)")
         XCTAssertTrue(bootstraps.first?.contains("candidate-") == true, "loaded through a private candidate: \(calls)")
@@ -4338,12 +4338,12 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(plist["StartInterval"] as? Int, 60)
         // The plist must be exactly what the app builds for the same bundle
         // and requirement, or the app reloads the agent at every start.
-        let expected = LaunchdBackstop.plistDictionary(label: "com.insomnia.backstop", target: BackstopTarget(bundle: fx.app, requirement: fx.requirement))
+        let expected = LaunchdBackstop.plistDictionary(label: "app.chargingpixels.awake.recovery", target: BackstopTarget(bundle: fx.app, requirement: fx.requirement))
         XCTAssertTrue(NSDictionary(dictionary: plist).isEqual(to: expected), "install.sh wrote \(plist), the app builds \(expected)")
-        XCTAssertTrue(calls.contains { $0.hasPrefix("codesign --verify --strict -R=\(fx.requirement) \(fx.appsDir.path)/.Insomnia.app.staging.") && $0.hasSuffix("/Insomnia.app") }, "the installer runs the agent's own check once, on the staged bundle: \(calls)")
+        XCTAssertTrue(calls.contains { $0.hasPrefix("codesign --verify --strict -R=\(fx.requirement) \(fx.appsDir.path)/.Awake.app.staging.") && $0.hasSuffix("/Awake.app") }, "the installer runs the agent's own check once, on the staged bundle: \(calls)")
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "#!/bin/bash", "the new bundle is installed")
-        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Insomnia.app"], "the previous bundle and the staging directory are gone")
-        let bootout = try XCTUnwrap(calls.firstIndex(of: "launchctl bootout gui/\(fx.uid)/com.insomnia.backstop"))
+        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Awake.app"], "the previous bundle and the staging directory are gone")
+        let bootout = try XCTUnwrap(calls.firstIndex(of: "launchctl bootout gui/\(fx.uid)/app.chargingpixels.awake.recovery"))
         let swapped = try XCTUnwrap(calls.firstIndex(of: "launchctl APP-BINARY=#!/bin/bash during bootstrap"), "\(calls)")
         XCTAssertLessThan(bootout, swapped, "the previous agent is unloaded before its bundle is replaced: \(calls)")
         XCTAssertTrue(r.stdout.contains("replaced the previous"), r.stdout)
@@ -4354,7 +4354,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertTrue(fx.exists(fx.app.appendingPathComponent("Contents/Info.plist")))
         XCTAssertTrue(fx.exists(fx.app.appendingPathComponent("Contents/Resources/AppIcon.icns")), "the app icon is bundled")
         XCTAssertTrue(r.stdout.contains("Installed"), r.stdout)
-        XCTAssertEqual(try fx.contents(of: fx.plist.deletingLastPathComponent()), ["com.insomnia.backstop.plist"])
+        XCTAssertEqual(try fx.contents(of: fx.plist.deletingLastPathComponent()), ["app.chargingpixels.awake.recovery.plist"])
     }
 
     // MARK: - install.sh --app (a prebuilt bundle, as from a release zip)
@@ -4366,7 +4366,7 @@ final class RecoveryScriptTests: XCTestCase {
     private func writePrebuiltAppAtAnAwkwardPath() throws -> URL {
         let dir = fx.root.appendingPathComponent(#"My "dl" $HOME"#, isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let app = dir.appendingPathComponent("Insomnia.app", isDirectory: true)
+        let app = dir.appendingPathComponent("Awake.app", isDirectory: true)
         try FileManager.default.moveItem(at: try fx.writePrebuiltApp(), to: app)
         return app
     }
@@ -4376,7 +4376,7 @@ final class RecoveryScriptTests: XCTestCase {
         let call = try XCTUnwrap(fx.calls().first { $0.hasPrefix(prefix) }, "\(fx.calls())")
         let path = String(call.dropFirst(prefix.count))
         XCTAssertNotEqual(path, prebuilt.path, "checked at the path passed in")
-        XCTAssertTrue(path.hasSuffix("/Insomnia.app"), path)
+        XCTAssertTrue(path.hasSuffix("/Awake.app"), path)
         return path
     }
 
@@ -4401,14 +4401,14 @@ final class RecoveryScriptTests: XCTestCase {
         let verify = try XCTUnwrap(calls.firstIndex(of: "codesign --verify --strict --deep \(copy)"), "\(calls)")
         let visudo = try XCTUnwrap(calls.firstIndex { $0.hasPrefix("sudo visudo") }, "\(calls)")
         XCTAssertLessThan(verify, visudo, "verified before the password prompt: \(calls)")
-        XCTAssertTrue(r.stdout.contains("WARNING: the origin of Insomnia 0.1.0 is not verified. Its signature shows the bundle is intact, not who made it."), r.stdout)
+        XCTAssertTrue(r.stdout.contains("WARNING: the origin of Awake 0.1.0 is not verified. Its signature shows the bundle is intact, not who made it."), r.stdout)
         XCTAssertTrue(r.stdout.contains("--allow-unverified-origin: installing it anyway"), r.stdout)
         XCTAssertTrue(r.stdout.contains("macOS blocks the first launch"), r.stdout)
-        XCTAssertEqual(try String(contentsOf: fx.app.appendingPathComponent("Contents/MacOS/Insomnia"), encoding: .utf8), "prebuilt")
+        XCTAssertEqual(try String(contentsOf: fx.app.appendingPathComponent("Contents/MacOS/Awake"), encoding: .utf8), "prebuilt")
         XCTAssertTrue(fx.exists(fx.installedBackstop))
         XCTAssertTrue(fx.exists(prebuilt), "the source bundle is copied, not moved")
         let plist = try fx.plistOnDisk()
-        let expected = LaunchdBackstop.plistDictionary(label: "com.insomnia.backstop", target: BackstopTarget(bundle: fx.app, requirement: fx.requirement))
+        let expected = LaunchdBackstop.plistDictionary(label: "app.chargingpixels.awake.recovery", target: BackstopTarget(bundle: fx.app, requirement: fx.requirement))
         XCTAssertTrue(NSDictionary(dictionary: plist).isEqual(to: expected), "same agent as a source install: \(plist)")
         XCTAssertTrue(r.stdout.contains("Uninstall:"), r.stdout)
     }
@@ -4425,8 +4425,8 @@ final class RecoveryScriptTests: XCTestCase {
         let r = try fx.run(fx.installRedirected, ["--allow-unverified-origin", "--app", prebuilt.path], extraEnvironment: ["USER": "tester"])
 
         XCTAssertEqual(r.status, 0, r.stderr + r.stdout)
-        XCTAssertEqual(try String(contentsOf: prebuilt.appendingPathComponent("Contents/MacOS/Insomnia"), encoding: .utf8), "swapped", "the bundle at the --app path was replaced during the prompt")
-        XCTAssertEqual(try String(contentsOf: fx.app.appendingPathComponent("Contents/MacOS/Insomnia"), encoding: .utf8), "prebuilt", "the checked copy is installed")
+        XCTAssertEqual(try String(contentsOf: prebuilt.appendingPathComponent("Contents/MacOS/Awake"), encoding: .utf8), "swapped", "the bundle at the --app path was replaced during the prompt")
+        XCTAssertEqual(try String(contentsOf: fx.app.appendingPathComponent("Contents/MacOS/Awake"), encoding: .utf8), "prebuilt", "the checked copy is installed")
         let copy = try checkedCopy(of: prebuilt)
         let calls = fx.calls()
         XCTAssertFalse(calls.contains { $0.hasSuffix(" \(prebuilt.path)") }, "no tool reads the --app path itself: \(calls)")
@@ -4439,7 +4439,7 @@ final class RecoveryScriptTests: XCTestCase {
         try fx.prepareInstall()
         let prebuilt = try fx.writePrebuiltApp()
         fx.setMode("launchctl", "loaded")
-        let unpacked = fx.repoScripts.deletingLastPathComponent().appendingPathComponent("Insomnia-0.1.0-macos", isDirectory: true)
+        let unpacked = fx.repoScripts.deletingLastPathComponent().appendingPathComponent("Awake-0.1.0-macos", isDirectory: true)
         try FileManager.default.createDirectory(at: unpacked, withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: fx.installRedirected, to: unpacked.appendingPathComponent("install.sh"))
         try "# the zip's uninstaller\n".write(to: unpacked.appendingPathComponent("uninstall.sh"), atomically: true, encoding: .utf8)
@@ -4458,7 +4458,7 @@ final class RecoveryScriptTests: XCTestCase {
     func testInstallFromAZipWithoutTheAppFlagRefusesAndRunsNoBuildScriptFromTheParentFolder() throws {
         try fx.prepareInstall()
         let shared = fx.root.appendingPathComponent("shared-tmp", isDirectory: true)
-        let unpacked = shared.appendingPathComponent("Insomnia-0.1.0-macos", isDirectory: true)
+        let unpacked = shared.appendingPathComponent("Awake-0.1.0-macos", isDirectory: true)
         try FileManager.default.createDirectory(at: unpacked, withIntermediateDirectories: true)
         try FileManager.default.copyItem(at: fx.installRedirected, to: unpacked.appendingPathComponent("install.sh"))
         let planted = shared.appendingPathComponent("scripts/build-app.sh")
@@ -4485,7 +4485,7 @@ final class RecoveryScriptTests: XCTestCase {
     /// scripts/.
     func testInstallFromAZipRunsNoBuildScriptPlantedBesideIt() throws {
         try fx.prepareInstall()
-        for folder in ["shared-tmp/Insomnia-0.1.0-macos", "shared-tmp/scripts", "repo/Insomnia-0.1.0-macos"] {
+        for folder in ["shared-tmp/Awake-0.1.0-macos", "shared-tmp/scripts", "repo/Awake-0.1.0-macos"] {
             fx.clearCalls()
             let unpacked = fx.root.appendingPathComponent(folder, isDirectory: true)
             try FileManager.default.createDirectory(at: unpacked, withIntermediateDirectories: true)
@@ -4520,7 +4520,7 @@ final class RecoveryScriptTests: XCTestCase {
 
             XCTAssertEqual(r.status, 1, "\(mode): " + r.stderr + r.stdout)
             XCTAssertEqual(fx.callsBesideScratchFiles(), ["sysctl -n hw.optional.arm64"], "\(mode): nothing else ran: \(fx.calls())")
-            XCTAssertTrue(r.stderr.contains("Release bundles of Insomnia run on Apple Silicon Macs only, and this Mac is not one ('sysctl -n hw.optional.arm64' gave \(read))."), r.stderr)
+            XCTAssertTrue(r.stderr.contains("Release bundles of Awake run on Apple Silicon Macs only, and this Mac is not one ('sysctl -n hw.optional.arm64' gave \(read))."), r.stderr)
             XCTAssertTrue(r.stderr.contains("Build and install from a source checkout instead (README, Build from source). Nothing was changed."), r.stderr)
             XCTAssertFalse(fx.exists(fx.sudoers))
             XCTAssertFalse(fx.exists(fx.app))
@@ -4554,7 +4554,7 @@ final class RecoveryScriptTests: XCTestCase {
             XCTAssertEqual(r.status, 1, "\(signing): \(r.stderr + r.stdout)")
             let copy = try checkedCopy(of: prebuilt)
             XCTAssertEqual(fx.callsBesideScratchFiles(), ["sysctl -n hw.optional.arm64", "codesign --verify --strict --deep \(copy)"], "\(signing): \(fx.calls())")
-            XCTAssertTrue(r.stderr.contains("The origin of Insomnia 0.1.0 at \(prebuilt.path) is not verified."), "\(signing): \(r.stderr)")
+            XCTAssertTrue(r.stderr.contains("The origin of Awake 0.1.0 at \(prebuilt.path) is not verified."), "\(signing): \(r.stderr)")
             XCTAssertEqual(try pastedWords(of: printedCommand(in: r.stderr, containing: " --app ")), [fx.installRedirected.path, "--allow-unverified-origin", "--app", prebuilt.path], "\(signing): names the flag")
             XCTAssertTrue(r.stderr.contains("Nothing was changed"), "\(signing): \(r.stderr)")
             XCTAssertFalse(fx.exists(fx.app), signing)
@@ -4565,8 +4565,8 @@ final class RecoveryScriptTests: XCTestCase {
         let flagged = try fx.run(fx.installRedirected, ["--allow-unverified-origin", "--app", prebuilt.path], extraEnvironment: ["USER": "tester"])
 
         XCTAssertEqual(flagged.status, 0, flagged.stderr + flagged.stdout)
-        XCTAssertTrue(flagged.stdout.contains("WARNING: the origin of Insomnia 0.1.0 is not verified."), flagged.stdout)
-        XCTAssertEqual(try String(contentsOf: fx.app.appendingPathComponent("Contents/MacOS/Insomnia"), encoding: .utf8), "prebuilt")
+        XCTAssertTrue(flagged.stdout.contains("WARNING: the origin of Awake 0.1.0 is not verified."), flagged.stdout)
+        XCTAssertEqual(try String(contentsOf: fx.app.appendingPathComponent("Contents/MacOS/Awake"), encoding: .utf8), "prebuilt")
         XCTAssertTrue(fx.exists(fx.installedBackstop))
     }
 
@@ -4595,7 +4595,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(installed.status, 0, "the ditto copy at the installed path verifies: \(installed.output)")
         XCTAssertNoThrow(try CodeRequirement.verify(codeAt: fx.app, satisfies: requirement))
         let plist = try fx.plistOnDisk()
-        let expected = LaunchdBackstop.plistDictionary(label: "com.insomnia.backstop", target: BackstopTarget(bundle: fx.app, requirement: requirement))
+        let expected = LaunchdBackstop.plistDictionary(label: "app.chargingpixels.awake.recovery", target: BackstopTarget(bundle: fx.app, requirement: requirement))
         XCTAssertTrue(NSDictionary(dictionary: plist).isEqual(to: expected), "the agent pins the real requirement: \(plist)")
         XCTAssertTrue(fx.calls().contains { $0.hasPrefix("launchctl bootstrap") }, "\(fx.calls())")
 
@@ -4715,7 +4715,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertTrue(r.stderr.contains("fails 'codesign --verify --strict --deep'"), r.stderr)
         XCTAssertTrue(r.stderr.contains("Nothing was changed"), r.stderr)
         XCTAssertTrue(r.stderr.contains("SHA256SUMS"), "points at the download checks: \(r.stderr)")
-        XCTAssertEqual(try String(contentsOf: fx.app.appendingPathComponent("Contents/MacOS/Insomnia"), encoding: .utf8), "binary", "old bundle kept")
+        XCTAssertEqual(try String(contentsOf: fx.app.appendingPathComponent("Contents/MacOS/Awake"), encoding: .utf8), "binary", "old bundle kept")
         XCTAssertEqual(try String(contentsOf: fx.sudoers, encoding: .utf8), "rule", "sudoers rule kept")
         XCTAssertEqual(try String(contentsOf: fx.plist, encoding: .utf8), "plist", "trusted plist kept")
     }
@@ -4723,7 +4723,7 @@ final class RecoveryScriptTests: XCTestCase {
     func testInstallFromPrebuiltAppRefusesAnotherIdentifierAVersionlessBundleAndAMissingBackstop() throws {
         try fx.prepareInstall()
         let cases: [(String, String, (ScriptFixture) throws -> URL)] = [
-            ("identifier", "has bundle identifier 'com.example.other', not com.kgarg.insomnia", { try $0.writePrebuiltApp(bundleID: "com.example.other") }),
+            ("identifier", "has bundle identifier 'com.example.other', not app.chargingpixels.awake", { try $0.writePrebuiltApp(bundleID: "com.example.other") }),
             ("version", "has no usable CFBundleShortVersionString ('dev')", { try $0.writePrebuiltApp(version: "dev") }),
             ("backstop", "has no Contents/Resources/backstop.sh", { try $0.writePrebuiltApp(withBackstop: false) }),
         ]
@@ -4759,9 +4759,9 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertLessThan(sign, visudo, "built and signed before the password prompt: \(calls)")
         XCTAssertFalse(calls[sign].contains(fx.app.path), "signed in staging, not in place: \(calls[sign])")
         XCTAssertFalse(calls.contains { $0.hasPrefix("codesign --verify --strict --deep") }, "the prebuilt checks are for --app only: \(calls)")
-        XCTAssertTrue(fx.exists(fx.app.appendingPathComponent("Contents/MacOS/Insomnia")))
+        XCTAssertTrue(fx.exists(fx.app.appendingPathComponent("Contents/MacOS/Awake")))
         XCTAssertTrue(fx.exists(fx.installedBackstop))
-        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: fx.appsDir.path), ["Insomnia.app"])
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: fx.appsDir.path), ["Awake.app"])
     }
 
     func testInstallRejectsUnknownArguments() throws {
@@ -4825,9 +4825,9 @@ final class RecoveryScriptTests: XCTestCase {
 
         XCTAssertEqual(r.status, 1, r.stderr + r.stdout)
         let calls = fx.calls()
-        XCTAssertTrue(calls.contains { $0.hasPrefix("codesign --verify --strict -R=\(fx.requirement) \(fx.appsDir.path)/.Insomnia.app.staging.") }, "\(calls)")
+        XCTAssertTrue(calls.contains { $0.hasPrefix("codesign --verify --strict -R=\(fx.requirement) \(fx.appsDir.path)/.Awake.app.staging.") }, "\(calls)")
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "previous", "the previous bundle was never touched")
-        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Insomnia.app"], "the staged build is discarded")
+        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Awake.app"], "the staged build is discarded")
         XCTAssertFalse(calls.contains { $0.hasPrefix("launchctl") }, "\(calls)")
         XCTAssertFalse(calls.contains { $0.hasPrefix("sudo -n \(fx.fakePmset)") }, "no recovery from a bundle the agent would refuse: \(calls)")
         XCTAssertEqual(try String(contentsOf: fx.plist, encoding: .utf8), "trusted")
@@ -4860,7 +4860,7 @@ final class RecoveryScriptTests: XCTestCase {
     /// (here: unresolved recovery) still leaves the previous pair in place.
     func testInstallPutsBackABundleAnInterruptedRunSetAside() throws {
         try fx.prepareInstall()
-        try fx.writePreviousApp(at: fx.appsDir.appendingPathComponent(".Insomnia.app.previous", isDirectory: true))
+        try fx.writePreviousApp(at: fx.appsDir.appendingPathComponent(".Awake.app.previous", isDirectory: true))
         try "trusted".write(to: fx.plist, atomically: true, encoding: .utf8)
         try fx.writeState(#"{"sleepDisabledByUs":true,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false}"#)
         fx.setMode("sudo", "fail")
@@ -4871,7 +4871,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(r.status, 1, r.stderr + r.stdout)
         XCTAssertTrue(r.stdout.contains("restored \(fx.app.path)"), r.stdout)
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "previous")
-        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Insomnia.app"])
+        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Awake.app"])
         XCTAssertEqual(try String(contentsOf: fx.plist, encoding: .utf8), "trusted")
     }
 
@@ -4884,7 +4884,7 @@ final class RecoveryScriptTests: XCTestCase {
     /// and $APP shows what the repair left.
     func testInstallKeepsTheBundleThePlistOnDiskPinsAfterAnInterruptedSwap() throws {
         try fx.prepareInstall()
-        let previous = fx.appsDir.appendingPathComponent(".Insomnia.app.previous", isDirectory: true)
+        let previous = fx.appsDir.appendingPathComponent(".Awake.app.previous", isDirectory: true)
         try fx.writeBundle(at: previous, marker: "previous")
         try fx.writeBundle(at: fx.app, marker: "interrupted")
         try fx.writeAgentPlist()
@@ -4897,7 +4897,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(pinsPrevious.status, 1, pinsPrevious.stderr + pinsPrevious.stdout)
         XCTAssertTrue(fx.calls().contains("codesign --verify --strict -R=\(fx.requirement) \(previous.path)"), "\(fx.calls())")
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "previous", "the bundle the plist pins is back")
-        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Insomnia.app"], "the interrupted build left with the staging directory")
+        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Awake.app"], "the interrupted build left with the staging directory")
         XCTAssertTrue(pinsPrevious.stdout.contains("restored \(fx.app.path)"), pinsPrevious.stdout)
 
         try FileManager.default.removeItem(at: fx.root.appendingPathComponent("codesign.rejects"))
@@ -4908,7 +4908,7 @@ final class RecoveryScriptTests: XCTestCase {
 
         XCTAssertEqual(pinsCurrent.status, 1, pinsCurrent.stderr + pinsCurrent.stdout)
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "interrupted", "$APP satisfies the plist, so it stays")
-        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Insomnia.app"], "the set-aside copy is removed")
+        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Awake.app"], "the set-aside copy is removed")
         XCTAssertTrue(fx.calls().contains("rm -rf \(previous.path)"), "removed through $RM: \(fx.calls())")
         XCTAssertTrue(pinsCurrent.stdout.contains("removed the bundle an interrupted run had set aside"), pinsCurrent.stdout)
     }
@@ -4929,17 +4929,17 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(r.status, 0, r.stderr + r.stdout)
         let calls = fx.calls()
         let recovery = try XCTUnwrap(calls.firstIndex(of: "sudo -n \(fx.fakePmset) -a disablesleep 0"), "\(calls)")
-        let unload = try XCTUnwrap(calls.firstIndex(of: "launchctl bootout gui/\(fx.uid)/com.insomnia.backstop"), "\(calls)")
+        let unload = try XCTUnwrap(calls.firstIndex(of: "launchctl bootout gui/\(fx.uid)/app.chargingpixels.awake.recovery"), "\(calls)")
         let reload = try XCTUnwrap(calls.firstIndex(of: "launchctl bootstrap gui/\(fx.uid) \(fx.plist.path)"), "\(calls)")
         XCTAssertLessThan(recovery, unload, "the job that may be retrying recovery stays until recovery succeeds: \(calls)")
         XCTAssertLessThan(unload, reload, "\(calls)")
-        XCTAssertTrue(calls[unload..<reload].contains("launchctl print gui/\(fx.uid)/com.insomnia.backstop"), "the unload is confirmed first: \(calls)")
+        XCTAssertTrue(calls[unload..<reload].contains("launchctl print gui/\(fx.uid)/app.chargingpixels.awake.recovery"), "the unload is confirmed first: \(calls)")
         XCTAssertEqual(
             calls.filter { $0.hasPrefix("launchctl APP-") },
             ["launchctl APP-BINARY=previous during bootstrap", "launchctl APP-BINARY=#!/bin/bash during bootstrap"],
             "the previous plist is loaded with the previous bundle back, then this run's: \(calls)")
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "#!/bin/bash")
-        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Insomnia.app"], "the interrupted build left with the staging directory")
+        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Awake.app"], "the interrupted build left with the staging directory")
         XCTAssertTrue(r.stdout.contains("unloaded the job the interrupted run left and loaded \(fx.plist.path) again"), r.stdout)
         XCTAssertEqual(try fx.stateJSON()["sleepDisabledByUs"] as? Bool, false)
     }
@@ -4963,8 +4963,8 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertTrue(calls.contains("sudo -n \(fx.fakePmset) -a disablesleep 0"), "\(calls)")
         XCTAssertFalse(calls.contains { $0.hasPrefix("launchctl bootout") || $0.hasPrefix("launchctl bootstrap") }, "the loaded job stays: \(calls)")
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "interrupted", "the build the loaded job pins stays")
-        XCTAssertEqual(try String(contentsOf: previous.appendingPathComponent("Contents/MacOS/Insomnia"), encoding: .utf8), "previous\n", "the previous app stays set aside")
-        XCTAssertEqual(try fx.contents(of: fx.appsDir), [".Insomnia.app.previous", "Insomnia.app"], "the staged build is discarded")
+        XCTAssertEqual(try String(contentsOf: previous.appendingPathComponent("Contents/MacOS/Awake"), encoding: .utf8), "previous\n", "the previous app stays set aside")
+        XCTAssertEqual(try fx.contents(of: fx.appsDir), [".Awake.app.previous", "Awake.app"], "the staged build is discarded")
         XCTAssertEqual(try Data(contentsOf: fx.plist), plistBefore)
         XCTAssertEqual(try fx.stateJSON()["sleepDisabledByUs"] as? Bool, true, "ownership retained")
         XCTAssertTrue(r.stderr.contains("Neither bundle was moved"), r.stderr)
@@ -4994,16 +4994,16 @@ final class RecoveryScriptTests: XCTestCase {
             XCTAssertEqual(r.status, 1, "\(mode): \(r.stderr + r.stdout)")
             let calls = fx.calls()
             let recovery = try XCTUnwrap(calls.firstIndex(of: "sudo -n \(fx.fakePmset) -a disablesleep 0"), "\(mode): \(calls)")
-            let unload = try XCTUnwrap(calls.firstIndex(of: "launchctl bootout gui/\(fx.uid)/com.insomnia.backstop"), "\(mode): \(calls)")
+            let unload = try XCTUnwrap(calls.firstIndex(of: "launchctl bootout gui/\(fx.uid)/app.chargingpixels.awake.recovery"), "\(mode): \(calls)")
             XCTAssertLessThan(recovery, unload, "\(mode): \(calls)")
             XCTAssertEqual(calls.filter { $0.hasPrefix("launchctl bootstrap") }, ["launchctl bootstrap gui/\(fx.uid) \(fx.plist.path)"], "only the reload, no candidate: \(mode): \(calls)")
             XCTAssertEqual(calls.filter { $0.hasPrefix("launchctl bootout") }.count, 1, "\(mode): \(calls)")
             XCTAssertEqual(try fx.installedBinaryFirstLine(), "previous", "\(mode)")
-            XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Insomnia.app"], "\(mode)")
+            XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Awake.app"], "\(mode)")
             XCTAssertEqual(try Data(contentsOf: fx.plist), plistBefore, "\(mode)")
-            XCTAssertEqual(try fx.contents(of: fx.plist.deletingLastPathComponent()), ["com.insomnia.backstop.plist"], "no candidate written: \(mode)")
+            XCTAssertEqual(try fx.contents(of: fx.plist.deletingLastPathComponent()), ["app.chargingpixels.awake.recovery.plist"], "no candidate written: \(mode)")
             XCTAssertFalse(r.stdout.contains("loaded \(fx.plist.path) again"), "\(mode): \(r.stdout)")
-            XCTAssertTrue(r.stderr.contains("No job with label com.insomnia.backstop is confirmed loaded (launchctl print: \(printed))"), "\(mode): \(r.stderr)")
+            XCTAssertTrue(r.stderr.contains("No job with label app.chargingpixels.awake.recovery is confirmed loaded (launchctl print: \(printed))"), "\(mode): \(r.stderr)")
             XCTAssertEqual(try pastedWords(of: printedCommand(in: r.stderr, containing: "launchctl bootstrap")), ["launchctl", "bootstrap", "gui/\(fx.uid)", fx.plist.path], "\(mode)")
             XCTAssertTrue(r.stderr.contains("matches\nthe app at \(fx.app.path)"), "\(mode): \(r.stderr)")
             XCTAssertTrue(try fx.lockIsFree(), "\(mode)")
@@ -5016,7 +5016,7 @@ final class RecoveryScriptTests: XCTestCase {
     @discardableResult
     private func writeInterruptedSwap() throws -> URL {
         try fx.prepareInstall()
-        let previous = fx.appsDir.appendingPathComponent(".Insomnia.app.previous", isDirectory: true)
+        let previous = fx.appsDir.appendingPathComponent(".Awake.app.previous", isDirectory: true)
         try fx.writeBundle(at: previous, marker: "previous")
         try fx.writeBundle(at: fx.app, marker: "interrupted")
         try fx.writeAgentPlist()
@@ -5047,7 +5047,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertTrue(fx.hungProcessGone("codesign", within: 0), "it was killed and reaped before the run went on")
         XCTAssertFalse(calls.contains { $0.hasPrefix("launchctl") }, "\(calls)")
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "interrupted")
-        XCTAssertEqual(try String(contentsOf: previous.appendingPathComponent("Contents/MacOS/Insomnia"), encoding: .utf8), "previous\n")
+        XCTAssertEqual(try String(contentsOf: previous.appendingPathComponent("Contents/MacOS/Awake"), encoding: .utf8), "previous\n")
         XCTAssertTrue(try fx.lockIsFree())
     }
 
@@ -5065,16 +5065,16 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(r.status, 1, r.stderr + r.stdout)
         let calls = fx.calls()
         let recovery = try XCTUnwrap(calls.firstIndex(of: "sudo -n \(fx.fakePmset) -a disablesleep 0"), "\(calls)")
-        let unload = try XCTUnwrap(calls.firstIndex(of: "launchctl bootout gui/\(fx.uid)/com.insomnia.backstop"), "\(calls)")
+        let unload = try XCTUnwrap(calls.firstIndex(of: "launchctl bootout gui/\(fx.uid)/app.chargingpixels.awake.recovery"), "\(calls)")
         XCTAssertLessThan(recovery, unload, "the unload is tried only once recovery succeeded: \(calls)")
         XCTAssertFalse(calls.contains { $0.hasPrefix("launchctl bootstrap") }, "\(calls)")
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "interrupted", "the build the loaded job pins stays")
-        XCTAssertEqual(try String(contentsOf: previous.appendingPathComponent("Contents/MacOS/Insomnia"), encoding: .utf8), "previous\n", "the previous app stays set aside")
-        XCTAssertEqual(try fx.contents(of: fx.appsDir), [".Insomnia.app.previous", "Insomnia.app"])
+        XCTAssertEqual(try String(contentsOf: previous.appendingPathComponent("Contents/MacOS/Awake"), encoding: .utf8), "previous\n", "the previous app stays set aside")
+        XCTAssertEqual(try fx.contents(of: fx.appsDir), [".Awake.app.previous", "Awake.app"])
         XCTAssertEqual(try Data(contentsOf: fx.plist), plistBefore)
         XCTAssertTrue(r.stderr.contains("not confirmed (launchctl print: yes)"), r.stderr)
         XCTAssertTrue(r.stderr.contains("neither bundle was moved"), r.stderr)
-        XCTAssertTrue(r.stderr.contains("  launchctl bootout gui/\(fx.uid)/com.insomnia.backstop"), r.stderr)
+        XCTAssertTrue(r.stderr.contains("  launchctl bootout gui/\(fx.uid)/app.chargingpixels.awake.recovery"), r.stderr)
         XCTAssertTrue(try fx.lockIsFree())
     }
 
@@ -5090,16 +5090,16 @@ final class RecoveryScriptTests: XCTestCase {
         try "trusted".write(to: fx.plist, atomically: true, encoding: .utf8)
         try fx.writeState(#"{"sleepDisabledByUs":false,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false}"#)
         fx.setMode("kill.fail", "4242")   // the fake kill: 4242 is gone, 4343 is alive
-        let dead = ".Insomnia.app.staging.4242.AAAAAA"
-        let live = ".Insomnia.app.staging.4343.BBBBBB"
-        let setAside = ".Insomnia.app.previous"
-        let unlike = [".Insomnia.app.staging.4242", ".Insomnia.app.staging.4242.AAAAAA.old", ".Insomnia.app.staging.x4242.AAAAAA"]
-        let link = ".Insomnia.app.staging.4242.CCCCCC"
+        let dead = ".Awake.app.staging.4242.AAAAAA"
+        let live = ".Awake.app.staging.4343.BBBBBB"
+        let setAside = ".Awake.app.previous"
+        let unlike = [".Awake.app.staging.4242", ".Awake.app.staging.4242.AAAAAA.old", ".Awake.app.staging.x4242.AAAAAA"]
+        let link = ".Awake.app.staging.4242.CCCCCC"
         for name in [dead, live] + unlike {
-            try fx.writeBundle(at: fx.appsDir.appendingPathComponent(name).appendingPathComponent("Insomnia.app"), marker: "staged")
+            try fx.writeBundle(at: fx.appsDir.appendingPathComponent(name).appendingPathComponent("Awake.app"), marker: "staged")
         }
         let elsewhere = fx.root.appendingPathComponent("elsewhere", isDirectory: true)
-        try fx.writeBundle(at: elsewhere.appendingPathComponent("Insomnia.app"), marker: "not the installer's")
+        try fx.writeBundle(at: elsewhere.appendingPathComponent("Awake.app"), marker: "not the installer's")
         try FileManager.default.createSymbolicLink(at: fx.appsDir.appendingPathComponent(link), withDestinationURL: elsewhere)
         try fx.writeBundle(at: fx.appsDir.appendingPathComponent(setAside), marker: "set aside by a live run")
 
@@ -5108,15 +5108,15 @@ final class RecoveryScriptTests: XCTestCase {
         holder.stop()
 
         XCTAssertEqual(blocked.status, 75, blocked.stderr + blocked.stdout)
-        XCTAssertEqual(try fx.contents(of: fx.appsDir), ([setAside, dead, live, link, "Insomnia.app"] + unlike).sorted(), "nothing removed outside the lock")
+        XCTAssertEqual(try fx.contents(of: fx.appsDir), ([setAside, dead, live, link, "Awake.app"] + unlike).sorted(), "nothing removed outside the lock")
 
         try FileManager.default.removeItem(at: fx.appsDir.appendingPathComponent(setAside))
         fx.setMode("launchctl", "loaded")
         let r = try fx.run(fx.installRedirected, extraEnvironment: ["USER": "tester"])
 
         XCTAssertEqual(r.status, 0, r.stderr + r.stdout)
-        XCTAssertEqual(try fx.contents(of: fx.appsDir), ([live, link, "Insomnia.app"] + unlike).sorted(), "the dead run's staging is gone, the live run's stays")
-        XCTAssertTrue(fx.exists(elsewhere.appendingPathComponent("Insomnia.app/Contents/MacOS/Insomnia")), "a symlink's target is never touched")
+        XCTAssertEqual(try fx.contents(of: fx.appsDir), ([live, link, "Awake.app"] + unlike).sorted(), "the dead run's staging is gone, the live run's stays")
+        XCTAssertTrue(fx.exists(elsewhere.appendingPathComponent("Awake.app/Contents/MacOS/Awake")), "a symlink's target is never touched")
         XCTAssertTrue(fx.calls().contains("kill -0 4242") && fx.calls().contains("kill -0 4343"), "asked through $KILL: \(fx.calls())")
     }
 
@@ -5134,23 +5134,23 @@ final class RecoveryScriptTests: XCTestCase {
         try fx.writeState(#"{"sleepDisabledByUs":false,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false}"#)
         fx.setMode("launchctl", "loaded")
         fx.setMode("kill.fail", "4242")   // the fake kill: 4242 is gone
-        let dead = fx.appsDir.appendingPathComponent(".Insomnia.app.staging.4242.AAAAAA")
-        try fx.writeBundle(at: dead.appendingPathComponent("Insomnia.app"), marker: "staged")
-        let olderCandidate = fx.plist.deletingLastPathComponent().appendingPathComponent("com.insomnia.backstop.candidate-1.plist")
+        let dead = fx.appsDir.appendingPathComponent(".Awake.app.staging.4242.AAAAAA")
+        try fx.writeBundle(at: dead.appendingPathComponent("Awake.app"), marker: "staged")
+        let olderCandidate = fx.plist.deletingLastPathComponent().appendingPathComponent("app.chargingpixels.awake.recovery.candidate-1.plist")
         try "older".write(to: olderCandidate, atomically: true, encoding: .utf8)
-        let candidateDir = fx.plist.deletingLastPathComponent().appendingPathComponent(".com.insomnia.backstop.staging")
+        let candidateDir = fx.plist.deletingLastPathComponent().appendingPathComponent(".app.chargingpixels.awake.recovery.staging")
         let tmp = try fx.privateTmp()
 
         let r = try fx.run(fx.installRedirected, extraEnvironment: ["USER": "tester", "TMPDIR": tmp.path])
 
         XCTAssertEqual(r.status, 0, r.stderr + r.stdout)
         let calls = fx.calls()
-        let staging = fx.appsDir.path + "/.Insomnia.app.staging."
+        let staging = fx.appsDir.path + "/.Awake.app.staging."
         XCTAssertTrue(calls.contains("mktemp"), "the sudoers candidate: \(calls)")
         XCTAssertTrue(calls.contains { $0.hasPrefix("mktemp -d \(staging)") && $0.hasSuffix(".XXXXXX") }, "this run's staging directory: \(calls)")
         XCTAssertTrue(calls.contains("rm -rf \(dead.path)"), "\(calls)")
         XCTAssertTrue(calls.contains { $0.hasPrefix("rm -f ") && $0.hasSuffix(" \(olderCandidate.path)") }, "\(calls)")
-        XCTAssertTrue(calls.contains("rm -rf \(fx.appsDir.path)/.Insomnia.app.previous"), "\(calls)")
+        XCTAssertTrue(calls.contains("rm -rf \(fx.appsDir.path)/.Awake.app.previous"), "\(calls)")
         XCTAssertTrue(calls.contains("rm -f \(fx.legacyBackstop.path)"), "\(calls)")
         let visudo = try XCTUnwrap(calls.first { $0.hasPrefix("sudo visudo -cf ") }, "\(calls)")
         XCTAssertTrue(calls.contains("rm -f \(visudo.dropFirst("sudo visudo -cf ".count))"), "the sudoers candidate, on exit: \(calls)")
@@ -5158,8 +5158,8 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertTrue(calls.contains("rm -f \(bootstrap.dropFirst("launchctl bootstrap gui/\(fx.uid) ".count))"), "the candidate, on exit: \(calls)")
         XCTAssertTrue(calls.contains("rmdir \(candidateDir.path)"), "\(calls)")
         XCTAssertTrue(calls.contains { $0.hasPrefix("rm -rf \(staging)") && $0 != "rm -rf \(dead.path)" }, "this run's staging directory, on exit: \(calls)")
-        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Insomnia.app"])
-        XCTAssertEqual(try fx.contents(of: fx.plist.deletingLastPathComponent()), ["com.insomnia.backstop.plist"])
+        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Awake.app"])
+        XCTAssertEqual(try fx.contents(of: fx.plist.deletingLastPathComponent()), ["app.chargingpixels.awake.recovery.plist"])
         XCTAssertFalse(fx.exists(fx.legacyBackstop))
         XCTAssertEqual(try fx.contents(of: tmp), [], "no scratch file is left")
     }
@@ -5187,15 +5187,15 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(r.status, 0, r.stderr + r.stdout)
         let calls = fx.calls()
         XCTAssertEqual(calls.filter { $0.hasPrefix("PATH ") }, [], "a tool from PATH ran")
-        let staging = fx.appsDir.path + "/.Insomnia.app.staging."
+        let staging = fx.appsDir.path + "/.Awake.app.staging."
         let goW = try XCTUnwrap(fx.chmodCalls().first { $0.hasPrefix("chmod -R go-w \(staging)") }, "\(fx.chmodCalls())")
         let newApp = String(goW.dropFirst("chmod -R go-w ".count))
-        XCTAssertTrue(newApp.hasSuffix("/Insomnia.app"), newApp)
+        XCTAssertTrue(newApp.hasSuffix("/Awake.app"), newApp)
         XCTAssertTrue(fx.chmodCalls().contains("chmod -R -N \(newApp)"), "\(fx.chmodCalls())")
         for call in [
             "mkdir -p \(fx.appsDir.path)",
             "mkdir -p \(fx.home.path) \(fx.home.path)/Logs \(fx.plist.deletingLastPathComponent().path)",
-            "mkdir -p \(fx.plist.deletingLastPathComponent().path)/.com.insomnia.backstop.staging",
+            "mkdir -p \(fx.plist.deletingLastPathComponent().path)/.app.chargingpixels.awake.recovery.staging",
         ] {
             XCTAssertTrue(calls.contains(call), "\(call) not in \(calls)")
         }
@@ -5218,7 +5218,7 @@ final class RecoveryScriptTests: XCTestCase {
         try fx.writeState(#"{"sleepDisabledByUs":false,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false}"#)
         fx.setMode("launchctl", "loaded")
         let agents = fx.plist.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: agents.appendingPathComponent(".com.insomnia.backstop.staging"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: agents.appendingPathComponent(".app.chargingpixels.awake.recovery.staging"), withIntermediateDirectories: true)
         try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: agents.path)
         defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: agents.path) }
 
@@ -5230,7 +5230,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(bootstraps.count, 2, "candidate, then the previous plist again: \(calls)")
         XCTAssertEqual(bootstraps.last, "launchctl bootstrap gui/\(fx.uid) \(fx.plist.path)")
         let firstLoad = try XCTUnwrap(calls.firstIndex { $0.hasPrefix("launchctl bootstrap") })
-        XCTAssertTrue(calls[firstLoad...].contains("launchctl bootout gui/\(fx.uid)/com.insomnia.backstop"), "the new job is unloaded: \(calls)")
+        XCTAssertTrue(calls[firstLoad...].contains("launchctl bootout gui/\(fx.uid)/app.chargingpixels.awake.recovery"), "the new job is unloaded: \(calls)")
         XCTAssertEqual(
             calls.filter { $0.hasPrefix("launchctl APP-") },
             ["launchctl APP-BINARY=#!/bin/bash during bootstrap", "launchctl APP-BINARY=previous during bootstrap"],
@@ -5238,7 +5238,7 @@ final class RecoveryScriptTests: XCTestCase {
         )
         XCTAssertEqual(try String(contentsOf: fx.plist, encoding: .utf8), "trusted", "the trusted plist was never modified")
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "previous")
-        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Insomnia.app"], "no staged or set-aside bundle is left")
+        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Awake.app"], "no staged or set-aside bundle is left")
         XCTAssertTrue(r.stderr.contains("could not be moved to \(fx.plist.path)"), r.stderr)
         XCTAssertTrue(r.stderr.contains("put back"), r.stderr)
         XCTAssertTrue(r.stderr.contains("loaded again from the previous plist"), r.stderr)
@@ -5259,10 +5259,10 @@ final class RecoveryScriptTests: XCTestCase {
         try fx.writeState(#"{"sleepDisabledByUs":false,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false}"#)
         fx.setMode("launchctl", "loaded-unload-fails-after-bootstrap")
         let agents = fx.plist.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: agents.appendingPathComponent(".com.insomnia.backstop.staging"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: agents.appendingPathComponent(".app.chargingpixels.awake.recovery.staging"), withIntermediateDirectories: true)
         try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: agents.path)
         defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: agents.path) }
-        let previous = fx.appsDir.appendingPathComponent(".Insomnia.app.previous", isDirectory: true)
+        let previous = fx.appsDir.appendingPathComponent(".Awake.app.previous", isDirectory: true)
 
         let r = try fx.run(fx.installRedirected, extraEnvironment: ["USER": "tester"])
 
@@ -5270,12 +5270,12 @@ final class RecoveryScriptTests: XCTestCase {
         let calls = fx.calls()
         XCTAssertEqual(calls.filter { $0.hasPrefix("launchctl bootstrap") }.count, 1, "the previous plist is not loaded over the job: \(calls)")
         let firstLoad = try XCTUnwrap(calls.firstIndex { $0.hasPrefix("launchctl bootstrap") })
-        let unload = try XCTUnwrap(calls.lastIndex(of: "launchctl bootout gui/\(fx.uid)/com.insomnia.backstop"))
+        let unload = try XCTUnwrap(calls.lastIndex(of: "launchctl bootout gui/\(fx.uid)/app.chargingpixels.awake.recovery"))
         XCTAssertGreaterThan(unload, firstLoad, "the new job's unload was tried: \(calls)")
-        XCTAssertTrue(calls[unload...].contains("launchctl print gui/\(fx.uid)/com.insomnia.backstop"), "and checked: \(calls)")
+        XCTAssertTrue(calls[unload...].contains("launchctl print gui/\(fx.uid)/app.chargingpixels.awake.recovery"), "and checked: \(calls)")
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "#!/bin/bash", "the build the loaded job pins stays at $APP")
-        XCTAssertEqual(try fx.contents(of: fx.appsDir), [".Insomnia.app.previous", "Insomnia.app"], "the previous bundle stays set aside")
-        XCTAssertEqual(try String(contentsOf: previous.appendingPathComponent("Contents/MacOS/Insomnia"), encoding: .utf8), "previous\n")
+        XCTAssertEqual(try fx.contents(of: fx.appsDir), [".Awake.app.previous", "Awake.app"], "the previous bundle stays set aside")
+        XCTAssertEqual(try String(contentsOf: previous.appendingPathComponent("Contents/MacOS/Awake"), encoding: .utf8), "previous\n")
         XCTAssertEqual(try String(contentsOf: fx.plist, encoding: .utf8), "trusted", "the trusted plist was never modified")
         XCTAssertTrue(r.stderr.contains("not confirmed (launchctl print: yes)"), r.stderr)
         XCTAssertTrue(r.stderr.contains("stays at \(fx.app.path)"), r.stderr)
@@ -5298,7 +5298,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(r.status, 1, r.stderr + r.stdout)
         let calls = fx.calls()
         let load = try XCTUnwrap(calls.firstIndex { $0.hasPrefix("launchctl bootstrap") && $0.contains("candidate-") }, "\(calls)")
-        let unload = try XCTUnwrap(calls.lastIndex(of: "launchctl bootout gui/\(fx.uid)/com.insomnia.backstop"), "\(calls)")
+        let unload = try XCTUnwrap(calls.lastIndex(of: "launchctl bootout gui/\(fx.uid)/app.chargingpixels.awake.recovery"), "\(calls)")
         XCTAssertGreaterThan(unload, load, "the job print could not rule out is unloaded: \(calls)")
         XCTAssertEqual(calls.filter { $0.hasPrefix("launchctl bootstrap") }.last, "launchctl bootstrap gui/\(fx.uid) \(fx.plist.path)", "\(calls)")
         XCTAssertEqual(
@@ -5307,7 +5307,7 @@ final class RecoveryScriptTests: XCTestCase {
             "the previous bundle is back before the previous plist is loaded again: \(calls)"
         )
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "previous")
-        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Insomnia.app"])
+        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Awake.app"])
         XCTAssertEqual(try String(contentsOf: fx.plist, encoding: .utf8), "trusted")
         XCTAssertTrue(r.stderr.contains("not confirmed loaded (launchctl print: unknown:1)"), r.stderr)
         XCTAssertTrue(r.stderr.contains("The new job was unloaded again (launchctl print confirms)."), r.stderr)
@@ -5325,7 +5325,7 @@ final class RecoveryScriptTests: XCTestCase {
         try "trusted".write(to: fx.plist, atomically: true, encoding: .utf8)
         try fx.writeState(#"{"sleepDisabledByUs":false,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false}"#)
         fx.setMode("launchctl", "loaded-print-fails-after-bootstrap")
-        let previous = fx.appsDir.appendingPathComponent(".Insomnia.app.previous", isDirectory: true)
+        let previous = fx.appsDir.appendingPathComponent(".Awake.app.previous", isDirectory: true)
 
         let r = try fx.run(fx.installRedirected, extraEnvironment: ["USER": "tester"])
 
@@ -5333,10 +5333,10 @@ final class RecoveryScriptTests: XCTestCase {
         let calls = fx.calls()
         XCTAssertEqual(calls.filter { $0.hasPrefix("launchctl bootstrap") }.count, 1, "nothing is loaded over the job: \(calls)")
         let load = try XCTUnwrap(calls.firstIndex { $0.hasPrefix("launchctl bootstrap") }, "\(calls)")
-        XCTAssertTrue(calls[load...].contains("launchctl bootout gui/\(fx.uid)/com.insomnia.backstop"), "the unload was tried: \(calls)")
+        XCTAssertTrue(calls[load...].contains("launchctl bootout gui/\(fx.uid)/app.chargingpixels.awake.recovery"), "the unload was tried: \(calls)")
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "#!/bin/bash", "the build the job pins stays at $APP")
-        XCTAssertEqual(try fx.contents(of: fx.appsDir), [".Insomnia.app.previous", "Insomnia.app"])
-        XCTAssertEqual(try String(contentsOf: previous.appendingPathComponent("Contents/MacOS/Insomnia"), encoding: .utf8), "previous\n")
+        XCTAssertEqual(try fx.contents(of: fx.appsDir), [".Awake.app.previous", "Awake.app"])
+        XCTAssertEqual(try String(contentsOf: previous.appendingPathComponent("Contents/MacOS/Awake"), encoding: .utf8), "previous\n")
         XCTAssertEqual(try String(contentsOf: fx.plist, encoding: .utf8), "trusted")
         XCTAssertTrue(r.stderr.contains("not confirmed (launchctl print: unknown:1)"), r.stderr)
         XCTAssertTrue(r.stderr.contains("stays at \(fx.app.path)"), r.stderr)
@@ -5358,10 +5358,10 @@ final class RecoveryScriptTests: XCTestCase {
 
         XCTAssertEqual(r.status, 1, r.stderr + r.stdout)
         let calls = fx.calls()
-        XCTAssertTrue(calls.contains("launchctl bootout gui/\(fx.uid)/com.insomnia.backstop"), "\(calls)")
+        XCTAssertTrue(calls.contains("launchctl bootout gui/\(fx.uid)/app.chargingpixels.awake.recovery"), "\(calls)")
         XCTAssertFalse(calls.contains { $0.hasPrefix("launchctl bootstrap") }, "\(calls)")
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "previous")
-        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Insomnia.app"], "the staged build is discarded and nothing is set aside")
+        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Awake.app"], "the staged build is discarded and nothing is set aside")
         XCTAssertEqual(try String(contentsOf: fx.plist, encoding: .utf8), "trusted")
         XCTAssertTrue(r.stderr.contains("(launchctl print: yes), so the app at \(fx.app.path) was not replaced"), r.stderr)
         XCTAssertFalse(r.stderr.contains("launchctl bootstrap gui/"), "the job is still loaded, so there is nothing to reload: \(r.stderr)")
@@ -5384,12 +5384,12 @@ final class RecoveryScriptTests: XCTestCase {
         fx.setMode("launchctl", "loaded")
     }
 
-    private var stagedBuildPattern: String { fx.appsDir.path + "/.Insomnia.app.staging.*/Insomnia.app" }
-    private var setAside: URL { fx.appsDir.appendingPathComponent(".Insomnia.app.previous", isDirectory: true) }
+    private var stagedBuildPattern: String { fx.appsDir.path + "/.Awake.app.staging.*/Awake.app" }
+    private var setAside: URL { fx.appsDir.appendingPathComponent(".Awake.app.previous", isDirectory: true) }
 
     /// The staging directories left in $APP_DIR.
     private func stagingDirs() throws -> [URL] {
-        try fx.contents(of: fx.appsDir).filter { $0.hasPrefix(".Insomnia.app.staging.") }.map { fx.appsDir.appendingPathComponent($0) }
+        try fx.contents(of: fx.appsDir).filter { $0.hasPrefix(".Awake.app.staging.") }.map { fx.appsDir.appendingPathComponent($0) }
     }
 
     /// The new build cannot be moved in after the previous app was set
@@ -5406,7 +5406,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(calls.filter { $0.hasPrefix("launchctl bootstrap") }, ["launchctl bootstrap gui/\(fx.uid) \(fx.plist.path)"], "only the previous plist is loaded again: \(calls)")
         XCTAssertEqual(calls.filter { $0.hasPrefix("launchctl APP-") }, ["launchctl APP-BINARY=previous during bootstrap"], "the previous app is back before its job is loaded: \(calls)")
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "previous")
-        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Insomnia.app"], "nothing is left set aside or staged")
+        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Awake.app"], "nothing is left set aside or staged")
         XCTAssertEqual(try String(contentsOf: fx.plist, encoding: .utf8), "trusted")
         XCTAssertTrue(r.stderr.contains("the new build could not be moved from"), r.stderr)
         XCTAssertTrue(r.stderr.contains("The previous app was put back at \(fx.app.path)"), r.stderr)
@@ -5423,11 +5423,11 @@ final class RecoveryScriptTests: XCTestCase {
 
         XCTAssertEqual(r.status, 1, r.stderr + r.stdout)
         let calls = fx.calls()
-        let unload = try XCTUnwrap(calls.firstIndex(of: "launchctl bootout gui/\(fx.uid)/com.insomnia.backstop"), "\(calls)")
+        let unload = try XCTUnwrap(calls.firstIndex(of: "launchctl bootout gui/\(fx.uid)/app.chargingpixels.awake.recovery"), "\(calls)")
         XCTAssertEqual(calls[unload...].filter { $0.hasPrefix("launchctl bootstrap") }, ["launchctl bootstrap gui/\(fx.uid) \(fx.plist.path)"], "\(calls)")
         XCTAssertEqual(calls.filter { $0.hasPrefix("launchctl APP-") }, ["launchctl APP-BINARY=previous during bootstrap"], "\(calls)")
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "previous")
-        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Insomnia.app"])
+        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Awake.app"])
         XCTAssertTrue(r.stderr.contains("could not be moved aside to \(setAside.path)"), r.stderr)
         XCTAssertTrue(r.stderr.contains("The previous app was never moved from \(fx.app.path)"), r.stderr)
         XCTAssertTrue(r.stderr.contains("loaded again from the previous plist"), r.stderr)
@@ -5446,9 +5446,9 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(r.status, 1, r.stderr + r.stdout)
         XCTAssertFalse(fx.calls().contains { $0.hasPrefix("launchctl bootstrap") }, "\(fx.calls())")
         XCTAssertFalse(fx.exists(fx.app))
-        XCTAssertEqual(try String(contentsOf: setAside.appendingPathComponent("Contents/MacOS/Insomnia"), encoding: .utf8), "previous\n")
+        XCTAssertEqual(try String(contentsOf: setAside.appendingPathComponent("Contents/MacOS/Awake"), encoding: .utf8), "previous\n")
         let staged = try XCTUnwrap(try stagingDirs().first, "the new build is kept: \(String(describing: try? fx.contents(of: fx.appsDir)))")
-        XCTAssertTrue(fx.exists(staged.appendingPathComponent("Insomnia.app/Contents/Resources/backstop.sh")), "the kept build still carries its backstop.sh")
+        XCTAssertTrue(fx.exists(staged.appendingPathComponent("Awake.app/Contents/Resources/backstop.sh")), "the kept build still carries its backstop.sh")
         XCTAssertTrue(r.stderr.contains("nothing is at \(fx.app.path)"), r.stderr)
         XCTAssertTrue(r.stderr.contains("neither was deleted"), r.stderr)
         XCTAssertEqual(try pastedWords(of: printedCommand(in: r.stderr, containing: "mv ")), ["mv", setAside.path, fx.app.path])
@@ -5480,7 +5480,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(calls.filter { $0.hasPrefix("launchctl bootstrap") }.count, 1, "the candidate only, no reload: \(calls)")
         XCTAssertTrue(calls.contains { $0.hasPrefix("mv FAILED \(fx.app.path) ") }, "\(calls)")
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "#!/bin/bash")
-        XCTAssertEqual(try String(contentsOf: setAside.appendingPathComponent("Contents/MacOS/Insomnia"), encoding: .utf8), "previous\n")
+        XCTAssertEqual(try String(contentsOf: setAside.appendingPathComponent("Contents/MacOS/Awake"), encoding: .utf8), "previous\n")
         XCTAssertEqual(try String(contentsOf: fx.plist, encoding: .utf8), "trusted")
         XCTAssertTrue(r.stderr.contains("so it stays there"), r.stderr)
         XCTAssertTrue(r.stderr.contains("kept at \(setAside.path)"), r.stderr)
@@ -5500,9 +5500,9 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(r.status, 1, r.stderr + r.stdout)
         XCTAssertEqual(fx.calls().filter { $0.hasPrefix("launchctl bootstrap") }.count, 1, "the candidate only, no reload: \(fx.calls())")
         XCTAssertFalse(fx.exists(fx.app))
-        XCTAssertEqual(try String(contentsOf: setAside.appendingPathComponent("Contents/MacOS/Insomnia"), encoding: .utf8), "previous\n")
+        XCTAssertEqual(try String(contentsOf: setAside.appendingPathComponent("Contents/MacOS/Awake"), encoding: .utf8), "previous\n")
         let staged = try XCTUnwrap(try stagingDirs().first, "the new build is kept: \(String(describing: try? fx.contents(of: fx.appsDir)))")
-        XCTAssertTrue(fx.exists(staged.appendingPathComponent("Insomnia.app/Contents/Resources/backstop.sh")))
+        XCTAssertTrue(fx.exists(staged.appendingPathComponent("Awake.app/Contents/Resources/backstop.sh")))
         XCTAssertTrue(r.stderr.contains("'launchctl bootstrap' exited 5"), r.stderr)
         XCTAssertTrue(r.stderr.contains("neither was deleted"), r.stderr)
         XCTAssertEqual(try pastedWords(of: printedCommand(in: r.stderr, containing: "mv ")), ["mv", setAside.path, fx.app.path])
@@ -5522,7 +5522,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(r.status, 1, r.stderr + r.stdout)
         XCTAssertFalse(fx.calls().contains { $0.hasPrefix("launchctl bootstrap") }, "\(fx.calls())")
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "interrupted")
-        XCTAssertEqual(try String(contentsOf: previous.appendingPathComponent("Contents/MacOS/Insomnia"), encoding: .utf8), "previous\n")
+        XCTAssertEqual(try String(contentsOf: previous.appendingPathComponent("Contents/MacOS/Awake"), encoding: .utf8), "previous\n")
         XCTAssertTrue(r.stderr.contains("moving that build out of \(fx.app.path) failed"), r.stderr)
         XCTAssertTrue(r.stderr.contains("The job that run left was unloaded"), r.stderr)
         XCTAssertTrue(r.stderr.contains("Neither bundle was moved"), r.stderr)
@@ -5542,10 +5542,10 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(r.status, 1, r.stderr + r.stdout)
         XCTAssertFalse(fx.calls().contains { $0.hasPrefix("launchctl bootstrap") }, "\(fx.calls())")
         XCTAssertFalse(fx.exists(fx.app))
-        XCTAssertEqual(try String(contentsOf: previous.appendingPathComponent("Contents/MacOS/Insomnia"), encoding: .utf8), "previous\n")
+        XCTAssertEqual(try String(contentsOf: previous.appendingPathComponent("Contents/MacOS/Awake"), encoding: .utf8), "previous\n")
         let staged = try XCTUnwrap(try stagingDirs().first, "\(String(describing: try? fx.contents(of: fx.appsDir)))")
-        XCTAssertEqual(try String(contentsOf: staged.appendingPathComponent("Interrupted.app/Contents/MacOS/Insomnia"), encoding: .utf8), "interrupted\n")
-        XCTAssertTrue(fx.exists(staged.appendingPathComponent("Insomnia.app")), "the new build is kept too")
+        XCTAssertEqual(try String(contentsOf: staged.appendingPathComponent("Interrupted.app/Contents/MacOS/Awake"), encoding: .utf8), "interrupted\n")
+        XCTAssertTrue(fx.exists(staged.appendingPathComponent("Awake.app")), "the new build is kept too")
         XCTAssertEqual(try pastedWords(of: printedCommand(in: r.stderr, containing: "mv ")), ["mv", previous.path, fx.app.path])
         XCTAssertEqual(try pastedWords(of: printedCommand(in: r.stderr, containing: "launchctl bootstrap")), ["launchctl", "bootstrap", "gui/\(fx.uid)", fx.plist.path])
     }
@@ -5565,7 +5565,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(r.status, 1, r.stderr + r.stdout)
         XCTAssertFalse(fx.calls().contains { $0.hasPrefix("launchctl") }, "\(fx.calls())")
         XCTAssertFalse(fx.exists(fx.app))
-        XCTAssertEqual(try String(contentsOf: setAside.appendingPathComponent("Contents/MacOS/Insomnia"), encoding: .utf8), "previous\n")
+        XCTAssertEqual(try String(contentsOf: setAside.appendingPathComponent("Contents/MacOS/Awake"), encoding: .utf8), "previous\n")
         XCTAssertTrue(r.stderr.contains("putting back the previous app"), r.stderr)
         XCTAssertEqual(try pastedWords(of: printedCommand(in: r.stderr, containing: "mv ")), ["mv", setAside.path, fx.app.path])
     }
@@ -5585,7 +5585,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertTrue(r.stderr.contains("is not now that this run holds the recovery lock"), r.stderr)
         XCTAssertFalse(fx.calls().contains { $0.hasPrefix("launchctl") }, "\(fx.calls())")
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "previous")
-        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Insomnia.app"], "the new build is discarded")
+        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Awake.app"], "the new build is discarded")
         XCTAssertEqual(try String(contentsOf: fx.plist, encoding: .utf8), "trusted")
         XCTAssertTrue(try fx.lockIsFree())
     }
@@ -5618,7 +5618,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertFalse(calls.contains { $0.hasPrefix("sudo -n \(fx.fakePmset)") }, "no recovery ran: \(calls)")
         XCTAssertFalse(calls.contains { $0.hasPrefix("launchctl") }, "\(calls)")
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "previous")
-        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Insomnia.app"], "the new build is discarded")
+        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Awake.app"], "the new build is discarded")
         XCTAssertEqual(try String(contentsOf: fx.plist, encoding: .utf8), "trusted")
         XCTAssertEqual(try fx.contents(of: tmp), [], "the scratch directory is gone, including the stopped call's files")
     }
@@ -5722,7 +5722,7 @@ final class RecoveryScriptTests: XCTestCase {
 
         XCTAssertEqual(r.status, 1, r.stderr + r.stdout)
         XCTAssertLessThan(elapsed, 30)
-        XCTAssertTrue(r.stderr.contains("pgrep did not answer within 5s, so whether Insomnia started again is unknown."), r.stderr)
+        XCTAssertTrue(r.stderr.contains("pgrep did not answer within 5s, so whether Awake started again is unknown."), r.stderr)
         let calls = fx.calls()
         XCTAssertTrue(calls.contains("pgrep FD9-OPEN"), "\(calls)")
         XCTAssertTrue(fx.hungProcessGone("pgrep", within: 0))
@@ -5747,7 +5747,7 @@ final class RecoveryScriptTests: XCTestCase {
 
         XCTAssertEqual(r.status, 1, r.stderr + r.stdout)
         XCTAssertLessThan(elapsed, 45, "two bounded prints, not two 60 s hangs")
-        XCTAssertTrue(r.stderr.contains("'launchctl print gui/\(fx.uid)/com.insomnia.backstop' did not answer within 5s; whether the job is loaded is unknown (unknown:124)."), r.stderr)
+        XCTAssertTrue(r.stderr.contains("'launchctl print gui/\(fx.uid)/app.chargingpixels.awake.recovery' did not answer within 5s; whether the job is loaded is unknown (unknown:124)."), r.stderr)
         XCTAssertTrue(r.stderr.contains("Install stopped: unloading the previous LaunchAgent job was not confirmed\n(launchctl print: unknown:124)"), r.stderr)
         let calls = fx.calls()
         XCTAssertTrue(calls.contains("launchctl FD9-OPEN"), "\(calls)")
@@ -5755,7 +5755,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(calls.filter { $0.hasPrefix("launchctl print") }.count, 2, "\(calls)")
         XCTAssertFalse(calls.contains { $0.hasPrefix("launchctl bootstrap") }, "\(calls)")
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "previous")
-        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Insomnia.app"])
+        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Awake.app"])
         XCTAssertEqual(try String(contentsOf: fx.plist, encoding: .utf8), "trusted")
         XCTAssertTrue(try fx.lockIsFree())
         XCTAssertEqual(try fx.contents(of: tmp), [], "the scratch directory is gone, including the stopped calls' files")
@@ -5879,7 +5879,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(r.status, 1, r.stderr + r.stdout)
         XCTAssertEqual(fx.calls().filter { $0.hasPrefix("launchctl bootstrap") }.count, 2, "\(fx.calls())")
         XCTAssertEqual(try String(contentsOf: fx.plist, encoding: .utf8), "trusted", "byte-for-byte untouched")
-        XCTAssertEqual(try fx.contents(of: fx.plist.deletingLastPathComponent()), ["com.insomnia.backstop.plist"], "no candidate left behind")
+        XCTAssertEqual(try fx.contents(of: fx.plist.deletingLastPathComponent()), ["app.chargingpixels.awake.recovery.plist"], "no candidate left behind")
         XCTAssertTrue(r.stderr.contains("could not be loaded again"), r.stderr)
         XCTAssertTrue(r.stderr.contains("launchctl bootstrap gui/\(fx.uid)"), "manual command named: \(r.stderr)")
         XCTAssertFalse(r.stderr.contains("every minute"), r.stderr)
@@ -5899,7 +5899,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(r.status, 1, r.stderr + r.stdout)
         XCTAssertEqual(fx.calls().filter { $0.hasPrefix("launchctl bootstrap") }.count, 0, "nothing is loaded while the previous job may still be: \(fx.calls())")
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "previous", "the previous bundle was not replaced")
-        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Insomnia.app"], "the staged build is discarded")
+        XCTAssertEqual(try fx.contents(of: fx.appsDir), ["Awake.app"], "the staged build is discarded")
         XCTAssertEqual(try String(contentsOf: fx.plist, encoding: .utf8), "trusted")
         XCTAssertTrue(r.stderr.contains("(launchctl print: unknown:1), so the app at \(fx.app.path) was not replaced"), r.stderr)
         XCTAssertTrue(r.stderr.contains("  launchctl bootstrap gui/\(fx.uid) \(fx.plist.path)\n"), "how to reload the previous job if it is gone: \(r.stderr)")
@@ -5924,7 +5924,7 @@ final class RecoveryScriptTests: XCTestCase {
         let calls = fx.calls()
         XCTAssertEqual(calls.filter { $0.hasPrefix("launchctl bootstrap") }.count, 1, "no reload when nothing was loaded before: \(calls)")
         let load = try XCTUnwrap(calls.firstIndex { $0.hasPrefix("launchctl bootstrap") })
-        XCTAssertTrue(calls[load...].contains("launchctl bootout gui/\(fx.uid)/com.insomnia.backstop"), "the job print cannot rule out is unloaded: \(calls)")
+        XCTAssertTrue(calls[load...].contains("launchctl bootout gui/\(fx.uid)/app.chargingpixels.awake.recovery"), "the job print cannot rule out is unloaded: \(calls)")
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "#!/bin/bash", "the unload is not confirmed, so the new build stays")
         XCTAssertTrue(r.stderr.contains("not confirmed (launchctl print: unknown:1)"), r.stderr)
         XCTAssertTrue(r.stderr.contains("No app was installed at \(fx.app.path) before this run"), r.stderr)
@@ -5967,7 +5967,7 @@ final class RecoveryScriptTests: XCTestCase {
 
         XCTAssertEqual(r.status, 1, r.stderr + r.stdout)
         XCTAssertEqual(try String(contentsOf: fx.plist, encoding: .utf8), "trusted", "nothing is published without a confirmed load")
-        XCTAssertEqual(try fx.contents(of: fx.plist.deletingLastPathComponent()), ["com.insomnia.backstop.plist"])
+        XCTAssertEqual(try fx.contents(of: fx.plist.deletingLastPathComponent()), ["app.chargingpixels.awake.recovery.plist"])
         XCTAssertTrue(r.stderr.contains("not confirmed"), r.stderr)
         XCTAssertFalse(r.stdout.contains("Installed"), r.stdout)
     }
@@ -6008,12 +6008,12 @@ final class RecoveryScriptTests: XCTestCase {
     }
 
     func testInstallRefusesRelocatedHomeBeforeDoingAnything() throws {
-        // The only install.sh run in this suite: INSOMNIA_HOME is set, so the
+        // The only install.sh run in this suite: AWAKE_HOME is set, so the
         // script must exit before its first build/quit/install step.
-        let r = try fx.run(fx.install, [], extraEnvironment: ["INSOMNIA_HOME": fx.home.path])
+        let r = try fx.run(fx.install, [], extraEnvironment: ["AWAKE_HOME": fx.home.path])
 
         XCTAssertEqual(r.status, 1, r.stderr + r.stdout)
-        XCTAssertTrue(r.stderr.contains("INSOMNIA_HOME"), r.stderr)
+        XCTAssertTrue(r.stderr.contains("AWAKE_HOME"), r.stderr)
         XCTAssertTrue(r.stderr.contains("Nothing was changed"), r.stderr)
         XCTAssertEqual(fx.calls(), [])
         XCTAssertFalse(r.stdout.contains("==>"), "no step ran: \(r.stdout)")
@@ -6034,7 +6034,7 @@ final class RecoveryScriptTests: XCTestCase {
 
         XCTAssertEqual(r.status, 0, r.stderr + r.stdout)
         let calls = fx.calls()
-        XCTAssertTrue(calls.contains("launchctl bootout gui/\(fx.uid)/com.insomnia.backstop"), "boot out by service target: \(calls)")
+        XCTAssertTrue(calls.contains("launchctl bootout gui/\(fx.uid)/app.chargingpixels.awake.recovery"), "boot out by service target: \(calls)")
         let bootstrap = try XCTUnwrap(calls.first { $0.hasPrefix("launchctl bootstrap") })
         let candidate = URL(fileURLWithPath: String(bootstrap.dropFirst("launchctl bootstrap gui/\(fx.uid) ".count)))
         XCTAssertTrue(candidate.lastPathComponent.hasSuffix(".plist"), "launchctl refuses to bootstrap \(candidate.lastPathComponent)")
@@ -6042,7 +6042,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertNotEqual(candidate.deletingLastPathComponent().path, launchAgents.path, "a *.plist directly in LaunchAgents is loaded at login as a second copy")
         XCTAssertEqual(candidate.deletingLastPathComponent().deletingLastPathComponent().path, launchAgents.path, "one level below the trusted plist, same filesystem")
         XCTAssertTrue(try String(contentsOf: fx.plist, encoding: .utf8).contains("<integer>60</integer>"))
-        XCTAssertEqual(try fx.contents(of: launchAgents), ["com.insomnia.backstop.plist"], "staging directory not removed")
+        XCTAssertEqual(try fx.contents(of: launchAgents), ["app.chargingpixels.awake.recovery.plist"], "staging directory not removed")
     }
 
     /// The password prompt (visudo + install of the sudoers rule) comes
@@ -6064,7 +6064,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertFalse(calls.contains { $0.hasPrefix("osascript") }, "the app was asked to quit before authentication: \(calls)")
         XCTAssertFalse(calls.contains { $0.hasPrefix("launchctl") }, "\(calls)")
         XCTAssertFalse(calls.contains { $0.hasPrefix("sudo install") }, "\(calls)")
-        XCTAssertEqual(try String(contentsOf: fx.app.appendingPathComponent("Contents/MacOS/Insomnia"), encoding: .utf8), "binary", "old bundle replaced")
+        XCTAssertEqual(try String(contentsOf: fx.app.appendingPathComponent("Contents/MacOS/Awake"), encoding: .utf8), "binary", "old bundle replaced")
         XCTAssertEqual(try String(contentsOf: fx.installedBackstop, encoding: .utf8), "old helper", "installed backstop.sh replaced")
         XCTAssertEqual(try String(contentsOf: fx.plist, encoding: .utf8), "plist", "trusted plist touched")
         XCTAssertEqual(try String(contentsOf: fx.sudoers, encoding: .utf8), "rule", "sudoers rule replaced")
@@ -6086,7 +6086,7 @@ final class RecoveryScriptTests: XCTestCase {
         let calls = fx.calls()
         XCTAssertFalse(calls.contains { $0.hasPrefix("osascript") }, "\(calls)")
         XCTAssertFalse(calls.contains { $0.hasPrefix("launchctl") }, "\(calls)")
-        XCTAssertEqual(try String(contentsOf: fx.app.appendingPathComponent("Contents/MacOS/Insomnia"), encoding: .utf8), "binary")
+        XCTAssertEqual(try String(contentsOf: fx.app.appendingPathComponent("Contents/MacOS/Awake"), encoding: .utf8), "binary")
         XCTAssertEqual(try String(contentsOf: fx.installedBackstop, encoding: .utf8), "old helper")
         XCTAssertEqual(try String(contentsOf: fx.plist, encoding: .utf8), "plist")
         XCTAssertTrue(r.stderr.contains("still not permitted"), r.stderr)
@@ -6112,7 +6112,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertFalse(calls.contains { $0.hasPrefix("sudo install") }, "\(calls)")
         XCTAssertFalse(calls.contains { $0.hasPrefix("osascript") }, "nothing to quit: \(calls)")
         XCTAssertFalse(calls.contains { $0.hasPrefix("launchctl") }, "\(calls)")
-        XCTAssertEqual(try String(contentsOf: fx.app.appendingPathComponent("Contents/MacOS/Insomnia"), encoding: .utf8), "binary", "old bundle replaced")
+        XCTAssertEqual(try String(contentsOf: fx.app.appendingPathComponent("Contents/MacOS/Awake"), encoding: .utf8), "binary", "old bundle replaced")
         XCTAssertEqual(try String(contentsOf: fx.installedBackstop, encoding: .utf8), "old helper", "installed backstop.sh replaced")
         XCTAssertEqual(try String(contentsOf: fx.plist, encoding: .utf8), "plist", "trusted plist touched")
         XCTAssertEqual(try String(contentsOf: fx.sudoers, encoding: .utf8), "rule", "sudoers rule replaced")
@@ -6137,7 +6137,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertTrue(calls.contains { $0.hasPrefix("sudo install") }, "the rule was installed before being checked: \(calls)")
         XCTAssertFalse(calls.contains { $0.hasPrefix("osascript") }, "nothing to quit: \(calls)")
         XCTAssertFalse(calls.contains { $0.hasPrefix("launchctl") }, "\(calls)")
-        XCTAssertEqual(try String(contentsOf: fx.app.appendingPathComponent("Contents/MacOS/Insomnia"), encoding: .utf8), "binary", "old bundle replaced")
+        XCTAssertEqual(try String(contentsOf: fx.app.appendingPathComponent("Contents/MacOS/Awake"), encoding: .utf8), "binary", "old bundle replaced")
         XCTAssertEqual(try String(contentsOf: fx.installedBackstop, encoding: .utf8), "old helper", "installed backstop.sh replaced")
         XCTAssertEqual(try String(contentsOf: fx.plist, encoding: .utf8), "plist", "trusted plist touched")
         XCTAssertTrue(try String(contentsOf: fx.sudoers, encoding: .utf8).contains("NOPASSWD: /usr/bin/pmset"), "the new rule is what was installed")
@@ -6162,7 +6162,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertFalse(calls.contains { $0.hasPrefix("pkill") }, "a refused quit stands: \(calls)")
         XCTAssertFalse(calls.contains { $0.hasPrefix("launchctl") }, "\(calls)")
         XCTAssertTrue(try String(contentsOf: fx.sudoers, encoding: .utf8).contains("NOPASSWD: /usr/bin/pmset"), "the rule was installed")
-        XCTAssertEqual(try String(contentsOf: fx.app.appendingPathComponent("Contents/MacOS/Insomnia"), encoding: .utf8), "binary")
+        XCTAssertEqual(try String(contentsOf: fx.app.appendingPathComponent("Contents/MacOS/Awake"), encoding: .utf8), "binary")
         XCTAssertEqual(try String(contentsOf: fx.installedBackstop, encoding: .utf8), "old helper")
         XCTAssertEqual(try String(contentsOf: fx.plist, encoding: .utf8), "plist")
         XCTAssertFalse(r.stderr.contains("Nothing was changed"), "the sudoers rule was changed: \(r.stderr)")
@@ -6180,7 +6180,7 @@ private struct FixtureError: Error, CustomStringConvertible {
 }
 
 /// A throwaway tree:
-///   root/home              INSOMNIA_HOME (session.json, state.json, Logs/, LaunchAgents/)
+///   root/home              AWAKE_HOME (session.json, state.json, Logs/, LaunchAgents/)
 ///   root/bin               recording fakes
 ///   root/repo/scripts      patched copies of backstop.sh and uninstall.sh
 ///   root/Applications      fake Insomnia.app bundle
@@ -6215,11 +6215,11 @@ private final class ScriptFixture {
     var legacyBackstop: URL { home.appendingPathComponent("backstop.sh") }
     /// What the fake codesign prints as the bundle's designated requirement.
     let requirement = "cdhash H\"0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c\""
-    var logFile: URL { home.appendingPathComponent("Logs/insomnia.log") }
-    var plist: URL { home.appendingPathComponent("LaunchAgents/com.insomnia.backstop.plist") }
+    var logFile: URL { home.appendingPathComponent("Logs/awake.log") }
+    var plist: URL { home.appendingPathComponent("LaunchAgents/app.chargingpixels.awake.recovery.plist") }
     var fakePmset: String { bin.appendingPathComponent("pmset").path }
     /// The fake app binary backstop.sh calls for `--resume-frozen`.
-    var fakeInsomnia: URL { bin.appendingPathComponent("Insomnia") }
+    var fakeInsomnia: URL { bin.appendingPathComponent("Awake") }
     /// The installed bundle's Info.plist. As in production, both scripts
     /// read this one file: uninstall.sh to pick a backstop, and the
     /// backstop copies before they run the fake binary. writeFakes makes it
@@ -6236,8 +6236,8 @@ private final class ScriptFixture {
         bin = root.appendingPathComponent("bin", isDirectory: true)
         repoScripts = root.appendingPathComponent("repo/scripts", isDirectory: true)
         appsDir = root.appendingPathComponent("Applications", isDirectory: true)
-        app = appsDir.appendingPathComponent("Insomnia.app", isDirectory: true)
-        sudoers = root.appendingPathComponent("etc/sudoers.d/insomnia")
+        app = appsDir.appendingPathComponent("Awake.app", isDirectory: true)
+        sudoers = root.appendingPathComponent("etc/sudoers.d/awake")
         callsLog = root.appendingPathComponent("calls.log")
         for dir in [home, bin, repoScripts, appsDir] {
             try fm.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -6258,7 +6258,7 @@ private final class ScriptFixture {
         try? fm.removeItem(at: root)
     }
 
-    /// The backstop's files in INSOMNIA_HOME: each bounded call's .pid and
+    /// The backstop's files in AWAKE_HOME: each bounded call's .pid and
     /// .rc status files, and the app binary's input and answer directory.
     func backstopFiles() throws -> [String] {
         try contents(of: home).filter { $0.hasPrefix(".backstop") }
@@ -6332,7 +6332,7 @@ private final class ScriptFixture {
         try """
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version="1.0"><dict><key>CFBundleIdentifier</key><string>com.kgarg.insomnia</string></dict></plist>
+        <plist version="1.0"><dict><key>CFBundleIdentifier</key><string>app.chargingpixels.awake</string></dict></plist>
         """.write(to: resources.appendingPathComponent("Info.plist"), atomically: true, encoding: .utf8)
         try "icns".write(to: resources.appendingPathComponent("AppIcon.icns"), atomically: true, encoding: .utf8)
         let binroot = root.appendingPathComponent("binroot", isDirectory: true)
@@ -6349,12 +6349,12 @@ private final class ScriptFixture {
     func writePreviousApp(at url: URL? = nil) throws {
         let bundle = url ?? app
         try fm.createDirectory(at: bundle.appendingPathComponent("Contents/MacOS"), withIntermediateDirectories: true)
-        try "previous\n".write(to: bundle.appendingPathComponent("Contents/MacOS/Insomnia"), atomically: true, encoding: .utf8)
+        try "previous\n".write(to: bundle.appendingPathComponent("Contents/MacOS/Awake"), atomically: true, encoding: .utf8)
     }
 
     /// First line of the binary installed at $APP.
     func installedBinaryFirstLine() throws -> String {
-        let text = try String(contentsOf: app.appendingPathComponent("Contents/MacOS/Insomnia"), encoding: .utf8)
+        let text = try String(contentsOf: app.appendingPathComponent("Contents/MacOS/Awake"), encoding: .utf8)
         return String(text.split(separator: "\n", omittingEmptySubsequences: false).first ?? "")
     }
 
@@ -6464,10 +6464,10 @@ private final class ScriptFixture {
             "CALL_TIMEOUT_SECONDS": "5",
         ].merging(extraConstants) { $1 })
         try patchedInstall.write(to: install, atomically: true, encoding: .utf8)
-        // The redirected copy runs past the INSOMNIA_HOME refusal: that
+        // The redirected copy runs past the AWAKE_HOME refusal: that
         // variable is what makes the backstop copy it installs act on the
         // fixture instead of ~/Library. The plain copy keeps the refusal.
-        let redirected = try Self.replaceOnce(patchedInstall, #"if [[ -n "${INSOMNIA_HOME:-}" ]]; then"#, with: "if false; then")
+        let redirected = try Self.replaceOnce(patchedInstall, #"if [[ -n "${AWAKE_HOME:-}" ]]; then"#, with: "if false; then")
         try redirected.write(to: installRedirected, atomically: true, encoding: .utf8)
     }
 
@@ -6477,24 +6477,24 @@ private final class ScriptFixture {
     /// backstop (the fixture's patched copy, so install.sh's recovery step
     /// acts on the fixture). What the fake codesign says about its signature
     /// is set with `setMode("codesign", ...)` and `setSigning(...)`.
-    func writePrebuiltApp(bundleID: String = "com.kgarg.insomnia", version: String = "0.1.0", withBackstop: Bool = true, machO: Bool = false) throws -> URL {
-        let app = root.appendingPathComponent("dist/Insomnia.app", isDirectory: true)
+    func writePrebuiltApp(bundleID: String = "app.chargingpixels.awake", version: String = "0.1.0", withBackstop: Bool = true, machO: Bool = false) throws -> URL {
+        let app = root.appendingPathComponent("dist/Awake.app", isDirectory: true)
         try fm.createDirectory(at: app.appendingPathComponent("Contents/MacOS"), withIntermediateDirectories: true)
         try fm.createDirectory(at: app.appendingPathComponent("Contents/Resources"), withIntermediateDirectories: true)
         try """
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
         <plist version="1.0"><dict>
-        <key>CFBundleExecutable</key><string>Insomnia</string>
+        <key>CFBundleExecutable</key><string>Awake</string>
         <key>CFBundleIdentifier</key><string>\(bundleID)</string>
         <key>CFBundlePackageType</key><string>APPL</string>
         <key>CFBundleShortVersionString</key><string>\(version)</string>
         </dict></plist>
         """.write(to: app.appendingPathComponent("Contents/Info.plist"), atomically: true, encoding: .utf8)
         if machO {
-            try fm.copyItem(atPath: "/usr/bin/true", toPath: app.appendingPathComponent("Contents/MacOS/Insomnia").path)
+            try fm.copyItem(atPath: "/usr/bin/true", toPath: app.appendingPathComponent("Contents/MacOS/Awake").path)
         } else {
-            try "prebuilt".write(to: app.appendingPathComponent("Contents/MacOS/Insomnia"), atomically: true, encoding: .utf8)
+            try "prebuilt".write(to: app.appendingPathComponent("Contents/MacOS/Awake"), atomically: true, encoding: .utf8)
         }
         if withBackstop {
             try fm.copyItem(at: backstop, to: app.appendingPathComponent("Contents/Resources/backstop.sh"))
@@ -6541,7 +6541,7 @@ private final class ScriptFixture {
         return """
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version="1.0"><dict><key>CFBundleExecutable</key><string>Insomnia</string>\(key)</dict></plist>
+        <plist version="1.0"><dict><key>CFBundleExecutable</key><string>Awake</string>\(key)</dict></plist>
 
         """
     }
@@ -6646,8 +6646,8 @@ private final class ScriptFixture {
           visudo)
             if [[ "$mode" == auth-fail ]]; then echo "sudo: 3 incorrect password attempts" >&2; exit 1; fi
             # "swap-prebuilt": someone replaces the --app bundle at its path
-            # (writePrebuiltApp's dist/Insomnia.app) while the password prompt waits.
-            if [[ "$mode" == swap-prebuilt ]]; then printf 'swapped' > "\(r)/dist/Insomnia.app/Contents/MacOS/Insomnia"; fi
+            # (writePrebuiltApp's dist/Awake.app) while the password prompt waits.
+            if [[ "$mode" == swap-prebuilt ]]; then printf 'swapped' > "\(r)/dist/Awake.app/Contents/MacOS/Awake"; fi
             f=""; for a in "$@"; do f="$a"; done
             # Rejects unless the file is non-empty and has the rule.
             # shellcheck disable=SC2015
@@ -6729,8 +6729,8 @@ private final class ScriptFixture {
         last=""; deep=0; pinned=0; for a in "$@"; do last="$a"; [[ "$a" == --deep ]] && deep=1; [[ "$a" == -R=* ]] && pinned=1; done
         for a in "$@"; do
           case "$a" in
-            -r-) echo "Executable=$last/Contents/MacOS/Insomnia" >&2; echo '# designated => \(requirement)' >&2; exit 0 ;;
-            -dvv) echo "Executable=$last/Contents/MacOS/Insomnia" >&2; echo "Identifier=com.kgarg.insomnia" >&2
+            -r-) echo "Executable=$last/Contents/MacOS/Awake" >&2; echo '# designated => \(requirement)' >&2; exit 0 ;;
+            -dvv) echo "Executable=$last/Contents/MacOS/Awake" >&2; echo "Identifier=app.chargingpixels.awake" >&2
                   case "$signing" in
                     developer-id:*) echo "Authority=Developer ID Application: Tester (${signing#developer-id:})" >&2
                                     echo "Authority=Developer ID Certification Authority" >&2
@@ -6815,12 +6815,12 @@ private final class ScriptFixture {
         // instruction, so no trap has to be in place before the signal.
         try fm.createDirectory(at: appInfo.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Self.infoPlist(resumeFrozenVersion: "1").write(to: appInfo, atomically: true, encoding: .utf8)
-        try writeFake("Insomnia", """
+        try writeFake("Awake", """
         input=()
         while IFS= read -r line || [[ -n "$line" ]]; do input+=("$line"); done
         joined=""
         for line in "${input[@]}"; do joined="${joined:+$joined; }$line"; done
-        printf 'Insomnia %s < %s\\n' "$*" "$joined" >> "\(calls)"
+        printf 'Awake %s < %s\\n' "$*" "$joined" >> "\(calls)"
         echo "$PPID" > "\(r)/insomnia.ppid"
         if [[ -e /dev/fd/9 ]]; then stat -f %i /dev/fd/9 > "\(r)/insomnia.fd9"; else : > "\(r)/insomnia.fd9"; fi
         mode="$(cat "\(r)/insomnia.mode" 2>/dev/null || echo ok)"
@@ -6829,7 +6829,7 @@ private final class ScriptFixture {
             [[ -f "\(r)/insomnia.release" ]] && break
             /bin/sleep 0.1
           done
-          printf 'Insomnia released\\n' >> "\(calls)"
+          printf 'Awake released\\n' >> "\(calls)"
         fi
         if [[ "$mode" == raw ]]; then
           cat "\(r)/insomnia.output"
@@ -6965,7 +6965,7 @@ private final class ScriptFixture {
         elif [[ "${1:-}" == bootout && $# -ge 3 ]]; then
           [[ "${3:-}" == *.plist && -f "${3:-}" ]] || { echo "Boot-out failed: 5: Input/output error" >&2; exit 5; }
         elif [[ "${1:-}" == bootout ]]; then
-          [[ "${2:-}" == gui/\(uid)/com.insomnia.backstop ]] || { echo "Boot-out failed: 5: Input/output error" >&2; exit 5; }
+          [[ "${2:-}" == gui/\(uid)/app.chargingpixels.awake.recovery ]] || { echo "Boot-out failed: 5: Input/output error" >&2; exit 5; }
         fi
         if [[ "${1:-}" == bootstrap ]]; then
           if /usr/bin/lockf -k -s -t 0 "\(r)/home/.recovery.lock" /usr/bin/true 2>/dev/null; then
@@ -6973,8 +6973,8 @@ private final class ScriptFixture {
           else
             echo 'launchctl LOCK-HELD during bootstrap' >> "\(calls)"
           fi
-          if [[ -f "\(app.path)/Contents/MacOS/Insomnia" ]]; then
-            echo "launchctl APP-BINARY=$(head -n 1 "\(app.path)/Contents/MacOS/Insomnia") during bootstrap" >> "\(calls)"
+          if [[ -f "\(app.path)/Contents/MacOS/Awake" ]]; then
+            echo "launchctl APP-BINARY=$(head -n 1 "\(app.path)/Contents/MacOS/Awake") during bootstrap" >> "\(calls)"
           else
             echo 'launchctl APP-ABSENT during bootstrap' >> "\(calls)"
           fi
@@ -7053,13 +7053,13 @@ private final class ScriptFixture {
     /// A bundle at `url` whose binary's first line is `marker`.
     func writeBundle(at url: URL, marker: String) throws {
         try fm.createDirectory(at: url.appendingPathComponent("Contents/MacOS"), withIntermediateDirectories: true)
-        try "\(marker)\n".write(to: url.appendingPathComponent("Contents/MacOS/Insomnia"), atomically: true, encoding: .utf8)
+        try "\(marker)\n".write(to: url.appendingPathComponent("Contents/MacOS/Awake"), atomically: true, encoding: .utf8)
     }
 
     /// The agent plist an install writes for the bundle at $APP, pinning
     /// the fake codesign's requirement.
     func writeAgentPlist() throws {
-        let dict = LaunchdBackstop.plistDictionary(label: "com.insomnia.backstop", target: BackstopTarget(bundle: app, requirement: requirement))
+        let dict = LaunchdBackstop.plistDictionary(label: "app.chargingpixels.awake.recovery", target: BackstopTarget(bundle: app, requirement: requirement))
         let data = try PropertyListSerialization.data(fromPropertyList: dict, format: .xml, options: 0)
         try data.write(to: plist)
     }
@@ -7233,7 +7233,7 @@ private final class ScriptFixture {
     /// Everything uninstall.sh would remove on success.
     func installMachinery() throws {
         try fm.createDirectory(at: app.appendingPathComponent("Contents/MacOS"), withIntermediateDirectories: true)
-        try "binary".write(to: app.appendingPathComponent("Contents/MacOS/Insomnia"), atomically: true, encoding: .utf8)
+        try "binary".write(to: app.appendingPathComponent("Contents/MacOS/Awake"), atomically: true, encoding: .utf8)
         try Self.infoPlist(resumeFrozenVersion: "1").write(to: appInfo, atomically: true, encoding: .utf8)
         try fm.createDirectory(at: sudoers.deletingLastPathComponent(), withIntermediateDirectories: true)
         try "rule".write(to: sudoers, atomically: true, encoding: .utf8)
@@ -7277,12 +7277,12 @@ private final class ScriptFixture {
     }
 
     /// Environment for the child: no inheritance, so neither the real HOME
-    /// nor a TempHome's INSOMNIA_HOME can leak in. HOME is deliberately
+    /// nor a TempHome's AWAKE_HOME can leak in. HOME is deliberately
     /// unset (see the class comment).
     private var childEnvironment: [String: String] {
         [
             "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
-            "INSOMNIA_HOME": home.path,
+            "AWAKE_HOME": home.path,
         ]
     }
 
@@ -7926,7 +7926,7 @@ final class AppEncodedJournalScriptTests: XCTestCase {
     private func checkUndone(_ f: ScriptFixture, before: Data, _ label: String) throws {
         XCTAssertTrue(f.calls().contains("sudo -n \(f.fakePmset) -a disablesleep 0"), "\(label): \(f.calls())")
         XCTAssertTrue(f.calls().contains("sudo -n \(f.fakePmset) -b lowpowermode 0"), "\(label): \(f.calls())")
-        XCTAssertTrue(f.calls().contains { $0.hasPrefix("Insomnia --resume-frozen") && $0.contains("4242 1789388423 17") }, "\(label): \(f.calls())")
+        XCTAssertTrue(f.calls().contains { $0.hasPrefix("Awake --resume-frozen") && $0.contains("4242 1789388423 17") }, "\(label): \(f.calls())")
         XCTAssertFalse(f.log().contains("malformed"), "\(label): \(f.log())")
         let wrote = try Store.makeDecoder().decode(RuntimeState.self, from: before)
         let after = try Store.makeDecoder().decode(RuntimeState.self, from: Data(contentsOf: f.state))

@@ -197,7 +197,7 @@ struct SettingsView: View {
         } header: {
             Text("Lid-close actions")
         } footer: {
-            Text("Apps on the list above are stopped with SIGSTOP while the lid is closed and resumed when it opens. With \"Freeze every other app\" on (off by default), every other Dock app is stopped too, except agent apps, Apple apps, Docker Desktop and built-in protected apps (editors, terminals, browsers, AI apps, password managers, local databases, Tailscale, local model servers, and meeting, recording and dictation apps such as Zoom, Teams, Webex, Wispr Flow, Granola, Otter, OBS and Loom). Agent apps are never frozen. The display brightness and keyboard backlight are saved, set to zero and restored when the lid opens. If Insomnia is not running when you open the lid, press the brightness-up key.")
+            Text("Apps on the list above are stopped with SIGSTOP while the lid is closed and resumed when it opens. With \"Freeze every other app\" on (off by default), every other Dock app is stopped too, except agent apps, Apple apps, Docker Desktop and built-in protected apps (editors, terminals, browsers, AI apps, password managers, local databases, Tailscale, local model servers, and meeting, recording and dictation apps such as Zoom, Teams, Webex, Wispr Flow, Granola, Otter, OBS and Loom). Agent apps are never frozen. The display brightness and keyboard backlight are saved, set to zero and restored when the lid opens. If Awake is not running when you open the lid, press the brightness-up key.")
         }
     }
 
@@ -272,14 +272,14 @@ struct SettingsView: View {
                 }
                 // macOS has no when-in-use grant for Mac apps: the grant is
                 // recorded as Location Services access for Insomnia.
-                Text("macOS records this grant as Location Services access for Insomnia. Insomnia uses it only to read Wi-Fi network names and never requests your location.")
+                Text("macOS records this grant as Location Services access for Awake. Awake uses it only to read Wi-Fi network names and never requests your location.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Stepper(value: nudgeSeconds, in: 10...900, step: 10) {
                 LabeledContent("Nudge tmux after", value: "\(Int(manager.config.nudgeThreshold)) s offline")
             }
-            Text("After that long offline, Insomnia types \"continue\" into each pane listed below. Only a pane you have marked with this tmux command is nudged. Mark a dedicated pane, not one you type in.")
+            Text("After that long offline, Awake types \"continue\" into each pane listed below. Only a pane you have marked with this tmux command is nudged. Mark a dedicated pane, not one you type in.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Text(TmuxNudge.markCommand())
@@ -308,7 +308,7 @@ struct SettingsView: View {
         } header: {
             Text("Network failover")
         } footer: {
-            Text("The password is kept in the login keychain, readable without a prompt only by the build of Insomnia that saved it; after a reinstall, enter it again. Location permission lets macOS reveal Wi-Fi network names and find the configured hotspot.")
+            Text("The password is kept in the login keychain, readable without a prompt only by the build of Awake that saved it; after a reinstall, enter it again. Location permission lets macOS reveal Wi-Fi network names and find the configured hotspot.")
         }
     }
 

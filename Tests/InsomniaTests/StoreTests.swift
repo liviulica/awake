@@ -541,14 +541,14 @@ final class StoreTests: XCTestCase {
     }
 
     func testPathsFromEnvironment() {
-        let p = Paths.fromEnvironment(["INSOMNIA_HOME": "/tmp/x"])
+        let p = Paths.fromEnvironment(["AWAKE_HOME": "/tmp/x"])
         XCTAssertEqual(p.sessionFile.path, "/tmp/x/session.json")
         XCTAssertEqual(p.recoveryLock.path, "/tmp/x/.recovery.lock")
-        XCTAssertEqual(p.logFile.path, "/tmp/x/Logs/insomnia.log")
-        XCTAssertEqual(p.backstopPlist.path, "/tmp/x/LaunchAgents/com.insomnia.backstop.plist")
+        XCTAssertEqual(p.logFile.path, "/tmp/x/Logs/awake.log")
+        XCTAssertEqual(p.backstopPlist.path, "/tmp/x/LaunchAgents/app.chargingpixels.awake.recovery.plist")
         let std = Paths.fromEnvironment([:])
-        XCTAssertTrue(std.sessionFile.path.hasSuffix("/Library/Application Support/Insomnia/session.json"))
-        XCTAssertTrue(std.backstopPlist.path.hasSuffix("/Library/LaunchAgents/com.insomnia.backstop.plist"))
+        XCTAssertTrue(std.sessionFile.path.hasSuffix("/Library/Application Support/Awake/session.json"))
+        XCTAssertTrue(std.backstopPlist.path.hasSuffix("/Library/LaunchAgents/app.chargingpixels.awake.recovery.plist"))
     }
 
     /// A journal that does not decode is evidence of what a previous run

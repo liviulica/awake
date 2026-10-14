@@ -445,7 +445,7 @@ final class LidActions {
             ))
             let outcome = stuck.isEmpty
                 ? "so this freeze of \(group.name) is undone"
-                : "and pid(s) \(stuck.map(String.init).joined(separator: ", ")) may still be stopped; they stay journaled without identity, so Insomnia will not resume them, and lid open reports the ones still stopped"
+                : "and pid(s) \(stuck.map(String.init).joined(separator: ", ")) may still be stopped; they stay journaled without identity, so Awake will not resume them, and lid open reports the ones still stopped"
             manager.fail("lid close: could not confirm the freeze of \(group.name) (\(group.bundleId)) in the journal: \(error.localizedDescription); resumed \(undo.resumed.count) of the \(confirmed.count) pid(s) it had just stopped, \(outcome)")
             return
         }

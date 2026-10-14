@@ -5,15 +5,15 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleExecutable</key>
-	<string>Insomnia</string>
+	<string>Awake</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.kgarg.insomnia</string>
+	<string>app.chargingpixels.awake</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Insomnia</string>
+	<string>Awake</string>
 	<key>CFBundleDisplayName</key>
-	<string>Insomnia</string>
+	<string>Awake</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundlePackageType</key>
@@ -29,9 +29,9 @@
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSLocationUsageDescription</key>
-	<string>Insomnia needs your location permission so macOS lets it see Wi-Fi network names and rejoin your hotspot.</string>
+	<string>Awake needs your location permission so macOS lets it see Wi-Fi network names and rejoin your hotspot.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Insomnia needs your location permission so macOS lets it see Wi-Fi network names and rejoin your hotspot.</string>
+	<string>Awake needs your location permission so macOS lets it see Wi-Fi network names and rejoin your hotspot.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>InsomniaResumeFrozenVersion</key>

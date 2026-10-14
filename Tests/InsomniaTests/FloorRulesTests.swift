@@ -366,7 +366,7 @@ final class FloorRuleDriverTests: XCTestCase {
 
         h.guardFake.throwOn = []
         await m.end(reason: .user)
-        XCTAssertFalse(h.guardFake.lowPowerOn, "session end did not clear the mode Insomnia may have switched on")
+        XCTAssertFalse(h.guardFake.lowPowerOn, "session end did not clear the mode Awake may have switched on")
         XCTAssertEqual(try h.store.loadState(), RuntimeState.clean)
     }
 

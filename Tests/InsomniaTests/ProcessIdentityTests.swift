@@ -242,7 +242,7 @@ final class ProcessIdentityTests: XCTestCase {
         let resumed = c.resume(journaled)
         XCTAssertEqual(resumed.resumed, [200])
         XCTAssertEqual(sent.value.map { "\($0.pid):\($0.sig)" }, ["200:\(SIGSTOP)", "200:\(SIGCONT)"])
-        XCTAssertFalse(sent.value.contains { $0.pid == 201 }, "a process stopped before Insomnia acted was signaled")
+        XCTAssertFalse(sent.value.contains { $0.pid == 201 }, "a process stopped before Awake acted was signaled")
     }
 
     func testSuspendSkipsProcessWithoutIdentity() {

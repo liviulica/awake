@@ -1,24 +1,24 @@
 import Foundation
 
-/// Every on-disk location Insomnia uses. The whole tree can be relocated with
-/// the `INSOMNIA_HOME` environment variable (tests, and `backstop.sh` honours
+/// Every on-disk location Awake uses. The whole tree can be relocated with
+/// the `AWAKE_HOME` environment variable (tests, and `backstop.sh` honours
 /// the same variable with the same layout).
 ///
 /// Default layout:
-///   ~/Applications/Insomnia.app/Contents/Resources/backstop.sh
-///   ~/Library/Application Support/Insomnia/{session.json,state.json,config.json,unfinished-command.json}
-///   ~/Library/Logs/Insomnia/{insomnia.log,handoffs.log}
-///   ~/Library/LaunchAgents/com.insomnia.backstop.plist
+///   ~/Applications/Awake.app/Contents/Resources/backstop.sh
+///   ~/Library/Application Support/Awake/{session.json,state.json,config.json,unfinished-command.json}
+///   ~/Library/Logs/Awake/{awake.log,handoffs.log}
+///   ~/Library/LaunchAgents/app.chargingpixels.awake.recovery.plist
 ///
-/// With INSOMNIA_HOME=/x:
-///   /x/Insomnia.app/Contents/Resources/backstop.sh
+/// With AWAKE_HOME=/x:
+///   /x/Awake.app/Contents/Resources/backstop.sh
 ///   /x/{session.json,state.json,config.json,unfinished-command.json}
-///   /x/Logs/{insomnia.log,handoffs.log}
-///   /x/LaunchAgents/com.insomnia.backstop.plist
+///   /x/Logs/{awake.log,handoffs.log}
+///   /x/LaunchAgents/app.chargingpixels.awake.recovery.plist
 struct Paths: Sendable, Equatable {
-    static let environmentKey = "INSOMNIA_HOME"
-    static let backstopLabel = "com.insomnia.backstop"
-    static let bundleIdentifier = "com.kgarg.insomnia"
+    static let environmentKey = "AWAKE_HOME"
+    static let backstopLabel = "app.chargingpixels.awake.recovery"
+    static let bundleIdentifier = "app.chargingpixels.awake"
 
     let appSupport: URL
     let logs: URL
@@ -33,13 +33,13 @@ struct Paths: Sendable, Equatable {
         self.appBundle = appBundle
     }
 
-    /// Relocated layout rooted at one directory (used for INSOMNIA_HOME).
+    /// Relocated layout rooted at one directory (used for AWAKE_HOME).
     init(root: URL) {
         self.init(
             appSupport: root,
             logs: root.appendingPathComponent("Logs", isDirectory: true),
             launchAgents: root.appendingPathComponent("LaunchAgents", isDirectory: true),
-            appBundle: root.appendingPathComponent("Insomnia.app", isDirectory: true)
+            appBundle: root.appendingPathComponent("Awake.app", isDirectory: true)
         )
     }
 
@@ -48,14 +48,14 @@ struct Paths: Sendable, Equatable {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let library = home.appendingPathComponent("Library", isDirectory: true)
         return Paths(
-            appSupport: library.appendingPathComponent("Application Support/Insomnia", isDirectory: true),
-            logs: library.appendingPathComponent("Logs/Insomnia", isDirectory: true),
+            appSupport: library.appendingPathComponent("Application Support/Awake", isDirectory: true),
+            logs: library.appendingPathComponent("Logs/Awake", isDirectory: true),
             launchAgents: library.appendingPathComponent("LaunchAgents", isDirectory: true),
-            appBundle: home.appendingPathComponent("Applications/Insomnia.app", isDirectory: true)
+            appBundle: home.appendingPathComponent("Applications/Awake.app", isDirectory: true)
         )
     }
 
-    /// `INSOMNIA_HOME` if set, else `standard`.
+    /// `AWAKE_HOME` if set, else `standard`.
     static func fromEnvironment(_ env: [String: String] = ProcessInfo.processInfo.environment) -> Paths {
         if let root = env[environmentKey], !root.isEmpty {
             return Paths(root: URL(fileURLWithPath: root, isDirectory: true))
@@ -91,12 +91,12 @@ struct Paths: Sendable, Equatable {
 
     /// Both logs are owner-only and rotate to `<name>.1` past
     /// `OwnerOnly.maxLogBytes`; uninstall.sh --purge removes the `.1` too.
-    var logFile: URL { logs.appendingPathComponent("insomnia.log") }
+    var logFile: URL { logs.appendingPathComponent("awake.log") }
     var handoffsLog: URL { logs.appendingPathComponent("handoffs.log") }
 
     var backstopPlist: URL { launchAgents.appendingPathComponent("\(Paths.backstopLabel).plist") }
 
-    /// Create every directory Insomnia writes into. Its own two are made
+    /// Create every directory Awake writes into. Its own two are made
     /// 0700 (an existing one is tightened); the LaunchAgents directory is
     /// shared with every other login agent, so it is only created.
     func createDirectories() throws {

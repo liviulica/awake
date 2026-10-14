@@ -122,7 +122,7 @@ final class KeychainQueue: Sendable {
     /// The one the app uses, for the failover's reads and Settings' saves.
     static let shared = KeychainQueue()
 
-    private let queue = DispatchQueue(label: "com.kgarg.insomnia.keychain")
+    private let queue = DispatchQueue(label: "app.chargingpixels.awake.keychain")
 
     init() {}
 
@@ -182,7 +182,7 @@ enum HotspotPasswordProblem: Equatable, Sendable {
         case .missing:
             "No hotspot password is saved. Enter it in Settings."
         case .unreadable:
-            "This build of Insomnia can't read the saved hotspot password (it was saved by another build, or the login keychain is locked). Enter it again in Settings."
+            "This build of Awake can't read the saved hotspot password (it was saved by another build, or the login keychain is locked). Enter it again in Settings."
         case let .error(message):
             "The hotspot password can't be read: \(message)"
         }
@@ -207,7 +207,7 @@ enum HotspotPasswordProblem: Equatable, Sendable {
         case .missing:
             nil
         case .unreadable:
-            "This build of Insomnia can't read the saved password: it was saved by another build, or the login keychain is locked. Enter it again and save. macOS may ask you to allow Insomnia to replace the old item."
+            "This build of Awake can't read the saved password: it was saved by another build, or the login keychain is locked. Enter it again and save. macOS may ask you to allow Awake to replace the old item."
         case let .error(message):
             "The saved password can't be read: \(message)"
         }
@@ -449,7 +449,7 @@ struct SecurityItemCalls: KeychainItemCalls {
     }
 }
 
-/// Login keychain generic password, service `insomnia-hotspot`, account =
+/// Login keychain generic password, service `awake-hotspot`, account =
 /// SSID. The item's access list names only the Insomnia build that saved it
 /// (`LegacyKeychain.thisApplication()`), and every read runs with keychain
 /// prompts forbidden, so the failover never raises a dialog: an item this
@@ -482,9 +482,9 @@ struct SecurityItemCalls: KeychainItemCalls {
 /// keychain that honours it needs a keychain access group entitlement,
 /// which needs a team id.
 struct KeychainStore: KeychainStoring, @unchecked Sendable {
-    static let service = "insomnia-hotspot"
+    static let service = "awake-hotspot"
     /// What the keychain prompt names if another program asks for the item.
-    static let accessDescriptor = "Insomnia hotspot password"
+    static let accessDescriptor = "Awake hotspot password"
 
     /// Where a save keeps the new password while it replaces an item this
     /// build cannot read.

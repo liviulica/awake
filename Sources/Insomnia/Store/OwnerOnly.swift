@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 
 /// Everything Insomnia writes under its own two directories is owner-only.
-/// insomnia.log and handoffs.log name SSIDs, tmux targets and processes;
+/// awake.log and handoffs.log name SSIDs, tmux targets and processes;
 /// the journal, session and config files say what the machine is doing.
 /// Files are created 0600 and the directories Insomnia owns 0700. A file or
 /// directory that already exists with a looser mode (an older build, a
@@ -150,7 +150,7 @@ enum OwnerOnly {
         return UInt64(max(0, st.st_size))
     }
 
-    /// `<name>.1` next to the log: insomnia.log.1, handoffs.log.1.
+    /// `<name>.1` next to the log: awake.log.1, handoffs.log.1.
     static func rotated(_ url: URL) -> URL { url.appendingPathExtension("1") }
 
     /// What `rotateHeld` leaves the appender to do.

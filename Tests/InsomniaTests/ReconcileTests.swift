@@ -85,13 +85,13 @@ final class ReconcileTests: XCTestCase {
         let m = h.makeManager()
         await m.reconcile()
         XCTAssertNil(m.session)
-        XCTAssertEqual(h.guardFake.calls, ["pmset -g"], "a SleepDisabled bit Insomnia did not set was cleared")
+        XCTAssertEqual(h.guardFake.calls, ["pmset -g"], "a SleepDisabled bit Awake did not set was cleared")
         XCTAssertTrue(h.guardFake.sleepDisabled)
         XCTAssertNil(try h.store.loadSession())
         XCTAssertEqual(h.notifier.posts.map(\.title), [SessionManager.foreignSleepTitle])
         XCTAssertTrue(h.notifier.posts[0].body.contains(SessionManager.foreignSleepCommand), h.notifier.posts[0].body)
         XCTAssertTrue(try XCTUnwrap(m.foreignSleepWarning).contains(SessionManager.foreignSleepCommand), m.foreignSleepWarning ?? "")
-        XCTAssertNil(m.lastError, "a bit someone else set is not an Insomnia failure")
+        XCTAssertNil(m.lastError, "a bit someone else set is not an Awake failure")
 
         // A second reconcile keeps the warning line but does not post again.
         await m.reconcile()

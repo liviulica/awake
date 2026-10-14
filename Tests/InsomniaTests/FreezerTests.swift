@@ -19,7 +19,7 @@ final class FreezerTests: XCTestCase {
     let apps: [RunningApp] = [
         RunningApp(pid: 100, bundleId: "com.tinyspeck.slackmacgap", name: "Slack"),
         RunningApp(pid: 200, bundleId: "com.apple.Safari", name: "Safari"),
-        RunningApp(pid: 300, bundleId: Paths.bundleIdentifier, name: "Insomnia"),
+        RunningApp(pid: 300, bundleId: Paths.bundleIdentifier, name: "Awake"),
         RunningApp(pid: 400, bundleId: "com.docker.docker", name: "Docker"),
     ]
 
@@ -51,7 +51,7 @@ final class FreezerTests: XCTestCase {
 
     func testDenylistSelf() {
         XCTAssertTrue(FreezePlanner.isDenied(Paths.bundleIdentifier, config: Config()))
-        XCTAssertTrue(FreezePlanner.isDenied("dev.other.insomnia", config: Config(), selfBundleId: "dev.other.insomnia"))
+        XCTAssertTrue(FreezePlanner.isDenied("dev.other.awake", config: Config(), selfBundleId: "dev.other.awake"))
     }
 
     func testDenylistDocker() {
@@ -187,10 +187,10 @@ final class FreezerTests: XCTestCase {
         var c = Config()
         c.freezeAllApps = true
         c.freezeList = []
-        XCTAssertEqual(scope(c, [RunningApp(pid: 300, bundleId: Paths.bundleIdentifier, name: "Insomnia")]), [])
-        let other = RunningApp(pid: 301, bundleId: "dev.other.insomnia", name: "Insomnia")
-        XCTAssertEqual(FreezePlanner.lidCloseBundleIds(config: c, apps: [other], selfBundleId: "dev.other.insomnia"), [])
-        XCTAssertEqual(FreezePlanner.lidCloseBundleIds(config: c, apps: [other], selfBundleId: "x.y"), ["dev.other.insomnia"])
+        XCTAssertEqual(scope(c, [RunningApp(pid: 300, bundleId: Paths.bundleIdentifier, name: "Awake")]), [])
+        let other = RunningApp(pid: 301, bundleId: "dev.other.awake", name: "Awake")
+        XCTAssertEqual(FreezePlanner.lidCloseBundleIds(config: c, apps: [other], selfBundleId: "dev.other.awake"), [])
+        XCTAssertEqual(FreezePlanner.lidCloseBundleIds(config: c, apps: [other], selfBundleId: "x.y"), ["dev.other.awake"])
     }
 
     func testLidCloseScopeExcludesDockerDesktop() {

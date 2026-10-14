@@ -21,7 +21,7 @@ struct SleepGuardError: Error, LocalizedError, Sendable {
         var msg = "`\(command)` failed with status \(status)"
         if !detail.isEmpty { msg += ": \(detail)" }
         if detail.contains("password") || detail.contains("sudo") {
-            msg += " (run scripts/install.sh to install /etc/sudoers.d/insomnia)"
+            msg += " (run scripts/install.sh to install /etc/sudoers.d/awake)"
         }
         return msg
     }

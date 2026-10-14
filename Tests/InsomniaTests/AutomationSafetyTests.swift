@@ -438,7 +438,7 @@ final class TmuxLiveRunnerTests: XCTestCase {
         let log = try String(contentsOf: home.paths.logFile, encoding: .utf8)
         let lines = log.split(whereSeparator: \.isNewline).filter { $0.contains("nudge:0.0") }
         XCTAssertEqual(lines.count, 1, log)
-        XCTAssertTrue(lines.first?.contains("[info] insomnia: tmux nudge to nudge:0.0 skipped: pane %0 is not marked for nudges; mark it with: tmux set-option -p -t %0 @insomnia-nudge on") ?? false, log)
+        XCTAssertTrue(lines.first?.contains("[info] awake: tmux nudge to nudge:0.0 skipped: pane %0 is not marked for nudges; mark it with: tmux set-option -p -t %0 @insomnia-nudge on") ?? false, log)
         XCTAssertFalse(log.contains("[error]"), log)
     }
 
@@ -470,7 +470,7 @@ final class TmuxLiveRunnerTests: XCTestCase {
         let log = try String(contentsOf: home.paths.logFile, encoding: .utf8)
         let lines = log.split(whereSeparator: \.isNewline).filter { $0.contains("nudge:0.0") }
         XCTAssertEqual(lines.count, 1, log)
-        XCTAssertTrue(lines.first?.contains("[error] insomnia: tmux show-options -t %0 (nudge:0.0): ") ?? false, log)
+        XCTAssertTrue(lines.first?.contains("[error] awake: tmux show-options -t %0 (nudge:0.0): ") ?? false, log)
         XCTAssertFalse(log.contains("not marked"), log)
     }
 

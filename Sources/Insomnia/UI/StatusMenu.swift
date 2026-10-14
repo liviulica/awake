@@ -30,7 +30,7 @@ enum StatusMenu {
     }
 
     static let settingsTitle = "Settings\u{2026}"
-    static let quitTitle = "Quit Insomnia"
+    static let quitTitle = "Quit Awake"
 
     /// Disabled status lines, a separator, then Settings… and Quit. Empty
     /// lines are dropped, and the separator only appears when something
@@ -188,6 +188,6 @@ struct RelaunchPrompt: Equatable {
 
     init(browser name: String) {
         title = "Quit and relaunch \(name)?"
-        message = "Insomnia quits \(name) and opens it again with the two flags that stop it throttling hidden windows. Your windows and tabs come back only if \(name) is set to reopen them on startup. If \(name) has not quit after \(Int(BrowserThrottle.quitTimeout)) s, nothing is relaunched."
+        message = "Awake quits \(name) and opens it again with the two flags that stop it throttling hidden windows. Your windows and tabs come back only if \(name) is set to reopen them on startup. If \(name) has not quit after \(Int(BrowserThrottle.quitTimeout)) s, nothing is relaunched."
     }
 }

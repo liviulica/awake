@@ -251,10 +251,10 @@ final class ConfigTests: XCTestCase {
     func testLidCloseNoticeNamesTheChangesAndWhereToChangeThemBack() {
         let both = LidCloseDefaultsChange(turnedOffFreezeAll: true, turnedOnMute: true)
         XCTAssertEqual(LidCloseDefaultsChange.title, "Lid-close settings changed")
-        XCTAssertEqual(both.notificationBody, "This update changed two lid-close settings: \"Freeze every other app while the lid is closed\" is now off and \"Mute audio on lid close\" is now on. To change them back, choose Settings\u{2026} from the Insomnia menu bar icon and look under Lid-close actions.")
+        XCTAssertEqual(both.notificationBody, "This update changed two lid-close settings: \"Freeze every other app while the lid is closed\" is now off and \"Mute audio on lid close\" is now on. To change them back, choose Settings\u{2026} from the Awake menu bar icon and look under Lid-close actions.")
         XCTAssertEqual(both.settingsLine, "This update changed two lid-close settings: \"Freeze every other app while the lid is closed\" is now off and \"Mute audio on lid close\" is now on. Both toggles are below.")
         let mute = LidCloseDefaultsChange(turnedOffFreezeAll: false, turnedOnMute: true)
-        XCTAssertEqual(mute.notificationBody, "This update changed a lid-close setting: \"Mute audio on lid close\" is now on. To change it back, choose Settings\u{2026} from the Insomnia menu bar icon and look under Lid-close actions.")
+        XCTAssertEqual(mute.notificationBody, "This update changed a lid-close setting: \"Mute audio on lid close\" is now on. To change it back, choose Settings\u{2026} from the Awake menu bar icon and look under Lid-close actions.")
         XCTAssertEqual(mute.settingsLine, "This update changed a lid-close setting: \"Mute audio on lid close\" is now on. The toggle is below.")
         let freeze = LidCloseDefaultsChange(turnedOffFreezeAll: true, turnedOnMute: false)
         XCTAssertEqual(freeze.changes, "\"Freeze every other app while the lid is closed\" is now off")
@@ -346,7 +346,7 @@ final class ConfigTests: XCTestCase {
 
         var c = Config()
         c.launchAtLogin = true
-        c.launchAtLoginInstall = "0b1c@/Users/me/Applications/Insomnia.app"
+        c.launchAtLoginInstall = "0b1c@/Users/me/Applications/Awake.app"
         let data = try Store.makeEncoder().encode(c)
         XCTAssertEqual(try Store.makeDecoder().decode(Config.self, from: data), c)
     }
@@ -375,7 +375,7 @@ final class ConfigLoadTests: XCTestCase {
         XCTAssertEqual([m.config.lowPowerFloor, m.config.endFloor], [65, 60])
         XCTAssertTrue(m.config.floorsAreOrdered)
         XCTAssertEqual(try h.store.loadConfig(), m.config, "the corrected config was not written back")
-        XCTAssertTrue(log().contains("[info] insomnia: config.json: battery floors corrected: lowPowerFloor 40 -> 65, endFloor 60 -> 60; saved"), log())
+        XCTAssertTrue(log().contains("[info] awake: config.json: battery floors corrected: lowPowerFloor 40 -> 65, endFloor 60 -> 60; saved"), log())
     }
 
     /// When the corrected file cannot be written, the corrected floors still
@@ -387,7 +387,7 @@ final class ConfigLoadTests: XCTestCase {
         bad.endFloor = 60
         try h.store.saveConfig(bad)
         // Store writes a temp file next to config.json; a read-only
-        // directory refuses it. Under INSOMNIA_HOME the Logs directory sits
+        // directory refuses it. Under AWAKE_HOME the Logs directory sits
         // inside that directory, so it must exist before the chmod for the
         // log line to land.
         try h.home.paths.createDirectories()
@@ -400,7 +400,7 @@ final class ConfigLoadTests: XCTestCase {
         XCTAssertEqual([m.config.lowPowerFloor, m.config.endFloor], [65, 60])
         XCTAssertEqual(try h.store.loadConfig(), bad, "the file should be untouched when the write fails")
         let log = log()
-        XCTAssertTrue(log.contains("[error] insomnia: config.json: battery floors corrected: lowPowerFloor 40 -> 65, endFloor 60 -> 60; could not save the correction: "), log)
+        XCTAssertTrue(log.contains("[error] awake: config.json: battery floors corrected: lowPowerFloor 40 -> 65, endFloor 60 -> 60; could not save the correction: "), log)
         XCTAssertFalse(log.contains("; saved"), log)
     }
 
@@ -445,7 +445,7 @@ final class ConfigLoadTests: XCTestCase {
         XCTAssertEqual(try h.store.loadConfig(), m.config, "the update and its mark were not written back")
         XCTAssertEqual(h.notifier.posts.map(\.title), [LidCloseDefaultsChange.title])
         XCTAssertEqual(h.notifier.posts.first?.body, change.notificationBody)
-        XCTAssertTrue(log().contains(#"[info] insomnia: config.json: lid-close update: "Freeze every other app while the lid is closed" is now off and "Mute audio on lid close" is now on; saved"#), log())
+        XCTAssertTrue(log().contains(#"[info] awake: config.json: lid-close update: "Freeze every other app while the lid is closed" is now off and "Mute audio on lid close" is now on; saved"#), log())
 
         await m.reconcile()
         let again = h.makeManager()
