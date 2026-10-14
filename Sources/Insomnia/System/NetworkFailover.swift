@@ -785,6 +785,7 @@ final class NetworkFailover {
     private let probe: any ReachabilityProbing
     private let ssidReader: (@MainActor () async -> String?)?
     private let settle: Duration
+    private let probeRetryDelay: Duration
     private let notifier: any Notifying
     private let configProvider: @MainActor () -> Config
     private let clock: @Sendable () -> Date
@@ -816,6 +817,7 @@ final class NetworkFailover {
         probe: any ReachabilityProbing = CaptivePortalProbe(),
         ssidReader: (@MainActor () async -> String?)? = nil,
         settle: Duration = .seconds(10),
+        probeRetryDelay: Duration = .seconds(5),
         notifier: any Notifying,
         wifiInterface: String? = nil,
         clock: @escaping @Sendable () -> Date = { Date() },
@@ -828,6 +830,7 @@ final class NetworkFailover {
         self.probe = probe
         self.ssidReader = ssidReader
         self.settle = settle
+        self.probeRetryDelay = probeRetryDelay
         self.notifier = notifier
         self.wifiInterface = wifiInterface
         self.clock = clock
@@ -863,8 +866,7 @@ final class NetworkFailover {
         cancelTimer()
         probeTimer?.invalidate()
         probeTimer = nil
-        switchBackTimer?.invalidate()
-        switchBackTimer = nil
+        cancelSwitchBack()
         tracker = ReachabilityTracker()
         for task in inflight.values { task.cancel() }
         inflight.removeAll()
@@ -956,6 +958,8 @@ final class NetworkFailover {
         let now = clock()
         let outputs = satisfied ? machine.pathSatisfied(at: now) : machine.pathUnsatisfied(at: now)
         if outputs.isEmpty { return }
+        // A new outage starts the switch-back backoff over.
+        if !satisfied { cancelSwitchBack() }
         if !satisfied { Log.info("wifi path unsatisfied") }
         await apply(outputs)
     }
@@ -983,7 +987,20 @@ final class NetworkFailover {
         scheduleProbe(after: ok ? Self.probeInterval : Self.probeRetryInterval)
     }
 
+    /// The first wait before a switch-back attempt, and the longest one.
     static let switchBackInterval: TimeInterval = 60
+    static let switchBackMaxInterval: TimeInterval = 600
+
+    /// Seconds until the next attempt after `failures` switch-backs that
+    /// found home without internet: 60, 120, 240, 480, then 600.
+    static func switchBackDelay(afterFailures failures: Int) -> TimeInterval {
+        min(switchBackInterval * pow(2, Double(min(max(failures, 0), 10))), switchBackMaxInterval)
+    }
+
+    /// The wait the pending switch-back timer was scheduled with.
+    private(set) var switchBackDelay: TimeInterval = 60
+    private var switchBackFailures = 0
+    private var switchBackRunning = false
 
     private func readSSID() async -> String? {
         if let ssidReader { return await ssidReader() }
@@ -1001,36 +1018,78 @@ final class NetworkFailover {
     }
 
     /// While on the hotspot: rejoin home when it is visible, and go back
-    /// to the hotspot if home has no internet. Internal so tests drive it.
+    /// to the hotspot if home has no internet, then try again later with a
+    /// growing wait. Internal so tests drive it.
     func switchBackTick() async {
         let epoch = self.epoch
+        // A previous tick may still be waiting (a keychain dialog, a scan).
+        guard !switchBackRunning else { return }
+        switchBackRunning = true
+        defer { switchBackRunning = false }
         guard let home = homeSSID, let iface = wifiInterface else { return }
+        // Only from the hotspot: elsewhere the Mac is already back home, or
+        // on a network the person chose.
+        let current = await readSSID()
+        guard self.epoch == epoch, !Task.isCancelled else { return }
+        guard current == HotspotSSID.normalized(configProvider().hotspotSSID) else {
+            cancelSwitchBack()
+            return
+        }
         do {
-            guard try await hotspotJoiner.isVisible(ssid: home, interfaceName: iface) else { return }
+            guard try await hotspotJoiner.isVisible(ssid: home, interfaceName: iface) else {
+                rescheduleSwitchBack(epoch: epoch)
+                return
+            }
             guard self.epoch == epoch, !Task.isCancelled else { return }
-            guard try await hotspotJoiner.rejoinKnownNetwork(ssid: home, interfaceName: iface) else { return }
+            guard try await hotspotJoiner.rejoinKnownNetwork(ssid: home, interfaceName: iface) else {
+                rescheduleSwitchBack(epoch: epoch)
+                return
+            }
         } catch {
             Log.error("switch back to the previous Wi-Fi failed: \(error.localizedDescription)")
+            rescheduleSwitchBack(epoch: epoch)
             return
         }
         try? await Task.sleep(for: settle)
         guard self.epoch == epoch, !Task.isCancelled else { return }
-        if await probe.isInternetReachable() {
+        var online = await probe.isInternetReachable()
+        if !online {
+            // One more look before calling home offline.
             guard self.epoch == epoch, !Task.isCancelled else { return }
+            try? await Task.sleep(for: probeRetryDelay)
+            guard self.epoch == epoch, !Task.isCancelled else { return }
+            online = await probe.isInternetReachable()
+        }
+        guard self.epoch == epoch, !Task.isCancelled else { return }
+        if online {
             Log.info("switched back to the previous Wi-Fi")
-            switchBackTimer?.invalidate()
-            switchBackTimer = nil
+            cancelSwitchBack()
         } else {
-            guard self.epoch == epoch, !Task.isCancelled else { return }
             Log.info("previous Wi-Fi has no internet; back to the hotspot")
+            switchBackFailures += 1
             await joinHotspot()
+            rescheduleSwitchBack(epoch: epoch)
         }
     }
 
+    /// Starts the switch-back attempts from the first wait.
     private func scheduleSwitchBack() {
+        switchBackFailures = 0
+        scheduleSwitchBack(after: Self.switchBackDelay(afterFailures: 0))
+    }
+
+    /// Next attempt, unless the session ended meanwhile.
+    private func rescheduleSwitchBack(epoch: Int) {
+        guard self.epoch == epoch, !Task.isCancelled else { return }
+        scheduleSwitchBack(after: Self.switchBackDelay(afterFailures: switchBackFailures))
+    }
+
+    /// One-shot, so each attempt chooses the wait for the next.
+    private func scheduleSwitchBack(after: TimeInterval) {
         switchBackTimer?.invalidate()
+        switchBackDelay = after
         let epoch = self.epoch
-        let t = Timer(timeInterval: Self.switchBackInterval, repeats: true) { [weak self] _ in
+        let t = Timer(timeInterval: after, repeats: false) { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.epoch == epoch else { return }
                 self.track { [weak self] in await self?.switchBackTick() }
@@ -1038,6 +1097,13 @@ final class NetworkFailover {
         }
         RunLoop.main.add(t, forMode: .common)
         switchBackTimer = t
+    }
+
+    private func cancelSwitchBack() {
+        switchBackTimer?.invalidate()
+        switchBackTimer = nil
+        switchBackFailures = 0
+        switchBackDelay = Self.switchBackDelay(afterFailures: 0)
     }
 
     private func scheduleProbe(after: TimeInterval) {

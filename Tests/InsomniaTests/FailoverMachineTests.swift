@@ -12,6 +12,7 @@ final class RecordingHotspotJoiner: HotspotJoining, @unchecked Sendable {
     private var _calls: [Call] = []
     private var _visible: Set<String> = []
     private var _rejoined: [String] = []
+    private var _visibleError = false
     var result = true
     var calls: [Call] { lock.withLock { _calls } }
     var visible: Set<String> {
@@ -19,6 +20,11 @@ final class RecordingHotspotJoiner: HotspotJoining, @unchecked Sendable {
         set { lock.withLock { _visible = newValue } }
     }
     var rejoined: [String] { lock.withLock { _rejoined } }
+    /// Makes `isVisible` throw, as a failed scan does.
+    var visibleError: Bool {
+        get { lock.withLock { _visibleError } }
+        set { lock.withLock { _visibleError = newValue } }
+    }
 
     func join(ssid: String, password: String, interfaceName: String) async throws -> Bool {
         lock.withLock { _calls.append(Call(ssid: ssid, password: password, interfaceName: interfaceName)) }
@@ -26,7 +32,8 @@ final class RecordingHotspotJoiner: HotspotJoining, @unchecked Sendable {
     }
 
     func isVisible(ssid: String, interfaceName: String) async throws -> Bool {
-        lock.withLock { _visible.contains(ssid) }
+        if lock.withLock({ _visibleError }) { throw HotspotJoinError.missingInterface(interfaceName) }
+        return lock.withLock { _visible.contains(ssid) }
     }
 
     func rejoinKnownNetwork(ssid: String, interfaceName: String) async throws -> Bool {
@@ -454,7 +461,7 @@ final class NetworkFailoverDriverTests: XCTestCase {
         clock: FakeClock,
         probe: any ReachabilityProbing = FakeProbe([true]),
         hotspot: Locked<String> = Locked("Phone"),
-        ssid: String? = "Home",
+        ssid: Locked<String?> = Locked("Home"),
         wifiInterface: String? = "en0"
     ) -> NetworkFailover {
         NetworkFailover(
@@ -462,8 +469,9 @@ final class NetworkFailoverDriverTests: XCTestCase {
             keychain: keychain,
             hotspotJoiner: joiner,
             probe: probe,
-            ssidReader: { ssid },
+            ssidReader: { ssid.value },
             settle: .zero,
+            probeRetryDelay: .zero,
             notifier: notifier,
             wifiInterface: wifiInterface,
             clock: { clock.now }
@@ -474,15 +482,31 @@ final class NetworkFailoverDriverTests: XCTestCase {
         }
     }
 
+    private static let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+
+    /// A driver that knew "Home" and is now on the "Phone" hotspot.
+    private func onTheHotspot(
+        joiner: RecordingHotspotJoiner,
+        keychain: FakeKeychainStore = FakeKeychainStore(),
+        probe: any ReachabilityProbing = FakeProbe([true]),
+        wifiInterface: String? = "en0"
+    ) async -> (driver: NetworkFailover, ssid: Locked<String?>) {
+        let ssid = Locked<String?>("Home")
+        let n = driver(keychain: keychain, joiner: joiner, notifier: RecordingNotifier(),
+                       clock: FakeClock(Self.t0), probe: probe, ssid: ssid, wifiInterface: wifiInterface)
+        await n.recordHomeNetwork()
+        ssid.value = "Phone"
+        return (n, ssid)
+    }
+
     func testSwitchBackRejoinsHomeWhenItIsVisibleAndOnline() async {
         let joiner = RecordingHotspotJoiner()
         joiner.visible = ["Home"]
-        let n = driver(keychain: FakeKeychainStore(), joiner: joiner, notifier: RecordingNotifier(),
-                       clock: FakeClock(Date(timeIntervalSince1970: 1_800_000_000)), probe: FakeProbe([true]))
-        await n.recordHomeNetwork()
+        let (n, _) = await onTheHotspot(joiner: joiner)
         XCTAssertEqual(n.homeSSID, "Home")
         await n.switchBackTick()
         XCTAssertEqual(joiner.rejoined, ["Home"])
+        XCTAssertNil(n.switchBackTimer, "back home: no more attempts")
     }
 
     func testSwitchBackRejoinsHotspotWhenHomeHasNoInternet() async throws {
@@ -490,26 +514,67 @@ final class NetworkFailoverDriverTests: XCTestCase {
         joiner.visible = ["Home"]
         let keychain = FakeKeychainStore()
         try keychain.set(service: KeychainStore.service, account: "Phone", value: "pw")
-        let n = driver(keychain: keychain, joiner: joiner, notifier: RecordingNotifier(),
-                       clock: FakeClock(Date(timeIntervalSince1970: 1_800_000_000)), probe: FakeProbe([false]))
-        await n.recordHomeNetwork()
+        let (n, _) = await onTheHotspot(joiner: joiner, keychain: keychain, probe: FakeProbe([false]))
         await n.switchBackTick()
         XCTAssertEqual(joiner.rejoined, ["Home"])
         XCTAssertEqual(joiner.calls.last?.ssid, "Phone", "back to the hotspot: home has no internet")
+        n.stop()
+    }
+
+    func testAHomeProbeThatFailsOnceIsRetriedBeforeHomeIsCalledOffline() async {
+        let joiner = RecordingHotspotJoiner()
+        joiner.visible = ["Home"]
+        let (n, _) = await onTheHotspot(joiner: joiner, probe: FakeProbe([false, true]))
+        await n.switchBackTick()
+        XCTAssertEqual(joiner.calls, [], "the second probe passed: stay home")
+        XCTAssertNil(n.switchBackTimer)
+    }
+
+    func testFailedSwitchBacksBackOffAndRejoinOncePerTick() async throws {
+        let joiner = RecordingHotspotJoiner()
+        joiner.visible = ["Home"]
+        let keychain = FakeKeychainStore()
+        try keychain.set(service: KeychainStore.service, account: "Phone", value: "pw")
+        let (n, _) = await onTheHotspot(joiner: joiner, keychain: keychain, probe: FakeProbe([false]))
+        await n.switchBackTick()
+        XCTAssertEqual(joiner.rejoined.count, 1)
+        XCTAssertEqual(n.switchBackDelay, 120)
+        XCTAssertNotNil(n.switchBackTimer)
+        await n.switchBackTick()
+        XCTAssertEqual(joiner.rejoined.count, 2)
+        XCTAssertEqual(n.switchBackDelay, 240)
+        for _ in 0..<6 { await n.switchBackTick() }
+        XCTAssertEqual(n.switchBackDelay, NetworkFailover.switchBackMaxInterval, "capped at 10 minutes")
+        n.stop()
+        XCTAssertEqual(n.switchBackDelay, 60, "stop resets the backoff")
+    }
+
+    func testANewOutageResetsTheBackoff() async throws {
+        let joiner = RecordingHotspotJoiner()
+        joiner.visible = ["Home"]
+        let keychain = FakeKeychainStore()
+        try keychain.set(service: KeychainStore.service, account: "Phone", value: "pw")
+        let (n, _) = await onTheHotspot(joiner: joiner, keychain: keychain, probe: FakeProbe([false]))
+        await n.switchBackTick()
+        XCTAssertEqual(n.switchBackDelay, 120)
+        await n.simulate(satisfied: false)
+        XCTAssertEqual(n.switchBackDelay, 60)
+        XCTAssertNil(n.switchBackTimer)
+        n.stop()
     }
 
     func testNoSwitchBackWhileHomeIsOutOfRange() async {
         let joiner = RecordingHotspotJoiner()
-        let n = driver(keychain: FakeKeychainStore(), joiner: joiner, notifier: RecordingNotifier(),
-                       clock: FakeClock(Date(timeIntervalSince1970: 1_800_000_000)), probe: FakeProbe([true]))
-        await n.recordHomeNetwork()
+        let (n, _) = await onTheHotspot(joiner: joiner)
         await n.switchBackTick()
         XCTAssertEqual(joiner.rejoined, [])
+        XCTAssertNotNil(n.switchBackTimer, "home may come into range: keep trying")
+        n.stop()
     }
 
     func testTheHotspotIsNeverRecordedAsHome() async {
         let n = driver(keychain: FakeKeychainStore(), joiner: RecordingHotspotJoiner(), notifier: RecordingNotifier(),
-                       clock: FakeClock(Date(timeIntervalSince1970: 1_800_000_000)), ssid: "Phone")
+                       clock: FakeClock(Self.t0), ssid: Locked<String?>("Phone"))
         await n.recordHomeNetwork()
         XCTAssertNil(n.homeSSID)
     }
@@ -517,20 +582,84 @@ final class NetworkFailoverDriverTests: XCTestCase {
     func testNoSwitchBackWithoutAWifiInterface() async {
         let joiner = RecordingHotspotJoiner()
         joiner.visible = ["Home"]
-        let n = driver(keychain: FakeKeychainStore(), joiner: joiner, notifier: RecordingNotifier(),
-                       clock: FakeClock(Date(timeIntervalSince1970: 1_800_000_000)), wifiInterface: nil)
-        await n.recordHomeNetwork()
+        let (n, _) = await onTheHotspot(joiner: joiner, wifiInterface: nil)
         await n.switchBackTick()
         XCTAssertEqual(joiner.rejoined, [])
     }
 
-    func testSwitchBackDoesNothingAfterStop() async {
+    func testNoSwitchBackOffTheHotspot() async {
+        for other in ["Home", "Other"] {
+            let joiner = RecordingHotspotJoiner()
+            joiner.visible = ["Home"]
+            let (n, ssid) = await onTheHotspot(joiner: joiner)
+            ssid.value = other
+            await n.switchBackTick()
+            XCTAssertEqual(joiner.rejoined, [], other)
+            XCTAssertNil(n.switchBackTimer, other)
+        }
+    }
+
+    func testAScanThatThrowsLogsAndKeepsTheTimer() async {
         let joiner = RecordingHotspotJoiner()
         joiner.visible = ["Home"]
-        let n = driver(keychain: FakeKeychainStore(), joiner: joiner, notifier: RecordingNotifier(),
-                       clock: FakeClock(Date(timeIntervalSince1970: 1_800_000_000)))
-        await n.recordHomeNetwork()
+        joiner.visibleError = true
+        let (n, _) = await onTheHotspot(joiner: joiner)
+        await n.switchBackTick()
+        XCTAssertEqual(joiner.rejoined, [])
+        XCTAssertEqual(joiner.calls, [])
+        XCTAssertEqual(n.switchBackDelay, 60)
+        XCTAssertNotNil(n.switchBackTimer)
         n.stop()
+    }
+
+    func testStopDuringATickJoinsNothingAndLeavesNoTimer() async {
+        let joiner = RecordingHotspotJoiner()
+        joiner.visible = ["Home"]
+        let probe = GatedProbe()
+        let (n, _) = await onTheHotspot(joiner: joiner, probe: probe)
+        let tick = Task { await n.switchBackTick() }
+        await probe.gate.waitUntilStarted()
+        n.stop()
+        await probe.gate.open()
+        await tick.value
+        XCTAssertEqual(joiner.calls, [], "no hotspot join after stop")
+        XCTAssertNil(n.switchBackTimer)
+    }
+
+    func testOverlappingTicksDoNotRunTwice() async {
+        let joiner = RecordingHotspotJoiner()
+        joiner.visible = ["Home"]
+        let probe = GatedProbe()
+        let (n, _) = await onTheHotspot(joiner: joiner, probe: probe)
+        let first = Task { await n.switchBackTick() }
+        await probe.gate.waitUntilStarted()
+        await n.switchBackTick()
+        XCTAssertEqual(joiner.rejoined.count, 1, "the second tick found the first still running")
+        n.stop()
+        await probe.gate.open()
+        await first.value
+    }
+
+    func testRecoveringOnTheHotspotTwiceLeavesOneLiveTimer() async throws {
+        let (n, _) = await onTheHotspot(joiner: RecordingHotspotJoiner())
+        await n.simulate(satisfied: false)
+        await n.simulate(satisfied: true)
+        let first = try XCTUnwrap(n.switchBackTimer)
+        XCTAssertTrue(first.isValid)
+        await n.simulate(satisfied: false)
+        await n.simulate(satisfied: true)
+        let second = try XCTUnwrap(n.switchBackTimer)
+        XCTAssertFalse(first.isValid)
+        XCTAssertTrue(second.isValid)
+        n.stop()
+        XCTAssertFalse(second.isValid)
+    }
+
+    func testRecoveringOffTheHotspotSchedulesNoSwitchBack() async {
+        let (n, ssid) = await onTheHotspot(joiner: RecordingHotspotJoiner())
+        ssid.value = "Home"
+        await n.simulate(satisfied: false)
+        await n.simulate(satisfied: true)
         XCTAssertNil(n.switchBackTimer)
     }
 
