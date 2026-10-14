@@ -57,7 +57,7 @@ Mockups: (private mockup) (option "Robot head").
 
 ### When a lid session ends
 
-Timer, battery floor, thermal critical, or End now: sleep is restored. If the lid is closed and macOS would sleep a closed Mac (no external display in clamshell mode), Awake asks macOS to sleep at once. This is Insomnia issue #94, fixed by Insomnia PR #61 (`IOPMSleepSystem`, retried every 30 s while refused). PR #61 is merged into Awake once the three test failures seen with it are explained (see "Open questions").
+Timer, battery floor, thermal critical, or End now: sleep is restored. If the lid is closed and macOS would sleep a closed Mac (no external display in clamshell mode), Awake asks macOS to sleep at once. This is Insomnia issue #94, fixed by Insomnia PR #61 (`IOPMSleepSystem`, retried every 30 s while refused), which Awake merges (its test check is in "Open questions", point 1).
 
 ### Settings
 
@@ -155,7 +155,7 @@ All user-visible names come from one place (`Paths` constants plus `scripts/buil
 
 ## Open questions and residual risks
 
-1. **Test failures with PR #61.** The full suite with #61 merged had 3 failures: `PowerMonitorTests.testUnreadableBatteryIsRecheckedWhileStarted` (a count off by one) and `RecoveryScriptTests.testInstallMovesNeitherBundleWhenCodesignDoesNotAnswerDuringTheRepair` (took 677 s against a 30 s limit), plus one not yet identified. Neither touches #61's code. They must be re-run in isolation on `b6a7499` before #61 is adopted.
+1. **Flaky tests (resolved for #61).** Two full-suite runs with #61 merged failed different tests each time (`PowerMonitorTests.testUnreadableBatteryIsRecheckedWhileStarted`, `RecoveryScriptTests.testInstallMovesNeitherBundleWhenCodesignDoesNotAnswerDuringTheRepair`, `RecoveryScriptTests.testUninstallRestoresAppNapViaBackstopThenRemoves`, `UIStatusTests.testARefusedStartDuringACollapseRestoresThePillsAndDropsTheLanding`). All pass in isolation, with and without #61, and all 18 of #61's own tests pass. They are timing-sensitive under full-suite load, which is why the fast/full split in "Testing" matters. #61 is cleared for adoption.
 2. **macOS 26.6.2 reverting `disablesleep`.** Insomnia's `SleepGuard` notes that on 26.6.2 (25G83) the setting can read back 0 about 2 s after being set, and fails the start. Whether this happens on the development Mac is untested.
 3. **Touch ID at the administrator prompt.** Unknown whether the macOS 26 administrator prompt offers Touch ID for this call. Password-only is acceptable for phase 1.
 4. **iPhone hotspot visibility** while no device is connected (see Hotspot failover, point 5).
