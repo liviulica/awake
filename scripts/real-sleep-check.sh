@@ -163,15 +163,20 @@ verdict() {
     echo "FAIL (a) the session has not ended in the log: no 'session end (...)' line"
     failed=1
   else
+    # The window opens at the session start, not at the logged lid close:
+    # LidObserver logs "lid closed" only after a 2 s debounce, so a clamshell
+    # sleep right at the close is stamped before that line. During a lid
+    # session the screen is held while the lid is open, so any sleep from the
+    # session start to the timer end is a failure.
     local early=""
     for t in $S_SLEEPS; do
-      if [[ $t -ge $S_CLOSE && $t -lt $S_END ]]; then early="$early $(utc_text "$t")"; fi
+      if [[ $t -ge $S_START && $t -lt $S_END ]]; then early="$early $(utc_text "$t")"; fi
     done
     if [[ -n "$early" ]]; then
-      echo "FAIL (a) macOS entered sleep while the lid was closed and the timer ran (lid closed $(utc_text "$S_CLOSE"), timer end $(utc_text "$S_END")):$early"
+      echo "FAIL (a) macOS entered sleep after the session started and before the timer ended (session start $(utc_text "$S_START"), lid closed $(utc_text "$S_CLOSE"), timer end $(utc_text "$S_END")); the lid-close log line trails the lid by about 2 s, so a sleep at the close counts:$early"
       failed=1
     else
-      echo "PASS (a) no sleep while the lid was closed and the timer ran ($(utc_text "$S_CLOSE") to $(utc_text "$S_END"))"
+      echo "PASS (a) no sleep while the lid was closed and the timer ran ($(utc_text "$S_START") to $(utc_text "$S_END"))"
     fi
   fi
 
@@ -259,10 +264,16 @@ read -r _
 work=$("$MKTEMP" -d)
 start_line=$("$AWK" '/awake: session started/ { l = $0 } END { print l }' "$LOG_FILE")
 start_epoch=$(utc_epoch "${start_line%% *}")
+show_rc=0
 echo "Reading macOS's sleep log (this can take a few seconds)..."
 "$LOGSHOW" show --style compact \
   --start "$("$DATE" -j -r "$start_epoch" '+%Y-%m-%d %H:%M:%S')" \
-  --predicate 'process == "powerd" AND eventMessage CONTAINS "Entering Sleep"' >"$work/powerd.txt" 2>/dev/null || true
+  --predicate 'process == "powerd" AND eventMessage CONTAINS "Entering Sleep"' >"$work/powerd.txt" 2>"$work/powerd.err" || show_rc=$?
+if [[ $show_rc -ne 0 || ( ! -s "$work/powerd.txt" && -s "$work/powerd.err" ) ]]; then
+  echo "log show failed (exit $show_rc); no verdict without macOS's sleep log:" >&2
+  "$AWK" '{ print "  " $0 }' "$work/powerd.err" >&2
+  exit 2
+fi
 echo
 analyse "$LOG_FILE" "$work/powerd.txt"
 verdict

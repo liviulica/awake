@@ -54,6 +54,18 @@ final class RealSleepCheckScriptTests: XCTestCase {
         XCTAssertTrue(r.out.contains("RESULT: FAIL"), r.out)
     }
 
+    func testASleepJustBeforeTheLoggedLidCloseStillFails() throws {
+        // LidObserver logs "lid closed" about 2 s after the lid: the clamshell
+        // sleep is stamped 1 s before that line, and must not slip past (a).
+        let r = try run("fail-sleep-at-close")
+
+        XCTAssertNotEqual(r.status, 0, r.out)
+        XCTAssertTrue(r.out.contains("FAIL (a)"), r.out)
+        XCTAssertTrue(r.out.contains("2026-10-14T18:00:39Z"), r.out)
+        XCTAssertTrue(r.out.contains("a sleep at the close counts"), r.out)
+        XCTAssertTrue(r.out.contains("PASS (c)"), r.out)
+    }
+
     func testASleepMoreThanAMinuteAfterTheEndFailsOnlyTheLastCheck() throws {
         let r = try run("fail-late-sleep")
 
