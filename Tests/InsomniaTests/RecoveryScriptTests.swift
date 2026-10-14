@@ -4192,6 +4192,23 @@ final class RecoveryScriptTests: XCTestCase {
 
     // MARK: - install.sh (fully redirected: fake build, signing, sudo, launchctl)
 
+    /// The sudoers rule holds only the commands that cannot keep the Mac
+    /// awake: turning sleep off goes through the administrator prompt.
+    func testInstallWritesExactlyTheThreeSafeCommands() throws {
+        try fx.prepareInstall()
+        try fx.installMachinery()
+        let r = try fx.run(fx.installRedirected, extraEnvironment: ["USER": "tester"])
+        // Whether the later launchctl steps succeed is not this test's concern:
+        // the rule is written and verified first (step 2).
+        XCTAssertTrue(r.stdout.contains("sudoers rule verified"), r.stdout + r.stderr)
+        let rule = try String(contentsOf: fx.sudoers, encoding: .utf8)
+        XCTAssertTrue(rule.contains("NOPASSWD: /usr/bin/pmset -a disablesleep 0"), rule)
+        XCTAssertTrue(rule.contains("NOPASSWD: /usr/bin/pmset -b lowpowermode 1"), rule)
+        XCTAssertTrue(rule.contains("NOPASSWD: /usr/bin/pmset -b lowpowermode 0"), rule)
+        XCTAssertFalse(rule.contains("disablesleep 1"), "turning sleep off must need the password: \(rule)")
+        XCTAssertFalse(fx.calls().contains("sudo -n -l /usr/bin/pmset -a disablesleep 1"), "\(fx.calls())")
+    }
+
     /// Awake and Insomnia drive the same SleepDisabled bit, so the installer
     /// refuses while any Insomnia file exists, before the password prompt.
     func testInstallRefusesWhileInsomniaIsInstalled() throws {
@@ -5651,7 +5668,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertTrue(fx.hungProcessGone("sudo", within: 0), "it stopped on SIGTERM before the run went on")
         XCTAssertNil(fx.commandEnded(), "it ended on SIGTERM, not by a release or the watchdog")
         XCTAssertTrue(try fx.lockIsFree())
-        XCTAssertEqual(calls.filter { $0 == "sudo -n -l /usr/bin/pmset -a disablesleep 1" }.count, 2, "\(calls)")
+        XCTAssertEqual(calls.filter { $0 == "sudo -n -l /usr/bin/pmset -a disablesleep 0" }.count, 2, "\(calls)")
         XCTAssertFalse(calls.contains { $0.hasPrefix("sudo -n \(fx.fakePmset)") }, "no recovery ran: \(calls)")
         XCTAssertFalse(calls.contains { $0.hasPrefix("launchctl") }, "\(calls)")
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "previous")
@@ -5682,7 +5699,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertTrue(calls.contains("sudo SIGTERM"), "\(calls)")
         XCTAssertFalse(calls.contains("sudo FD9-OPEN"), "no lock is held before step 5: \(calls)")
         XCTAssertFalse(fx.hungProcessGone("sudo", within: 2), "sudo is never sent SIGKILL")
-        XCTAssertEqual(calls.filter { $0.hasPrefix("sudo -n -l") }, ["sudo -n -l /usr/bin/pmset -a disablesleep 1"], "the chain stops at the check that did not answer: \(calls)")
+        XCTAssertEqual(calls.filter { $0.hasPrefix("sudo -n -l") }, ["sudo -n -l /usr/bin/pmset -a disablesleep 0"], "the chain stops at the check that did not answer: \(calls)")
         XCTAssertFalse(calls.contains { $0.hasPrefix("pgrep") || $0.hasPrefix("osascript") || $0.hasPrefix("launchctl") }, "\(calls)")
         XCTAssertEqual(try fx.installedBinaryFirstLine(), "previous")
         XCTAssertEqual(try String(contentsOf: fx.plist, encoding: .utf8), "trusted")

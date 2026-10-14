@@ -81,10 +81,11 @@ file. It installs:
   session's changes.
 - A **sudoers rule** at `/etc/sudoers.d/insomnia`. A sudoers rule decides who
   can run what with `sudo`. This one lets your user account, not just
-  Insomnia, run these four commands without a password:
+  Insomnia, run these three commands without a password. None of them can keep your Mac
+  awake: starting lid mode (`disablesleep 1`) asks for your administrator
+  password each time.
 
 ```text
-/usr/bin/pmset -a disablesleep 1
 /usr/bin/pmset -a disablesleep 0
 /usr/bin/pmset -b lowpowermode 1
 /usr/bin/pmset -b lowpowermode 0
