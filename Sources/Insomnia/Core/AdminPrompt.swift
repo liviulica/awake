@@ -49,8 +49,17 @@ struct OsascriptAdminRunner: AdminCommandRunning {
 
     /// `command` and `prompt` are constants with no quotes or backslashes
     /// (AdminPromptTests pins this): nothing user-provided reaches the script.
+    /// Either would end or escape the AppleScript string and change what
+    /// runs as root, so one is a programming error that stops the app.
     static func script(command: String, prompt: String) -> String {
-        "do shell script \"\(command)\" with prompt \"\(prompt)\" with administrator privileges"
+        precondition(Self.isSafeLiteral(command) && Self.isSafeLiteral(prompt),
+                     "the administrator command and prompt must contain no \" or \\")
+        return "do shell script \"\(command)\" with prompt \"\(prompt)\" with administrator privileges"
+    }
+
+    /// Fits between AppleScript's double quotes as is: no `"`, no `\`.
+    static func isSafeLiteral(_ text: String) -> Bool {
+        !text.contains("\"") && !text.contains("\\")
     }
 
     /// SIGTERM only, never SIGKILL (`StopPolicy.terminateOnly`), as for

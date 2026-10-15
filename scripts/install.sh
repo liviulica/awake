@@ -315,8 +315,8 @@ fi
 #    changed when this step fails.
 if [[ -n "$PREBUILT" ]]; then
   step "Checking the prebuilt bundle $PREBUILT"
-  # Release bundles are built for arm64 only (the Release workflow runs on
-  # Apple Silicon). hw.optional.arm64 describes the hardware, so a shell
+  # Release bundles are built for arm64 only (Awake supports Apple Silicon
+  # only; the release workflow is phase 2). hw.optional.arm64 describes the hardware, so a shell
   # running under Rosetta on an Apple Silicon Mac still reads 1; an Intel
   # Mac reads 0 or has no such key.
   arm64="$("$SYSCTL" -n hw.optional.arm64 2>/dev/null || true)"

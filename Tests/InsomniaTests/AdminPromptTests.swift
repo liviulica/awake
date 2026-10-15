@@ -28,6 +28,18 @@ final class AdminPromptTests: XCTestCase {
         XCTAssertFalse(PmsetSleepGuard.adminPrompt.contains("\\"))
     }
 
+    /// What the precondition in `script` accepts: the real constants, and
+    /// nothing with a quote or a backslash (which would end or escape the
+    /// AppleScript string around a root command).
+    func testOnlyQuoteAndBackslashFreeTextIsASafeLiteral() {
+        XCTAssertTrue(OsascriptAdminRunner.isSafeLiteral(PmsetSleepGuard.disableSleepCommand))
+        XCTAssertTrue(OsascriptAdminRunner.isSafeLiteral(PmsetSleepGuard.adminPrompt))
+        XCTAssertFalse(OsascriptAdminRunner.isSafeLiteral(#"/usr/bin/true" & "x"#))
+        XCTAssertFalse(OsascriptAdminRunner.isSafeLiteral("a\\\"b"))
+        XCTAssertFalse(OsascriptAdminRunner.isSafeLiteral("C:\\path"))
+        XCTAssertTrue(OsascriptAdminRunner.isSafeLiteral(""))
+    }
+
     func testSuccess() async throws {
         let runner = OsascriptAdminRunner(osascript: try fakeOsascript(exit: 0, stderr: ""))
         try await runner.runAsAdministrator("/usr/bin/true", prompt: "p")

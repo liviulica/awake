@@ -50,7 +50,7 @@ cd "$ROOT"
 # a machine whose lid stays open (install.sh passes it through from its own
 # environment). A normal build has no watcher: nothing reads the trigger
 # file. Such a build says so in the log at launch, in the status menu and in
-# Settings. The release workflow never sets it.
+# Settings. A release build (phase 2) must never set it.
 BUILD_FLAGS=()
 if [[ "${INSOMNIA_LID_SIMULATION:-}" == 1 ]]; then
   BUILD_FLAGS+=(-Xswiftc -DINSOMNIA_LID_SIMULATION)

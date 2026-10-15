@@ -53,7 +53,7 @@ struct LaunchdBackstop: BackstopScheduling {
     /// The program verifies the bundle ($2) against the requirement ($1) with
     /// codesign and execs the sealed backstop.sh only when that passes; the
     /// resource seal covers the script, so an edited copy fails here. On
-    /// failure it appends one line to ~/Library/Logs/Insomnia/awake.log
+    /// failure it appends one line to ~/Library/Logs/Awake/awake.log
     /// (the LaunchAgent only ever exists in the standard layout) and exits 1
     /// without running anything. install.sh embeds this same text (its
     /// AGENT_PROGRAM line); LaunchdBackstopTests checks the two are equal so
