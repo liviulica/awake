@@ -61,11 +61,22 @@ the app, and invoke the three pmset commands directly.
 
 There is no signed release yet. Awake is built from source and ad-hoc signed
 on the machine that installs it; `scripts/install.sh` runs the build itself.
-Awake makes one network request: while hotspot failover runs, a `GET` of
-`http://captive.apple.com/hotspot-detect.html` with a neutral user agent
-(see the README). Starting a lid session raises the standard macOS
-administrator prompt for `pmset -a disablesleep 1`; the command string is a
-constant, and nothing a user can type reaches it.
+Awake makes one network request: while hotspot failover runs with a hotspot
+configured, a `GET` of `http://captive.apple.com/hotspot-detect.html` with a
+neutral user agent (see the README). Starting a lid session raises the
+standard macOS administrator prompt for `pmset -a disablesleep 1`; the
+command string is a constant, and nothing a user can type reaches it.
+
+One known window remains in that start. A prompt left open until its 300 s
+limit is stopped with SIGTERM (never SIGKILL) to osascript, and the start is
+undone from the journal. If the password was accepted in the last moment
+before that, osascript can exit while the root shell it started is still
+running, and that shell can then turn sleep off after the undo: sleep stays
+disabled with a clean journal, so neither the backstop nor the next launch
+restores it (the next launch only warns in the menu), until a later session
+end or `sudo pmset -a disablesleep 0`.
+The window is milliseconds wide. Only the privileged helper planned for
+phase 2, which replaces the administrator prompt, closes it.
 
 Passing automated checks or a secret scan does not establish the absence of
 vulnerabilities. Do not probe recovery by disrupting someone else's processes,
