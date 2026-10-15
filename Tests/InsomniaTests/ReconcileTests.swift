@@ -110,7 +110,6 @@ final class ReconcileTests: XCTestCase {
         XCTAssertEqual(h.guardFake.calls, ["pmset -g"])
         XCTAssertEqual(m.scheduledDeadline, s.endsAt)
         XCTAssertEqual(h.backstop.arms, 1)
-        XCTAssertEqual(m.remainingText, "2h 14m")
         XCTAssertEqual(try h.store.loadSession(), s)
         XCTAssertEqual(try h.store.loadState()?.sleepDisabledByUs, true)
     }
@@ -367,7 +366,6 @@ final class ReconcileTests: XCTestCase {
         XCTAssertEqual(h.guardFake.calls, ["disablesleep 1"])
         XCTAssertEqual(h.backstop.arms, 1)
         XCTAssertEqual(m.scheduledDeadline, s.endsAt)
-        XCTAssertEqual(m.remainingText, "30m")
         XCTAssertNil(m.lastError)
     }
 
@@ -387,7 +385,7 @@ final class ReconcileTests: XCTestCase {
         XCTAssertEqual(s.extensions, [3600])
         XCTAssertEqual(try h.store.loadSession(), s)
         XCTAssertEqual(h.backstop.arms, 2)
-        XCTAssertEqual(m.remainingText, "1h 50m")
+        XCTAssertEqual(m.scheduledDeadline, s.endsAt)
     }
 
     func testEndRestoresFromDiskAndLeavesAgentLoaded() async throws {
@@ -400,7 +398,6 @@ final class ReconcileTests: XCTestCase {
         XCTAssertEqual(try h.store.loadState(), RuntimeState.clean)
         XCTAssertEqual(h.guardFake.calls, ["disablesleep 1", "disablesleep 0"])
         XCTAssertEqual(h.backstop.arms, 1)
-        XCTAssertEqual(m.remainingText, "")
         XCTAssertNil(m.scheduledDeadline)
     }
 
@@ -437,17 +434,6 @@ final class ReconcileTests: XCTestCase {
         XCTAssertNotNil(m.lastError)
         // The failed end re-confirms the agent so something retries the journal.
         XCTAssertEqual(h.backstop.arms, 2)
-    }
-
-    func testCountdownPauseResume() async throws {
-        let m = h.makeManager()
-        await m.start(duration: 3600)
-        XCTAssertEqual(m.remainingText, "1h")
-        m.pauseCountdown()
-        h.clock.advance(120)
-        XCTAssertEqual(m.remainingText, "1h")
-        m.resumeCountdown()
-        XCTAssertEqual(m.remainingText, "58m")
     }
 
     func testDeadlineTimerFiresEnd() async throws {

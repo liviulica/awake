@@ -7,8 +7,7 @@ import Foundation
 /// Order on close: darken (save display brightness and keyboard backlight
 /// first, then set both to 0 and ask the display to sleep), mute (save
 /// volume + mute state first), freeze scope (the freeze list plus every
-/// other Dock app when `freezeAllApps` is on; one journal write per app),
-/// stop the countdown redraw.
+/// other Dock app when `freezeAllApps` is on; one journal write per app).
 /// Order on open: the exact reverse, driven by `SessionManager.undoLidActions`.
 @MainActor
 final class LidActions {
@@ -89,12 +88,6 @@ final class LidActions {
                 guard stillCurrent() else { return }
                 await freeze(group, manager: manager)
             }
-
-            // A session whose end arrived during this transaction has no
-            // countdown left to pause; its end is queued right behind. After
-            // a lid open the countdown keeps running.
-            guard stillCurrent() else { return }
-            manager.pauseCountdown()
         }
         if !ran { Log.error("lid close actions skipped: recovery lock busy") }
         // The closed-lid clock starts. Its own transaction, after this one
@@ -111,7 +104,6 @@ final class LidActions {
         }
         await manager.undoLidActions()
         guard manager.isActive, !Task.isCancelled else { return }
-        manager.resumeCountdown()
         // The closed-lid clock pauses on what is left.
         await manager.lidOpenedClock()
     }

@@ -27,7 +27,8 @@ final class ConfigTests: XCTestCase {
 
     func testDefaults() {
         let c = Config()
-        XCTAssertEqual(c.presets, [1800, 3600, 7200, 14400, 28800, 43200, 86400, 259200])
+        XCTAssertEqual(c.presets, [1800, 3600, 7200, 14400, 28800, 43200, 86400])
+        XCTAssertTrue(c.presets.allSatisfy { $0 <= Config.lidMaxDuration }, "no deprecated preset past the 24 h cap")
         XCTAssertEqual(c.lowPowerFloor, 40)
         XCTAssertEqual(c.endFloor, 10)
         XCTAssertEqual(c.maxDuration, 24 * 3600)

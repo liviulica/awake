@@ -1051,7 +1051,6 @@ final class LidActionsTests: XCTestCase {
         XCTAssertEqual(s.savedAudioOutputs, [])
         XCTAssertTrue(s.sleepDisabledByUs)
         XCTAssertTrue(m.isActive)
-        XCTAssertEqual(m.remainingText, "58m")
     }
 
     static let speakersSaved = SavedAudioOutput(deviceUID: FakeAudioControl.speakers, name: FakeAudioControl.speakersName, volume: 0.6, muted: false, saveID: nil)
@@ -1735,7 +1734,7 @@ final class LidActionsTests: XCTestCase {
 
     /// A close still queued (behind the recovery lock or an earlier lid
     /// event) when the lid opens again does nothing when its turn comes:
-    /// no darkening, no mute, no freeze, no countdown pause.
+    /// no darkening, no mute, no freeze.
     func testACloseTheLidOpenOvertookBeforeItRanDoesNothing() async throws {
         let (m, actions) = await make()
         await m.start(duration: 3600)
@@ -1750,59 +1749,7 @@ final class LidActionsTests: XCTestCase {
         XCTAssertEqual(h.keyboard.sets, [])
         XCTAssertEqual(try h.store.loadState()?.frozenProcesses, [])
         XCTAssertNil(try h.store.loadState()?.savedDisplayBrightness)
-        XCTAssertTrue(m.countdownTimerArmed)
         XCTAssertTrue(logText().contains("lid close actions skipped: the lid opened again before they ran"), logText())
-    }
-
-    /// The lid observer reports changes only, so a session started with the
-    /// lid already closed (an external display, a remote start) gets no
-    /// close call. Its countdown starts paused from the lid reading, and
-    /// the next lid open starts it.
-    func testASessionStartedUnderAClosedLidHasNoCountdownTimerUntilTheLidOpens() async throws {
-        let (m, actions) = await make()
-        h.clamshell.closed = true
-        await m.start(duration: 3600)
-
-        XCTAssertTrue(m.isActive)
-        XCTAssertFalse(m.countdownTimerArmed, "a session started under a closed lid redraws every second")
-
-        h.clamshell.closed = false
-        await actions.onOpen()
-        XCTAssertTrue(m.countdownTimerArmed)
-    }
-
-    /// A session ends with the lid shut and the next one starts before it
-    /// opens: the new session's countdown stays paused until the open.
-    func testASessionStartedAfterAnEndUnderTheStillClosedLidKeepsTheCountdownPaused() async throws {
-        let (m, actions) = await make()
-        await m.start(duration: 3600)
-        h.clamshell.closed = true
-        await actions.onClose()
-        await m.end(reason: .timer)
-
-        await m.start(duration: 3600)
-
-        XCTAssertTrue(m.isActive)
-        XCTAssertFalse(m.countdownTimerArmed, "the lid is still closed, but the countdown redraws every second")
-        h.clamshell.closed = false
-        await actions.onOpen()
-        XCTAssertTrue(m.countdownTimerArmed)
-    }
-
-    /// Older than the Docker rule: a session that ends with the lid shut
-    /// gets no lid open call (there is no session left), so the pause from
-    /// its close must not carry into the next session.
-    func testEndWithTheLidClosedDoesNotPauseTheNextSessionsCountdown() async throws {
-        let (m, actions) = await make()
-        await m.start(duration: 3600)
-        await actions.onClose()
-        XCTAssertFalse(m.countdownTimerArmed)
-
-        await m.end(reason: .timer)
-        await actions.onOpen()
-        await m.start(duration: 3600)
-
-        XCTAssertTrue(m.countdownTimerArmed, "the next session inherited the lid-closed pause")
     }
 
     func testAudioReadFailureSkipsMuteButStillFreezes() async throws {

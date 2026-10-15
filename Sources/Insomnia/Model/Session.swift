@@ -37,21 +37,4 @@ struct Session: Codable, Equatable, Sendable {
     func isExpired(at now: Date) -> Bool {
         SessionMath.isExpired(endsAt: endsAt, at: now)
     }
-
-    /// Shape of the menu bar countdown, derived from the session's span so it
-    /// survives a relaunch without another persisted field. Because
-    /// `remaining` never exceeds this span, the shape always has room for the
-    /// value. An extension widens the span and can promote the shape, which
-    /// is a one-off change at a user action, never a per-tick one.
-    ///
-    /// Only meaningful for a wall-clock (running) session. A paused
-    /// session's `endsAt` is a lease, so `endsAt - startedAt` grows with
-    /// every renewal and the shape can drift while paused; the closed-lid
-    /// time left is taken into account only so that the value always fits.
-    /// Its one consumer (`SessionManager.countdownText`, the old menu bar
-    /// pill) is retired with the old UI in Task 10, which formats
-    /// `closedLidRemaining` itself.
-    var countdownShape: CountdownShape {
-        CountdownShape(initialDuration: max(endsAt.timeIntervalSince(startedAt), pausedRemaining ?? 0))
-    }
 }

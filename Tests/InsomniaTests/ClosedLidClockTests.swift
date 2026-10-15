@@ -314,15 +314,6 @@ final class ClosedLidClockTests: XCTestCase {
         XCTAssertEqual(onDisk.pausedRemaining, 1800)
         XCTAssertFalse(real.notifier.posts.contains { $0.title == "Session ended" })
     }
-
-    func testCountdownShowsClosedLidTimeInAShapeThatFitsIt() async throws {
-        h.clamshell.closed = false
-        let m = h.makeManager(closedLidClock: true)
-        await m.start(duration: 8 * 3600)
-        h.clock.advance(120)
-        m.refreshCountdown()
-        XCTAssertEqual(m.countdownText, "8:00:00", "paused: the closed-lid time, in hours, not the lease")
-    }
 }
 
 /// The lid observer's handlers drive the clock: a close starts it, an open

@@ -5,8 +5,11 @@ import Foundation
 /// with defaults filled in.
 struct Config: Codable, Equatable, Sendable {
     // Session
-    /// Preset durations in seconds, shown as chips.
+    /// Deprecated: Insomnia's preset chips, which Awake no longer shows
+    /// (its menu offers fixed durations). Kept only so a config.json that
+    /// has the keys decodes and saves back unchanged.
     var presets: [TimeInterval] = Config.defaultPresets
+    /// Deprecated, as `presets`.
     var defaultPreset: TimeInterval = 4 * 3600
     /// Hard ceiling on a lid session: 24 hours (spec "Interaction"). An
     /// extension never pushes the end past `now + maxDuration`.
@@ -84,6 +87,7 @@ struct Config: Codable, Equatable, Sendable {
     /// after dismissal.
     var lidCloseDefaultsNotice: LidCloseDefaultsChange?
 
+    /// Deprecated, as `presets`. Never past `lidMaxDuration`.
     static let defaultPresets: [TimeInterval] = [
         30 * 60,
         1 * 3600,
@@ -92,7 +96,6 @@ struct Config: Codable, Equatable, Sendable {
         8 * 3600,
         12 * 3600,
         24 * 3600,
-        3 * 24 * 3600,
     ]
 
     /// Default freeze list: chat apps that burn battery in the background.

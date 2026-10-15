@@ -111,10 +111,6 @@ final class SessionManager {
     private(set) var session: Session?
     private(set) var state: RuntimeState
     var config: Config
-    /// Minute-granularity remaining time for the popover ("2h 14m").
-    private(set) var remainingText: String = ""
-    /// Live `H:MM:SS` countdown for the status item, updated at 1 Hz.
-    private(set) var countdownText: String = ""
 
     /// Why the display or the keyboard backlight is left alone on lid close
     /// on this Mac (a macOS the private calls were not measured on, a
@@ -461,7 +457,6 @@ final class SessionManager {
     /// The session timer counts only closed-lid time (Decision 11). False
     /// keeps Insomnia's wall-clock timer exactly.
     @ObservationIgnored private let closedLidClock: Bool
-    @ObservationIgnored private var countdownTimer: Timer?
     @ObservationIgnored private var retryTimer: Timer?
     /// Set by a timer or floor-rule end. Cleared once the sleep is asked,
     /// the lid opens, macOS keeps the closed Mac awake, or a start begins.
@@ -471,17 +466,6 @@ final class SessionManager {
     /// not get the sleep through replaces it. Readable so tests can wait
     /// for a retry to have run instead of waiting for a stretch of time.
     @ObservationIgnored private(set) var closedLidSleepRetry: Timer?
-    /// Whether the 1 Hz redraw is currently on the run loop. Tests assert on
-    /// this to prove an idle session leaves no repeating wakeup behind.
-    var countdownTimerArmed: Bool { countdownTimer != nil }
-    /// Set by a lid close, cleared by a lid open. A session that becomes
-    /// active (start, or reconcile at launch) takes it from the lid as it
-    /// reads then: the lid observer reports changes only, so a session that
-    /// starts under a closed lid gets no close call to pause it, and one
-    /// that starts after an end with the lid shut must not inherit that
-    /// session's pause. Every end clears it.
-    @ObservationIgnored private var countdownPaused = false
-
     /// Counts end requests. Start, extend and Low Power changes capture it
     /// when requested and compare after each await, so an end that arrived
     /// in the meantime wins.
@@ -1333,7 +1317,6 @@ final class SessionManager {
 
         session = started
         lastError = nil
-        countdownPaused = clamshell() == true
         foreignSleepWarning = nil
         Log.info(started.isPaused
             ? "session started paused (lid open) with \(Int(started.closedLidRemaining(at: now)))s of closed-lid time, lease until \(iso(started.endsAt)) (\(Int(duration))s requested)"
@@ -1506,7 +1489,6 @@ final class SessionManager {
         let hadChanges = state.isDirty
         Log.info("session end (\(reason.rawValue))")
         stopTimers()
-        countdownPaused = false
         session = nil
         // Every lid action is undone from the journal below, or by the
         // retry of this end, and Low Power Mode restored from it: a lid
@@ -1517,8 +1499,6 @@ final class SessionManager {
         settleRetry = nil
         earlierCommandCheckOwed = false
         scheduledDeadline = nil
-        remainingText = ""
-        countdownText = ""
         // Why session.json is still in place when a relaunch could act on
         // it; the end is then retried and quit refused.
         var retainedBecause: String?
@@ -2824,7 +2804,6 @@ final class SessionManager {
             } else if state.hasLidActions {
                 Log.info("reconcile: lid \(lidClosed == nil ? "unknown" : "closed"), keeping lid-close actions")
             }
-            countdownPaused = lidClosed == true
             // The closed-lid clock follows the lid as it is now: it may have
             // moved while the app was not running. Backstop armed above.
             var kept = s
@@ -3045,39 +3024,6 @@ final class SessionManager {
         Log.info("SleepDisabled reads 0 again; foreign sleep warning cleared")
     }
 
-    // MARK: Countdown (1 Hz redraw)
-
-    /// Stop the countdown redraw. The lid observer calls this on lid close,
-    /// which is what keeps a 1 Hz timer from costing battery in the bag.
-    func pauseCountdown() {
-        countdownPaused = true
-        countdownTimer?.invalidate()
-        countdownTimer = nil
-    }
-
-    /// Restart the countdown redraw. The lid observer calls this on lid open.
-    func resumeCountdown() {
-        countdownPaused = false
-        refreshCountdown()
-        armCountdownTimer()
-    }
-
-    /// Recompute `remainingText` and `countdownText` from the injected clock.
-    /// Each is only assigned when it changes, so observers are not woken every
-    /// second for the minute-granularity text.
-    func refreshCountdown() {
-        guard let s = session else {
-            remainingText = ""
-            countdownText = ""
-            return
-        }
-        let remaining = s.closedLidRemaining(at: clock())
-        let minute = SessionMath.formatRemaining(remaining)
-        if remainingText != minute { remainingText = minute }
-        let second = SessionMath.formatCountdown(remaining: remaining, shape: s.countdownShape)
-        if countdownText != second { countdownText = second }
-    }
-
     // MARK: Closed-lid clock
 
     /// Lid closed: the closed-lid clock runs (spec "Lid mode"). The hooks
@@ -3211,29 +3157,6 @@ final class SessionManager {
         timer.tolerance = 1
         RunLoop.main.add(timer, forMode: .common)
         deadlineTimer = timer
-
-        refreshCountdown()
-        if !countdownPaused { armCountdownTimer() }
-    }
-
-    /// 1 Hz redraw aligned to whole wall-clock seconds so the digits change
-    /// in step with the menu bar clock. `pauseCountdown()` stops it entirely
-    /// while the lid is closed.
-    private func armCountdownTimer() {
-        countdownTimer?.invalidate()
-        countdownTimer = nil
-        // Nothing to redraw without a session. Guarding here rather than in
-        // `resumeCountdown` covers every caller: a session that ends while the
-        // lid is shut would otherwise leave lid-open arming a 1 Hz timer that
-        // wakes the run loop forever to format an empty string.
-        guard session != nil else { return }
-        let first = SessionMath.nextSecondBoundary(after: clock())
-        let timer = Timer(fire: first, interval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refreshCountdown() }
-        }
-        timer.tolerance = 0.1
-        RunLoop.main.add(timer, forMode: .common)
-        countdownTimer = timer
     }
 
     private func stopTimers() {
@@ -3241,8 +3164,6 @@ final class SessionManager {
         deadlineTimer = nil
         leaseTimer?.invalidate()
         leaseTimer = nil
-        countdownTimer?.invalidate()
-        countdownTimer = nil
     }
 
     private func persistState(_ s: RuntimeState) throws {
