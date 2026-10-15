@@ -21,6 +21,7 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            modesSection
             lidSection
             agentSection
             powerSection
@@ -94,6 +95,23 @@ struct SettingsView: View {
     /// Under the mute toggle and in the README. Apple Platform Security,
     /// "Hardware microphone disconnect".
     static let microphoneNote = "On Mac laptops with Apple silicon or a T2 chip, closing the lid disconnects the built-in microphone in hardware. Recording a meeting with the lid closed needs AirPods or an external mic."
+
+    // MARK: Modes
+
+    /// The click cycle and the one-click lid duration (spec 2026-10-15
+    /// "The click duration"). A hand-edited value outside the choices shows
+    /// no selection; picking any choice writes a valid one.
+    private var modesSection: some View {
+        Section("Modes") {
+            Text("Click the menu bar icon to cycle: off, screen awake, lid closed, off.")
+                .foregroundStyle(.secondary)
+            Picker("Lid mode on click", selection: bind(\.lidClickDuration)) {
+                ForEach(Config.lidClickChoices, id: \.self) { choice in
+                    Text(StatusMenu.durationTitle(choice)).tag(choice)
+                }
+            }
+        }
+    }
 
     private var lidSection: some View {
         Section {
