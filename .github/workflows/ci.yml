@@ -1,7 +1,8 @@
 name: CI
 
-# Pull requests to main only. The jobs: build and the fast unit tests, the
-# end-to-end smoke test of the real app, and ShellCheck over scripts/.
+# Pull requests to main only. The jobs: build, the lid simulation gate and
+# the fast unit tests; the end-to-end smoke test of the real app; and
+# ShellCheck over scripts/.
 # The full suite (`swift test`) runs by hand before a release.
 on:
   pull_request:
@@ -27,6 +28,12 @@ jobs:
           persist-credentials: false
       - name: Build
         run: swift build -c release -Xswiftc -warnings-as-errors
+      - name: Lid simulation stays out of release builds
+        # The release build above must lack the simulate-lid.sh watcher and
+        # the smoke test's control channel, and a build with
+        # -DINSOMNIA_LID_SIMULATION (what build-app.sh adds for
+        # INSOMNIA_LID_SIMULATION=1) must have them.
+        run: scripts/check-lid-simulation-gate.sh
       - name: Fast tests
         run: scripts/test-fast.sh
         env:
