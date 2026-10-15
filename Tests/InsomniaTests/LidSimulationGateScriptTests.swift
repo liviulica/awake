@@ -53,7 +53,7 @@ final class LidSimulationGateScriptTests: XCTestCase {
                 """)
         }
         for dir in [plain, sim] {
-            try Data().write(to: dir.appendingPathComponent("Insomnia"))
+            try Data().write(to: dir.appendingPathComponent("Ember"))
         }
         try write(plain, nm: Self.otherSymbol, strings: Self.otherStrings)
         try write(sim, nm: Self.otherSymbol + "\n" + Self.watcherSymbol, strings: Self.otherStrings + "\n" + Self.watcherStrings)
@@ -67,8 +67,8 @@ final class LidSimulationGateScriptTests: XCTestCase {
         let r = try runGate()
 
         XCTAssertEqual(r.status, 0, r.stdout + r.stderr)
-        XCTAssertTrue(r.stdout.contains("plain release build (\(plain.path)/Insomnia): 0 symbol(s) of the watcher class"), r.stdout)
-        XCTAssertTrue(r.stdout.contains("INSOMNIA_LID_SIMULATION build (\(sim.path)/Insomnia): 1 symbol(s) of the watcher class"), r.stdout)
+        XCTAssertTrue(r.stdout.contains("plain release build (\(plain.path)/Ember): 0 symbol(s) of the watcher class"), r.stdout)
+        XCTAssertTrue(r.stdout.contains("INSOMNIA_LID_SIMULATION build (\(sim.path)/Ember): 1 symbol(s) of the watcher class"), r.stdout)
         XCTAssertTrue(r.stdout.contains("compiled out of the plain release build"), r.stdout)
     }
 
@@ -90,7 +90,7 @@ final class LidSimulationGateScriptTests: XCTestCase {
         let r = try runGate()
 
         XCTAssertNotEqual(r.status, 0, r.stdout + r.stderr)
-        XCTAssertTrue(r.stdout.contains("plain release build (\(plain.path)/Insomnia): 1 occurrence(s) of \"test-control\""), r.stdout)
+        XCTAssertTrue(r.stdout.contains("plain release build (\(plain.path)/Ember): 1 occurrence(s) of \"test-control\""), r.stdout)
         XCTAssertTrue(r.stderr.contains("expected the lid simulation to be absent"), r.stderr)
         XCTAssertFalse(r.stdout.contains("compiled out of the plain release build"), r.stdout)
     }
@@ -103,7 +103,7 @@ final class LidSimulationGateScriptTests: XCTestCase {
         let r = try runGate()
 
         XCTAssertNotEqual(r.status, 0, r.stdout + r.stderr)
-        XCTAssertTrue(r.stdout.contains("INSOMNIA_LID_SIMULATION build (\(sim.path)/Insomnia): 0 occurrence(s) of \"test-control\""), r.stdout)
+        XCTAssertTrue(r.stdout.contains("INSOMNIA_LID_SIMULATION build (\(sim.path)/Ember): 0 occurrence(s) of \"test-control\""), r.stdout)
         XCTAssertTrue(r.stderr.contains("expected the lid simulation to be present"), r.stderr)
     }
 
@@ -124,8 +124,8 @@ final class LidSimulationGateScriptTests: XCTestCase {
             let r = try runGate()
 
             XCTAssertNotEqual(r.status, 0, "\(c.name): " + r.stdout + r.stderr)
-            XCTAssertTrue(r.stderr.contains("plain release build (\(plain.path)/Insomnia): \(c.message)"), "\(c.name): " + r.stderr)
-            XCTAssertFalse(r.stdout.contains("plain release build (\(plain.path)/Insomnia): 0 "), "\(c.name): " + r.stdout)
+            XCTAssertTrue(r.stderr.contains("plain release build (\(plain.path)/Ember): \(c.message)"), "\(c.name): " + r.stderr)
+            XCTAssertFalse(r.stdout.contains("plain release build (\(plain.path)/Ember): 0 "), "\(c.name): " + r.stdout)
             XCTAssertFalse(r.stdout.contains("compiled out of the plain release build"), "\(c.name): " + r.stdout)
         }
     }

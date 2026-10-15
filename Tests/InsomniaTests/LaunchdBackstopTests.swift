@@ -248,7 +248,7 @@ final class LaunchdBackstopTests: XCTestCase {
     func testBundleIsTheRunningOneOrElseTheInstalledOne() {
         let running = URL(fileURLWithPath: "/Applications/Ember.app/", isDirectory: true)
         XCTAssertEqual(LaunchdBackstop.runningOrInstalledBundle(paths: home.paths, running: running).path, "/Applications/Ember.app")
-        let debugBinary = URL(fileURLWithPath: "/x/.build/debug/Insomnia")
+        let debugBinary = URL(fileURLWithPath: "/x/.build/debug/Ember")
         XCTAssertEqual(LaunchdBackstop.runningOrInstalledBundle(paths: home.paths, running: debugBinary), home.paths.appBundle)
         XCTAssertEqual(home.paths.backstopScript.path, home.paths.appBundle.path + "/Contents/Resources/backstop.sh")
     }

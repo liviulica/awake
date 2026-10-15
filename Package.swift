@@ -6,6 +6,11 @@ let package = Package(
     platforms: [
         .macOS(.v26),
     ],
+    // The module and target keep Insomnia's name so upstream fixes still
+    // merge; the built binary is Ember.
+    products: [
+        .executable(name: "Ember", targets: ["Insomnia"]),
+    ],
     targets: [
         .executableTarget(
             name: "Insomnia",
