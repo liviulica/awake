@@ -77,16 +77,24 @@ The menu bar icon is a flame, like a pilot light:
 |---|---|
 | Flame outline | Off. The Mac sleeps as usual. |
 | Filled flame | Screen mode: the Mac and its screen stay on. A countdown shows beside it when the mode is timed. |
-| Small flame on a thick line (the closed lid) | Lid mode. The remaining time always shows beside it. |
+| Flame on a thick line (the closed lid) | Lid mode. The remaining time always shows beside it. |
 
-- **Left-click** turns screen mode on and off. On means "until I turn it off".
-  During a lid session a left-click opens the menu instead of ending anything.
-- **Right-click** opens the menu:
-  - **Keep awake**, and **Keep awake for** (until I turn it off, 1, 2 or 4
-    hours).
-  - **Keep awake with lid closed** (1, 2, 4 or 8 hours, or Custom).
+- **Left-click** cycles through the modes: off, screen mode ("until I turn it
+  off"), lid mode (8 hours by default; the administrator prompt appears),
+  then off again. The third click ends a running lid session, so use the
+  menu's **End now** when you want to be deliberate.
+- **Right-click** (or ctrl-click) opens the menu:
+  - **Keep screen awake**, and **Keep screen awake for** (until I turn it
+    off, 1, 2 or 4 hours).
+  - **Lid closed for 8 hours** (one click; the length is a setting) and
+    **Lid closed for** (1, 2, 4, 8 or 12 hours, or Custom).
   - During a lid session: the time left, **Add 1 hour** and **End now**.
-  - Battery and temperature status, **Settings...** and **Quit**.
+  - A **Mac** block: battery, temperature, Wi-Fi and hotspot failover, and
+    what the lid close changed while it is still in effect.
+  - Warnings only when something needs a decision (a browser that pauses
+    hidden tabs, an output still muted, a recovery problem), each followed
+    by the item that resolves it.
+  - **Settings…** and **Quit Ember**.
 
 **Lid mode** asks for your administrator password each time it starts (the
 standard macOS prompt), because it turns sleep off for the whole system. It is
@@ -103,7 +111,8 @@ On battery power, Ember turns on Low Power Mode below 40% and ends a lid
 session below 10%. Those are the defaults, and you can change both in
 Settings (an end floor of 0 turns the battery end off). The heat rules turn on
 Low Power Mode when the Mac gets seriously hot and end the session at critical
-heat. They are on by default. These rules only work while the app runs.
+heat. They are on by default. These rules only work while the app runs. The
+length of the one-click lid mode is under Settings → Modes (1 to 24 hours).
 
 Before your first lid session, check Settings. Then run a short session you
 can watch, and read `~/Library/Logs/Ember/ember.log` afterward.

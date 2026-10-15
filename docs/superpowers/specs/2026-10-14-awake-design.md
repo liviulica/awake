@@ -35,6 +35,8 @@ Awake is a fork of Insomnia (MIT). It borrows Caffeine's idea (also MIT), not it
 
 ### Menu bar icon
 
+> Superseded on 2026-10-15 by `2026-10-15-ember-menu-and-click-design.md` (lid icon size, the click cycle, the menu).
+
 Template images drawn in code (like Insomnia's eye today), so macOS tints them for light and dark bars. An outline means off, a filled shape means on, as in Caffeine.
 
 | State | Icon | Text beside it |
@@ -46,6 +48,8 @@ Template images drawn in code (like Insomnia's eye today), so macOS tints them f
 The "Pilot light" family (decided 2026-10-14; it replaced an earlier laptop-and-robot set). The working name may become **Ember**; the icons fit either name. Mockups: (private mockup), family "Pilot light".
 
 ### Interaction
+
+> Superseded on 2026-10-15 by `2026-10-15-ember-menu-and-click-design.md` (lid icon size, the click cycle, the menu).
 
 - **Left-click** toggles Awake mode on and off. On means "until I turn it off".
 - **Right-click** opens a standard `NSMenu`:
