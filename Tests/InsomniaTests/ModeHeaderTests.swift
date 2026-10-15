@@ -26,15 +26,16 @@ final class ModeHeaderTests: XCTestCase {
         XCTAssertEqual(ModeHeader.transition(from: .lid, to: .lid), .none)
     }
 
-    /// A Lid start waits on the settle delay and the backstop: the tab
-    /// stays on the real mode, and the caption says the start is under way.
-    func testAPendingLidStartSaysSo() {
-        let off = ModeHeader.model(mode: .off, awakeEndsAt: nil, screenChosen: nil, lidRemaining: nil, lidPaused: false, lidChosen: nil, lidStarting: true, now: now)
-        XCTAssertEqual(off.selected, .off)
-        XCTAssertEqual(off.caption, "Starting lid mode\u{2026}")
-        let screen = ModeHeader.model(mode: .screen, awakeEndsAt: nil, screenChosen: nil, lidRemaining: nil, lidPaused: false, lidChosen: nil, lidStarting: true, now: now)
-        XCTAssertEqual(screen.selected, .screen)
-        XCTAssertEqual(screen.caption, "Starting lid mode\u{2026}")
+    /// The Lid tab answers the click at once (spec 2026-10-16 revisions):
+    /// while the start runs it is selected, with no chips yet and a caption
+    /// that says the start is under way. A failed start snaps it back.
+    func testAPendingLidStartSelectsTheLidTab() {
+        for mode in [StatusItemController.Mode.off, .screen] {
+            let m = ModeHeader.model(mode: mode, awakeEndsAt: nil, screenChosen: nil, lidRemaining: nil, lidPaused: false, lidChosen: nil, lidStarting: true, now: now)
+            XCTAssertEqual(m.selected, .lid, "\(mode)")
+            XCTAssertTrue(m.chips.isEmpty, "\(mode)")
+            XCTAssertEqual(m.caption, "Starting lid mode\u{2026}", "\(mode)")
+        }
     }
 
     func testOffHasNoChips() {

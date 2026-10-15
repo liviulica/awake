@@ -176,3 +176,29 @@ until then the fallback keeps lid mode working with the prompt.
 - Changing the Mac block, the warnings or the icon.
 - Renaming the SwiftPM product from Insomnia to Ember (separate small PR,
   offered).
+
+## Revisions after the owner installed it (2026-10-16)
+
+The owner tried the branch build and asked for two changes, approved in
+conversation:
+
+1. **The Lid tab answers at once, and starts faster.** A Lid click took about
+   7 s (the 5 s settle wait for the read-back of SleepDisabled, plus arming the
+   recovery agent) while the tab stayed on the old mode.
+   - While a lid start runs, the header selects the Lid tab, shows no chips
+     and reads "Starting lid mode…". A failed or cancelled start snaps it back
+     to the real mode. This replaces "the segmented control always mirrors the
+     real state" for that one case.
+   - `SleepGuarding.confirmSleepDisabled()` now holds the settle wait and the
+     read-back. `setSleepDisabled(true)` returns once pmset has. The manager
+     publishes the session and runs the read-back beside it; when it finds
+     SleepDisabled back at 0 and no end was requested since, it ends the
+     session with the new `EndReason.sleepReverted` (its own notification
+     sentence; asks macOS to sleep a closed lid, like the timer).
+   - Trade-off, accepted by the owner: if macOS reverts the bit and the lid is
+     closed within those first 5 s, the Mac may sleep before Ember notices. No
+     revert was seen on the owner's Mac in the sessions logged so far.
+2. **Browser warnings only during a lid session.** "<Browser> pauses hidden
+   tabs" and its relaunch item show only while a lid session runs; a
+   throttled browser matters when the lid is closed and the display off.
+   Relaunch problems (results of the person's own action) still show.

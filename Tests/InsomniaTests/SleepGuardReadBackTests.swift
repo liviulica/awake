@@ -86,7 +86,23 @@ final class SleepGuardReadBackTests: XCTestCase {
         let lock = RecoveryLock(url: dir.appendingPathComponent(".recovery.lock"))
         let handle = try XCTUnwrap(try lock.tryAcquire())
         defer { handle.release() }
+        try await RecoveryLock.$held.withValue(handle) {
+            try await sleepGuard.setSleepDisabled(true)
+            try await sleepGuard.confirmSleepDisabled()
+        }
+    }
+
+    /// The disable itself returns as soon as pmset has: the wait and the
+    /// read-back are `confirmSleepDisabled`, which the manager runs after
+    /// the session is up (spec 2026-10-16 revisions), so a lid start is
+    /// not held for the 5 s settle.
+    func testTheDisableAloneDoesNotWaitOrReadBack() async throws {
+        let sleepGuard = try fakeGuard(afterSettle: sleepDisabled("1"))
+        let lock = RecoveryLock(url: dir.appendingPathComponent(".recovery.lock"))
+        let handle = try XCTUnwrap(try lock.tryAcquire())
+        defer { handle.release() }
         try await RecoveryLock.$held.withValue(handle) { try await sleepGuard.setSleepDisabled(true) }
+        XCTAssertEqual(try calls(), Array(expectedCalls.prefix(2)))
     }
 
     /// pmset exits 0 and the bit reads 1, but it reads 0 after the settle

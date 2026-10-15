@@ -11,6 +11,16 @@ protocol SleepGuarding: Sendable {
     /// Battery Low Power Mode as pmset reports it now. Throws when it cannot
     /// be read; callers must then not take ownership of the mode.
     func isLowPowerModeOn() async throws -> Bool
+    /// After `setSleepDisabled(true)`: waits the settle time and reads the
+    /// bit back, throwing `SleepDisableRevertedError` when macOS set it back
+    /// to 0. Run beside the session, so a start is not held for the wait.
+    func confirmSleepDisabled() async throws
+}
+
+extension SleepGuarding {
+    /// Guards with nothing to read back (the simulated one, test doubles)
+    /// confirm at once.
+    func confirmSleepDisabled() async throws {}
 }
 
 struct SleepGuardError: Error, LocalizedError, Sendable {
@@ -100,10 +110,9 @@ struct PmsetSleepGuard: SleepGuarding {
         self.admin = admin
     }
 
-    /// A disable that reads SleepDisabled 0 after `settle` throws
-    /// `SleepDisableRevertedError`, and one that cannot be read back throws
-    /// `SleepGuardError`; callers handle both like a failed pmset. Restoring
-    /// sleep is not read back. Disabling goes through `sudo -n`, or through
+    /// The read-back after `settle` is `confirmSleepDisabled`, which the
+    /// manager runs beside the started session. Restoring sleep is not read
+    /// back. Disabling goes through `sudo -n`, or through
     /// the administrator prompt on a rule without the `disablesleep 1` line,
     /// which throws `AdminPromptCancelledError` when the person cancels it.
     func setSleepDisabled(_ disabled: Bool) async throws {
@@ -122,6 +131,13 @@ struct PmsetSleepGuard: SleepGuarding {
             Log.info("sudoers has no passwordless disablesleep 1 line; asking for the password (run scripts/install.sh once to stop this)")
             try await admin.runAsAdministrator(Self.disableSleepCommand, prompt: Self.adminPrompt)
         }
+    }
+
+    /// The read-back `setSleepDisabled(true)` used to wait for: after
+    /// `settle`, SleepDisabled must still read 1. Throws
+    /// `SleepDisableRevertedError` when macOS set it back to 0, and
+    /// `SleepGuardError` when it cannot be read. Needs no root and no lock.
+    func confirmSleepDisabled() async throws {
         try await settleWait(settleDelay)
         switch Self.readSleepDisabled(try await pmsetG()) {
         case true?:

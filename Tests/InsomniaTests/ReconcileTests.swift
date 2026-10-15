@@ -400,6 +400,47 @@ final class ReconcileTests: XCTestCase {
         XCTAssertEqual(m.scheduledDeadline, s.endsAt)
     }
 
+    /// A start publishes the session without waiting for the read-back of
+    /// SleepDisabled, which follows beside it (spec 2026-10-16 revisions).
+    func testStartDoesNotWaitForTheReadBack() async throws {
+        let gate = AsyncGate()
+        h.guardFake.confirmGate = gate
+        let m = h.makeManager()
+        await m.start(duration: 3600)
+        XCTAssertNotNil(m.session, "the session is up while the read-back still waits")
+        await gate.waitUntilStarted()
+        XCTAssertEqual(h.guardFake.confirms, 1)
+        await gate.open()
+    }
+
+    /// macOS put SleepDisabled back to 0 after the start: the read-back
+    /// ends the session with the reason, and sleep is restored.
+    func testARevertFoundByTheReadBackEndsTheSession() async throws {
+        h.guardFake.revertOnConfirm = true
+        let m = h.makeManager()
+        await m.start(duration: 3600)
+        await pollUntil("the read-back never ended the session") { m.session == nil }
+        XCTAssertTrue(m.lastError?.contains("macOS set SleepDisabled back to 0") ?? false, m.lastError ?? "no error")
+        XCTAssertNil(try h.store.loadSession())
+        XCTAssertEqual(try h.store.loadState(), RuntimeState.clean)
+    }
+
+    /// The person ended the session before the read-back answered: a
+    /// revert found then changes nothing and reports nothing.
+    func testAReadBackAfterTheEndDoesNothing() async throws {
+        let gate = AsyncGate()
+        h.guardFake.confirmGate = gate
+        h.guardFake.revertOnConfirm = true
+        let m = h.makeManager()
+        await m.start(duration: 3600)
+        await gate.waitUntilStarted()
+        _ = await m.end(reason: .user)
+        await gate.open()
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertNil(m.session)
+        XCTAssertNil(m.lastError, "nothing to report about a session already ended")
+    }
+
     func testEndRestoresFromDiskAndLeavesAgentLoaded() async throws {
         let m = h.makeManager()
         await m.start(duration: 3600)

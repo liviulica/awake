@@ -380,6 +380,7 @@ final class ModeHeaderControllerTests: XCTestCase {
         let lid = Task { await c.applyTab(.lid) }
         await gate.waitUntilStarted()
         XCTAssertEqual(c.headerModel(now: h.clock.now).caption, "Starting lid mode\u{2026}")
+        XCTAssertEqual(c.headerModel(now: h.clock.now).selected, .lid, "the tab answers the click at once")
         await gate.open()
         await lid.value
         XCTAssertEqual(c.headerModel(now: h.clock.now).selected, .lid)
@@ -406,6 +407,26 @@ final class ModeHeaderControllerTests: XCTestCase {
             }
         }
         wait(for: [done], timeout: 3)
+    }
+
+    /// The browser warnings matter when the lid is closed and the display
+    /// off; outside a lid session they are noise (owner, 2026-10-16).
+    func testBrowserWarningsShowOnlyDuringALidSession() async {
+        let h = Harness()
+        defer { h.home.destroy() }
+        let m = h.makeManager()
+        let source = RecordingStatusSource()
+        source.throttledBrowsers = [ThrottledBrowser(bundleId: "company.thebrowser.Browser", name: "Arc")]
+        let awake = AwakeController(assertion: FakeAwakeAssertion(), clock: { h.clock.now })
+        func relaunchItems() -> Int {
+            StatusItemController.menuItems(manager: m, status: source, awake: awake, now: h.clock.now)
+                .filter { if case .relaunchBrowser = $0.kind { return true } else { return false } }.count
+        }
+        XCTAssertEqual(relaunchItems(), 0, "off: no browser warning")
+        awake.turnOn(for: nil)
+        XCTAssertEqual(relaunchItems(), 0, "screen mode: no browser warning")
+        await m.start(duration: 3600)
+        XCTAssertEqual(relaunchItems(), 1, "lid session: the warning and its relaunch")
     }
 
     /// Leaving a mode forgets the length picked for it, so the next session

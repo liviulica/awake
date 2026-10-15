@@ -413,7 +413,9 @@ final class StatusItemController: NSObject {
             ),
             sessionActive: manager.isActive,
             sleepHeld: manager.state.sleepDisabledByUs,
-            throttledBrowsers: status.throttledBrowsers,
+            // Only during a lid session: a throttled browser matters when the
+            // lid is closed and the display off (owner, 2026-10-16).
+            throttledBrowsers: manager.isActive ? status.throttledBrowsers : [],
             relaunchProblems: status.relaunchProblems,
             // A report about an SSID edited away since is not shown.
             hotspotWarning: status.hotspotPasswordReport?.problem(for: manager.config.hotspotSSID)?.menuLine,

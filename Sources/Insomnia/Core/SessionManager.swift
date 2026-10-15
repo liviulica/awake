@@ -22,6 +22,10 @@ enum EndReason: String, Sendable {
     /// may still have been applied, so the start is undone from the journal
     /// like an end rather than rolled back from memory.
     case startFailed
+    /// The read-back after a start found SleepDisabled back at 0: macOS
+    /// (26.6.2 can) turned sleep on again seconds after the start, so the
+    /// session could not hold with the lid closed.
+    case sleepReverted
     /// The person cancelled the administrator prompt at start. Undone like
     /// `startFailed`, but with no notification and no error line.
     case startCancelled
@@ -30,7 +34,7 @@ enum EndReason: String, Sendable {
     /// macOS to sleep (`SessionManager.sleepClosedLidIfOwed`).
     var sleepsAClosedLid: Bool {
         switch self {
-        case .timer, .thermalCritical, .batteryFloor, .batteryUnreadable: true
+        case .timer, .thermalCritical, .batteryFloor, .batteryUnreadable, .sleepReverted: true
         case .user, .quit, .backstop, .recoveryUnavailable, .startFailed, .startCancelled: false
         }
     }
@@ -1333,7 +1337,26 @@ final class SessionManager {
         applyAppNapInJournal()
         // Every observer lives in AppServices.
         services?.start(for: self)
-        // PR3: schedule "5 minutes left" notification.
+        // The read-back of SleepDisabled runs beside the session, so a start
+        // is not held for the settle time (spec 2026-10-16 revisions).
+        let confirmTicket = endTicket
+        Task { [weak self] in await self?.confirmStartedSleep(ticket: confirmTicket) }
+    }
+
+    /// macOS 26.6.2 can set SleepDisabled back to 0 about 2 s after
+    /// `disablesleep 1`. When the read-back finds that, a session still
+    /// running (no end requested since the start) is ended with the reason:
+    /// a closed lid would otherwise sleep the Mac mid-session.
+    private func confirmStartedSleep(ticket: Int) async {
+        do {
+            try await sleepGuard.confirmSleepDisabled()
+        } catch {
+            guard endTicket == ticket, session != nil else { return }
+            fail("lid mode ended: \(error.localizedDescription)")
+            let reason = lastError
+            _ = await end(reason: .sleepReverted)
+            if lastError == nil { lastError = reason }
+        }
     }
 
     /// The lid may have moved while the start waited (the administrator
@@ -3438,6 +3461,7 @@ final class SessionManager {
             : "A previous session left changes behind; everything has been undone."
         case .recoveryUnavailable: "Ember could not keep the session's recovery in place, so it ended the session. Sleep is back to normal."
         case .startFailed: "Ember could not disable sleep, so no session was started. Sleep is back to normal."
+        case .sleepReverted: "macOS turned sleep back on a few seconds after the session started, so it could not hold with the lid closed. Ember ended it. Sleep is back to normal."
         case .startCancelled: "The administrator prompt was cancelled, so no session was started. Sleep is back to normal."
         }
     }
