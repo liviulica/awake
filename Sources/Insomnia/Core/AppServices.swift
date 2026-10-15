@@ -51,10 +51,12 @@ final class AppServices {
     let locationPermission: LocationPermission
 
     private let paths: Paths
-    private let audio: any AudioControlling
-    private let display: any DisplayDimming
-    private let keyboard: any KeyboardBacklighting
-    private let freezer: any Freezing
+    // What acts on the rest of the Mac. Readable (never settable) so a
+    // test can check what a wiring passed in (TestMode).
+    let audio: any AudioControlling
+    let display: any DisplayDimming
+    let keyboard: any KeyboardBacklighting
+    let freezer: any Freezing
     private let keychain: any KeychainStoring
     private let lid = LidObserver()
     /// The file trigger behind scripts/simulate-lid.sh. Compiled into debug
@@ -110,6 +112,7 @@ final class AppServices {
         processControl: any ProcessSignaling,
         display: any DisplayDimming = NoopDisplayDimmer(),
         keyboard: any KeyboardBacklighting = NoopKeyboardBacklight(),
+        freezer: (any Freezing)? = nil,
         keychain: any KeychainStoring = KeychainStore(),
         locationPermission: LocationPermission = LocationPermission(),
         browser: BrowserThrottle? = nil,
@@ -125,7 +128,7 @@ final class AppServices {
         self.lidSimulation = lidSimulation
         self.lidSimulationEnabled = lidSimulationEnabled
         self.sampler = BrightnessSampler(display: display, keyboard: keyboard, idleSeconds: idleSeconds)
-        self.freezer = Freezer(control: processControl)
+        self.freezer = freezer ?? Freezer(control: processControl)
         self.keychain = keychain
         self.locationPermission = locationPermission
         self.browser = browser ?? BrowserThrottle()

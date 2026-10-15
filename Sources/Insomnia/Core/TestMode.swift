@@ -17,6 +17,12 @@ import Foundation
 /// - The lid the session reads is the one scripts/simulate-lid.sh last
 ///   wrote (open until it writes), not the hinge, so a simulated close
 ///   runs the closed-lid clock too; macOS is never asked to sleep.
+/// - A simulated close changes nothing on the host, whatever config.json
+///   in `AWAKE_HOME` says: the output volume, the display and keyboard
+///   backlight, other apps' processes (no freeze) and other apps' App Nap
+///   preferences are all left alone (`NoopAudioControl`,
+///   `NoopDisplayDimmer`, `NoopKeyboardBacklight`, `NoopFreezer`,
+///   `NoopAppNapPreferences`).
 /// - `TestControl` takes commands from `controlFile` and writes
 ///   `statusFile`.
 /// The Awake assertion stays the real IOPM one: that is what the smoke
@@ -53,9 +59,25 @@ struct TestMode: Equatable, Sendable {
             backstop: RecoveryAgentStandIn(),
             clamshell: { lid.isClosed },
             closedLidSleep: NoopClosedLidSleep(),
-            lidSimulation: SimulatedLidWatcher(state: lid)
+            lidSimulation: SimulatedLidWatcher(state: lid),
+            audio: NoopAudioControl(),
+            display: NoopDisplayDimmer(),
+            keyboard: NoopKeyboardBacklight(),
+            appNap: NoopAppNapPreferences(),
+            freezer: NoopFreezer()
         )
     }
+}
+
+/// Freezes nothing and signals nothing: a test-mode lid close never stops
+/// another app on the host.
+struct NoopFreezer: Freezing {
+    func plan(config: Config) -> [FreezeGroup] { [] }
+    func suspend(_ processes: [FrozenProcess], expectedParents: [Int32: Int32]) -> SuspendReport {
+        SuspendReport(skipped: processes.map(\.pid))
+    }
+    func resume(_ processes: [FrozenProcess]) -> ResumeReport { ResumeReport(gone: processes.map(\.pid)) }
+    func cancelStops(_ processes: [FrozenProcess]) -> ResumeReport { ResumeReport(gone: processes.map(\.pid)) }
 }
 
 /// `SleepGuarding` without root: the bits live in memory and every change

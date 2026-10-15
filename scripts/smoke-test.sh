@@ -9,9 +9,10 @@
 # "Awake mode" assertion in `pmset -g assertions`.
 #
 # Test mode needs no root and touches nothing outside the temp AWAKE_HOME:
-# the sleep guard is simulated (no pmset, no password prompt) and the
-# recovery agent is a stand-in (no launchctl). See TestMode.swift. The
-# status item shows in the menu bar while the test runs.
+# the sleep guard is simulated (no pmset, no password prompt), the
+# recovery agent is a stand-in (no launchctl), and a simulated lid close
+# changes no volume, brightness, other app or App Nap preference. See
+# TestMode.swift. The status item shows in the menu bar while the test runs.
 #
 # Each step has a 10 s deadline and prints PASS or FAIL with the reason;
 # the first FAIL prints what the app wrote and exits 1. The app is killed

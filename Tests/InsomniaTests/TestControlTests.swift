@@ -118,6 +118,28 @@ final class TestControlTests: XCTestCase {
 
     // MARK: Turning it on
 
+    /// Test mode leaves the host alone whatever config.json says: no
+    /// volume, display or keyboard backlight change, no freeze, no write to
+    /// another app's App Nap preferences.
+    func testTestModeWiresNoOpHostEffects() {
+        let home = TempHome()
+        defer { home.destroy() }
+        let m = TestMode(paths: home.paths).makeManager()
+        XCTAssertTrue(m.audio is NoopAudioControl)
+        XCTAssertTrue(m.display is NoopDisplayDimmer)
+        XCTAssertTrue(m.keyboard is NoopKeyboardBacklight)
+        XCTAssertTrue(m.appNap is NoopAppNapPreferences)
+        let services = m.services
+        XCTAssertNotNil(services)
+        XCTAssertTrue(services?.audio is NoopAudioControl)
+        XCTAssertTrue(services?.display is NoopDisplayDimmer)
+        XCTAssertTrue(services?.keyboard is NoopKeyboardBacklight)
+        XCTAssertTrue(services?.freezer is NoopFreezer)
+        var config = Config()
+        config.freezeAllApps = true
+        XCTAssertEqual(NoopFreezer().plan(config: config), [], "nothing is planned for a freeze")
+    }
+
     func testTestModeNeedsTheSwitchAndARelocatedHome() {
         XCTAssertEqual(TestMode.requested(in: ["AWAKE_TEST_MODE": "1", "AWAKE_HOME": "/tmp/x"])?.paths, Paths(root: URL(fileURLWithPath: "/tmp/x", isDirectory: true)))
         XCTAssertNil(TestMode.requested(in: [:]))

@@ -379,10 +379,12 @@ final class SessionManager {
     private let sleepGuard: any SleepGuarding
     private let processControl: any ProcessSignaling
     private let backstop: any BackstopScheduling
-    private let audio: any AudioControlling
-    private let display: any DisplayDimming
-    private let keyboard: any KeyboardBacklighting
-    private let appNap: any AppNapPreferencing
+    // What acts on the rest of the Mac. Readable (never settable) so a
+    // test can check what a wiring passed in (TestMode).
+    let audio: any AudioControlling
+    let display: any DisplayDimming
+    let keyboard: any KeyboardBacklighting
+    let appNap: any AppNapPreferencing
     private let notifier: any Notifying
     private let clamshell: @Sendable () -> Bool?
     private let closedLidSleep: any ClosedLidSleeping
@@ -660,20 +662,24 @@ final class SessionManager {
     }
 
     /// Production wiring with the parts that need root, launchctl or the
-    /// hinge passed in. `live(paths:)` passes the real ones; only the test
-    /// build's `TestMode` passes others.
+    /// hinge passed in, and the ones that act on the rest of the Mac (sound,
+    /// the panel and keyboard light, other apps' processes and
+    /// preferences) defaulting to the real ones. `live(paths:)` passes the
+    /// real ones; only the test build's `TestMode` passes others.
     static func live(
         paths: Paths,
         sleepGuard: any SleepGuarding,
         backstop: any BackstopScheduling,
         clamshell: @escaping @Sendable () -> Bool?,
         closedLidSleep: any ClosedLidSleeping,
-        lidSimulation: (any LidSimulating)?
+        lidSimulation: (any LidSimulating)?,
+        audio: any AudioControlling = CoreAudioControl(),
+        display: any DisplayDimming = DisplayServicesDimmer(),
+        keyboard: any KeyboardBacklighting = CoreBrightnessKeyboardBacklight(),
+        appNap: any AppNapPreferencing = CFAppNapPreferences(),
+        freezer: (any Freezing)? = nil
     ) -> SessionManager {
         let notifier = Notifier()
-        let audio = CoreAudioControl()
-        let display = DisplayServicesDimmer()
-        let keyboard = CoreBrightnessKeyboardBacklight()
         let processControl = SignalProcessControl()
         let m = SessionManager(
             paths: paths,
@@ -683,7 +689,7 @@ final class SessionManager {
             audio: audio,
             display: display,
             keyboard: keyboard,
-            appNap: CFAppNapPreferences(),
+            appNap: appNap,
             notifier: notifier,
             clamshell: clamshell,
             closedLidSleep: closedLidSleep
@@ -695,6 +701,7 @@ final class SessionManager {
             processControl: processControl,
             display: display,
             keyboard: keyboard,
+            freezer: freezer,
             lidSimulation: lidSimulation
         )
         m.services = services
