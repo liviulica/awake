@@ -122,6 +122,26 @@ final class StatusItemControllerLogicTests: XCTestCase {
         XCTAssertEqual(awake.state, .off, "ending the lid session does not bring Awake mode back")
     }
 
+    /// "Custom…" with text that is not a duration says so instead of doing
+    /// nothing; a readable one is returned; a cancel is silent.
+    func testAnUnreadableCustomDurationShowsANotice() {
+        let h = Harness()
+        defer { h.home.destroy() }
+        let m = h.makeManager()
+        let typed = Locked<String?>("soon")
+        let notices = Locked<[String]>([])
+        let c = StatusItemController(manager: m, status: PlaceholderStatus(), awake: AwakeController(assertion: FakeAwakeAssertion()),
+                                     showSettings: {}, askDurationText: { typed.value }, showNotice: { notices.value.append($0) })
+        defer { c.stop() }
+        XCTAssertNil(c.customDuration())
+        XCTAssertEqual(notices.value, ["Couldn't read that duration. Try 90m, 3h or 1h30m."])
+        typed.value = "1h30m"
+        XCTAssertEqual(c.customDuration(), 5400)
+        typed.value = nil
+        XCTAssertNil(c.customDuration())
+        XCTAssertEqual(notices.value.count, 1, "a cancel says nothing")
+    }
+
     /// The real path, with no hand-driven `stateChanged()`: the session
     /// change reaches the controller through observation, which holds the
     /// screen while the lid is open.

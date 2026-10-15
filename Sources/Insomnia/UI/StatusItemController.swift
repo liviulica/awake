@@ -35,6 +35,11 @@ final class StatusItemController: NSObject {
     /// Asks before a browser is quit for a relaunch; true means go ahead.
     /// Injected so tests never see the NSAlert.
     private let confirmRelaunch: @MainActor (String) -> Bool
+    /// The "Custom…" prompt: the text typed, or nil when cancelled.
+    /// Injected so tests never see the NSAlert.
+    private let askDurationText: @MainActor () -> String?
+    /// Tells the person something with a plain alert. Injected for tests.
+    private let showNotice: @MainActor (String) -> Void
     /// What the countdown reads the time from; tests inject a fake clock.
     private let clock: @Sendable () -> Date
     private let statusItem: NSStatusItem
@@ -48,6 +53,8 @@ final class StatusItemController: NSObject {
         awake: AwakeController,
         showSettings: @escaping () -> Void,
         confirmRelaunch: (@MainActor (String) -> Bool)? = nil,
+        askDurationText: (@MainActor () -> String?)? = nil,
+        showNotice: (@MainActor (String) -> Void)? = nil,
         clock: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.manager = manager
@@ -55,6 +62,8 @@ final class StatusItemController: NSObject {
         self.awake = awake
         self.showSettings = showSettings
         self.confirmRelaunch = confirmRelaunch ?? Self.askBeforeRelaunch
+        self.askDurationText = askDurationText ?? Self.askCustomDurationText
+        self.showNotice = showNotice ?? Self.showAlert
         self.clock = clock
         Self.seedPreferredPositionIfNeeded()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -269,7 +278,7 @@ final class StatusItemController: NSObject {
     /// No represented duration is "Custom…". Capped at 24 hours of
     /// closed-lid time (`Config.lidMaxDuration`).
     @objc private func menuStartLid(_ sender: NSMenuItem) {
-        let chosen = (sender.representedObject as? NSNumber)?.doubleValue ?? askCustomDuration()
+        let chosen = (sender.representedObject as? NSNumber)?.doubleValue ?? customDuration()
         guard let chosen else { return }
         let duration = min(chosen, Config.lidMaxDuration)
         Task { @MainActor in
@@ -331,11 +340,24 @@ final class StatusItemController: NSObject {
         return alert.runModal() == .alertFirstButtonReturn
     }
 
+    static let unreadableDurationNotice = "Couldn't read that duration. Try 90m, 3h or 1h30m."
+
     /// "Custom…": a duration typed as "90", "1h30m" or "2h" (DurationParser).
-    /// Nil when cancelled or unreadable; `menuStartLid` caps it at 24 hours.
+    /// Nil when cancelled, or when unreadable, which the person is told;
+    /// `menuStartLid` caps it at 24 hours. Internal so tests drive it.
+    func customDuration() -> TimeInterval? {
+        guard let text = askDurationText() else { return nil }
+        guard let seconds = DurationParser.seconds(from: text) else {
+            Log.info("custom lid duration not understood: \(text.count) characters")
+            showNotice(Self.unreadableDurationNotice)
+            return nil
+        }
+        return seconds
+    }
+
     /// A modal alert, so the field has the keyboard only while the person is
     /// typing in it.
-    private func askCustomDuration() -> TimeInterval? {
+    private static func askCustomDurationText() -> String? {
         let alert = NSAlert()
         alert.messageText = "Keep awake with the lid closed for how long?"
         alert.informativeText = "For example 90m, 3h or 1h30m. The most is 24 hours."
@@ -347,10 +369,14 @@ final class StatusItemController: NSObject {
         alert.window.initialFirstResponder = field
         NSApp.activate()
         guard alert.runModal() == .alertFirstButtonReturn else { return nil }
-        guard let seconds = DurationParser.seconds(from: field.stringValue) else {
-            Log.info("custom lid duration not understood: \(field.stringValue.count) characters")
-            return nil
-        }
-        return seconds
+        return field.stringValue
+    }
+
+    private static func showAlert(_ message: String) {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.addButton(withTitle: "OK")
+        NSApp.activate()
+        alert.runModal()
     }
 }
