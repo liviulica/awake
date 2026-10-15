@@ -83,7 +83,7 @@ final class RecoveryScriptTests: XCTestCase {
         let r = try fx.run(fx.backstop)
 
         XCTAssertEqual(r.status, 0, r.stderr)
-        XCTAssertEqual(fx.calls(), ["pgrep -x Awake"])
+        XCTAssertEqual(fx.calls(), [fx.appCheck])
         XCTAssertEqual(try String(contentsOf: fx.state, encoding: .utf8), dirty)
         XCTAssertTrue(fx.exists(fx.session))
     }
@@ -94,7 +94,7 @@ final class RecoveryScriptTests: XCTestCase {
         fx.setMode("pgrep", "0")
         let r = try fx.run(fx.backstop, [])
         XCTAssertEqual(r.status, 0, r.stderr)
-        XCTAssertEqual(fx.calls(), ["pgrep -x Awake"])
+        XCTAssertEqual(fx.calls(), [fx.appCheck])
         XCTAssertFalse(fx.exists(fx.absentMarker))
     }
 
@@ -104,7 +104,7 @@ final class RecoveryScriptTests: XCTestCase {
         fx.setMode("pgrep", "1")
         let r = try fx.run(fx.backstop, [])
         XCTAssertEqual(r.status, 0, r.stderr)
-        XCTAssertEqual(fx.calls(), ["pgrep -x Awake"])
+        XCTAssertEqual(fx.calls(), [fx.appCheck])
         XCTAssertTrue(fx.exists(fx.absentMarker))
         XCTAssertTrue(fx.exists(fx.session), "the session is not ended on the first sighting")
     }
@@ -117,10 +117,66 @@ final class RecoveryScriptTests: XCTestCase {
         try "\(then)\n".write(to: fx.absentMarker, atomically: true, encoding: .utf8)
         let r = try fx.run(fx.backstop, [])
         XCTAssertEqual(r.status, 0, r.stderr)
-        XCTAssertEqual(fx.calls(), ["pgrep -x Awake", "sudo -n \(fx.fakePmset) -a disablesleep 0"])
+        XCTAssertEqual(fx.calls(), [fx.appCheck, "sudo -n \(fx.fakePmset) -a disablesleep 0"])
         XCTAssertFalse(fx.exists(fx.session))
         XCTAssertFalse(fx.exists(fx.absentMarker))
         XCTAssertTrue(fx.log().contains("app not running for"), fx.log())
+    }
+
+    /// A marker younger than two minutes keeps both itself and the session.
+    func testAYoungAbsentMarkerKeepsTheSession() throws {
+        try fx.writeSession(endsAt: Date(timeIntervalSinceNow: 3600))
+        try fx.writeState(#"{"sleepDisabledByUs":true,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false}"#)
+        fx.setMode("pgrep", "1")
+        let marker = "\(Int(Date().timeIntervalSince1970) - 60)\n"
+        try marker.write(to: fx.absentMarker, atomically: true, encoding: .utf8)
+        let r = try fx.run(fx.backstop, [])
+        XCTAssertEqual(r.status, 0, r.stderr)
+        XCTAssertEqual(fx.calls(), [fx.appCheck])
+        XCTAssertTrue(fx.exists(fx.session))
+        XCTAssertEqual(try String(contentsOf: fx.absentMarker, encoding: .utf8), marker, "the first sighting stands")
+    }
+
+    /// A marker in the future (the clock was set back) is a first sighting:
+    /// rewritten to now, so the two minutes are counted from here.
+    func testAFutureAbsentMarkerCountsAsAFirstSighting() throws {
+        try fx.writeSession(endsAt: Date(timeIntervalSinceNow: 3600))
+        try fx.writeState(#"{"sleepDisabledByUs":true,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false}"#)
+        fx.setMode("pgrep", "1")
+        try "\(Int(Date().timeIntervalSince1970) + 3600)\n".write(to: fx.absentMarker, atomically: true, encoding: .utf8)
+        let before = Int(Date().timeIntervalSince1970)
+        let r = try fx.run(fx.backstop, [])
+        XCTAssertEqual(r.status, 0, r.stderr)
+        XCTAssertTrue(fx.exists(fx.session))
+        let since = Int(try String(contentsOf: fx.absentMarker, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines))
+        XCTAssertNotNil(since)
+        XCTAssertGreaterThanOrEqual(since ?? 0, before)
+        XCTAssertLessThanOrEqual(since ?? .max, Int(Date().timeIntervalSince1970))
+    }
+
+    /// A leading zero is read as decimal, not octal (where 8 and 9 are an
+    /// arithmetic error that would stop the run).
+    func testAnAbsentMarkerWithALeadingZeroIsDecimal() throws {
+        try fx.writeSession(endsAt: Date(timeIntervalSinceNow: 3600))
+        try fx.writeState(#"{"sleepDisabledByUs":true,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false}"#)
+        fx.setMode("pgrep", "1")
+        try "0\(Int(Date().timeIntervalSince1970) - 121)".write(to: fx.absentMarker, atomically: true, encoding: .utf8)
+        let r = try fx.run(fx.backstop, [])
+        XCTAssertEqual(r.status, 0, r.stderr)
+        XCTAssertEqual(fx.calls(), [fx.appCheck, "sudo -n \(fx.fakePmset) -a disablesleep 0"])
+        XCTAssertFalse(fx.exists(fx.session))
+    }
+
+    /// With no valid session the marker means nothing and is removed.
+    func testAStaleAbsentMarkerIsRemovedWithoutAValidSession() throws {
+        for expired in [false, true] {
+            if expired { try fx.writeSession(endsAt: Date(timeIntervalSinceNow: -60)) }
+            try "\(Int(Date().timeIntervalSince1970) - 600)\n".write(to: fx.absentMarker, atomically: true, encoding: .utf8)
+            let r = try fx.run(fx.backstop, [])
+            XCTAssertEqual(r.status, 0, r.stderr)
+            XCTAssertFalse(fx.exists(fx.absentMarker), "expired session: \(expired)")
+            XCTAssertFalse(fx.calls().contains { $0.hasPrefix("pgrep") }, "\(fx.calls())")
+        }
     }
 
     func testAppSeenAgainResetsTheClock() throws {
@@ -161,7 +217,7 @@ final class RecoveryScriptTests: XCTestCase {
         let r = try fx.run(fx.backstop)
 
         XCTAssertEqual(r.status, 0, r.stderr)
-        XCTAssertEqual(fx.calls(), ["pgrep -x Awake"])
+        XCTAssertEqual(fx.calls(), [fx.appCheck])
         XCTAssertEqual(try String(contentsOf: fx.state, encoding: .utf8), dirty)
         XCTAssertTrue(fx.exists(fx.session))
     }
@@ -833,7 +889,7 @@ final class RecoveryScriptTests: XCTestCase {
         let r = try fx.run(fx.backstop)
 
         XCTAssertEqual(r.status, 0, r.stderr + fx.log())
-        XCTAssertEqual(fx.calls(), ["pgrep -x Awake"])
+        XCTAssertEqual(fx.calls(), [fx.appCheck])
         XCTAssertTrue(fx.exists(fx.session))
         XCTAssertEqual(try fx.stateJSON()["sleepDisabledByUs"] as? Bool, true)
     }
@@ -945,7 +1001,7 @@ final class RecoveryScriptTests: XCTestCase {
         let future = try fx.run(fx.backstop)
 
         XCTAssertEqual(future.status, 0, future.stderr + fx.log())
-        XCTAssertEqual(fx.calls(), ["pgrep -x Awake"])
+        XCTAssertEqual(fx.calls(), [fx.appCheck])
         XCTAssertTrue(fx.exists(fx.session))
         XCTAssertEqual(try String(contentsOf: fx.state, encoding: .utf8), dirty)
 
@@ -953,7 +1009,7 @@ final class RecoveryScriptTests: XCTestCase {
         let past = try fx.run(fx.backstop)
 
         XCTAssertEqual(past.status, 0, past.stderr + fx.log())
-        XCTAssertEqual(fx.calls(), ["pgrep -x Awake", "sudo -n \(fx.fakePmset) -a disablesleep 0"])
+        XCTAssertEqual(fx.calls(), [fx.appCheck, "sudo -n \(fx.fakePmset) -a disablesleep 0"])
         XCTAssertEqual(try fx.stateJSON()["sleepDisabledByUs"] as? Bool, false)
         XCTAssertFalse(fx.exists(fx.session))
         XCTAssertEqual(try movedAsideSessions(), [], "an expired session is removed, not moved aside as malformed")
@@ -1202,6 +1258,15 @@ final class RecoveryScriptTests: XCTestCase {
             XCTAssertEqual(r.status, 0, r.stderr + r.stdout)
             XCTAssertFalse(fx.exists(record), "purge \(purge)")
         }
+    }
+
+    /// The backstop's app-absent marker is Awake's own file: --purge removes it.
+    func testUninstallPurgeRemovesTheAppAbsentMarker() throws {
+        try fx.installMachinery()
+        try "\(Int(Date().timeIntervalSince1970))\n".write(to: fx.absentMarker, atomically: true, encoding: .utf8)
+        let r = try fx.run(fx.uninstall, ["--purge"])
+        XCTAssertEqual(r.status, 0, r.stderr + r.stdout)
+        XCTAssertFalse(fx.exists(fx.absentMarker))
     }
 
     /// --purge removes the moved-aside copies, but only names of exactly the
@@ -4270,7 +4335,8 @@ final class RecoveryScriptTests: XCTestCase {
     }
 
     /// Awake and Insomnia drive the same SleepDisabled bit, so the installer
-    /// refuses while any Insomnia file exists, before the password prompt.
+    /// refuses while any Insomnia file exists, before the build and the
+    /// password prompt.
     func testInstallRefusesWhileInsomniaIsInstalled() throws {
         try fx.prepareInstall()
         let insomnia = fx.root.appendingPathComponent("Applications/Insomnia.app")
@@ -4281,6 +4347,7 @@ final class RecoveryScriptTests: XCTestCase {
         XCTAssertEqual(r.status, 1, r.stdout + r.stderr)
         XCTAssertTrue(r.stderr.contains("Insomnia is installed"), r.stderr)
         XCTAssertFalse(fx.calls().contains { $0.hasPrefix("sudo") }, "\(fx.calls())")
+        XCTAssertFalse(fx.calls().contains { $0.hasPrefix("swift ") || $0.hasPrefix("codesign") }, "refused before the build: \(fx.calls())")
         XCTAssertFalse(fx.exists(fx.sudoers))
     }
 
@@ -6315,6 +6382,8 @@ private final class ScriptFixture {
     let callsLog: URL
     let bootUUID = "0F0F0F0F-1111-2222-3333-444444444444"
     let uid = String(getuid())
+    /// The backstop's app check: this user's Awake only.
+    var appCheck: String { "pgrep -x -U \(uid) Awake" }
 
     var backstop: URL { repoScripts.appendingPathComponent("backstop.sh") }
     var uninstall: URL { repoScripts.appendingPathComponent("uninstall.sh") }

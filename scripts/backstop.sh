@@ -28,7 +28,8 @@
 #
 # Decision, driven only by what the journal says was changed:
 #   - session.json valid (endsAt in the future) and no --force: exit 0 while
-#     the app runs (pgrep -x; a pgrep that does not answer counts as running).
+#     the app runs (pgrep -x -U <this user's uid>, so another user's Awake
+#     does not count; a pgrep that does not answer counts as running).
 #     The first run that finds it gone writes app-absent-since; once it has
 #     been gone APP_ABSENT_SECONDS (2 minutes) the session is ended as if
 #     --force was given. Paused lid sessions are valid sessions too.
@@ -888,7 +889,9 @@ if [[ "$session_state" != valid ]]; then
   "$RM" -f "$ABSENT_MARKER"
 elif (( force == 0 )); then
   app_rc=0
-  run_bounded "$PGREP" -x "$APP_PROCESS_NAME" >/dev/null 2>&1 || app_rc=$?
+  # This user's app only: another account's Awake does not hold this
+  # user's session. $UID is bash's own, never taken from the environment.
+  run_bounded "$PGREP" -x -U "$UID" "$APP_PROCESS_NAME" >/dev/null 2>&1 || app_rc=$?
   if (( app_rc != 1 )); then
     # Running, or pgrep did not answer: a session is never ended on a guess.
     "$RM" -f "$ABSENT_MARKER"
@@ -896,11 +899,15 @@ elif (( force == 0 )); then
   fi
   now="$("$DATE" -u +%s)"
   since=""
-  if [[ -f "$ABSENT_MARKER" ]]; then since="$(head -n 1 "$ABSENT_MARKER" 2>/dev/null || true)"; fi
-  if [[ ! "$since" =~ ^[0-9]+$ ]]; then
+  if [[ -f "$ABSENT_MARKER" ]]; then read -r since 2>/dev/null < "$ABSENT_MARKER" || true; fi
+  # Anything but a plain time no later than now (garbage, a clock set
+  # back) counts as a first sighting and starts the wait again. 10#: a
+  # leading zero is not octal.
+  if [[ ! "$since" =~ ^0*[0-9]{1,10}$ ]] || (( 10#$since > now )); then
     printf '%s\n' "$now" > "$ABSENT_MARKER"
     exit 0
   fi
+  since=$(( 10#$since ))
   if (( now - since < APP_ABSENT_SECONDS )); then
     exit 0
   fi

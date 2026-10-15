@@ -800,7 +800,7 @@ MSG
 # A pgrep that does not answer in time counts as "running": fail closed.
 app_running() {
   local rc=0
-  bounded "$PGREP" -x Awake || rc=$?
+  bounded "$PGREP" -x -U "$UID" Awake || rc=$?
   if (( rc == 124 )); then
     echo "pgrep did not answer within ${CALL_TIMEOUT_SECONDS}s; treating Awake as running." >&2
     return 0

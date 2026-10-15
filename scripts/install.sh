@@ -298,6 +298,18 @@ trap cleanup EXIT
 # Scratch space for bounded(): this run's own directory, emptied on exit.
 WORK="$("$MKTEMP" -d "${TMPDIR:-/tmp}/awake-install.XXXXXX")"
 
+# 0. Insomnia ----------------------------------------------------------------
+#    Refused before anything else (the build, the password prompt), so
+#    nothing is built and nothing is changed.
+insomnia_found=""
+for path in "$INSOMNIA_SUDOERS" "$INSOMNIA_PLIST" "$INSOMNIA_APP"; do
+  if [[ -e "$path" ]]; then insomnia_found="$insomnia_found $path"; fi
+done
+if [[ -n "$insomnia_found" ]]; then
+  echo "Insomnia is installed (found:$insomnia_found). Awake and Insomnia both control this Mac's sleep setting and cannot be installed together. Uninstall Insomnia first (scripts/uninstall.sh in your Insomnia checkout), then run this installer again. Nothing was changed." >&2
+  exit 1
+fi
+
 # 1. The bundle to install ---------------------------------------------------
 #    Built or verified before the password prompt: nothing on the machine has
 #    changed when this step fails.
@@ -387,17 +399,6 @@ else
   SOURCE_APP="$BUILD_DIR/Awake.app"
 fi
 
-# 1b. Insomnia ---------------------------------------------------------------
-#    Refused before the password prompt, so nothing is changed.
-insomnia_found=""
-for path in "$INSOMNIA_SUDOERS" "$INSOMNIA_PLIST" "$INSOMNIA_APP"; do
-  if [[ -e "$path" ]]; then insomnia_found="$insomnia_found $path"; fi
-done
-if [[ -n "$insomnia_found" ]]; then
-  echo "Insomnia is installed (found:$insomnia_found). Awake and Insomnia both control this Mac's sleep setting and cannot be installed together. Uninstall Insomnia first (scripts/uninstall.sh in your Insomnia checkout), then run this installer again. Nothing was changed." >&2
-  exit 1
-fi
-
 # 2. sudoers -----------------------------------------------------------------
 #    The password prompt comes first: until the rule is installed and proven
 #    effective, the running app is not asked to quit and neither the bundle
@@ -443,14 +444,14 @@ step "Staging Awake.app"
 # Ask the app to quit and wait until it has actually exited. It refuses to
 # quit while it has unresolved recovery work; that refusal stands (no pkill),
 # and nothing of the old install is overwritten while it is still running.
-if "$PGREP" -x Awake >/dev/null 2>&1; then
+if "$PGREP" -x -U "$UID" Awake >/dev/null 2>&1; then
   echo "Awake is running; quitting it first (this ends any session)."
   "$OSASCRIPT" -e 'tell application id "app.chargingpixels.awake" to quit' >/dev/null 2>&1 || true
   for (( i = 0; i < QUIT_WAIT_SECONDS; i++ )); do
-    "$PGREP" -x Awake >/dev/null 2>&1 || break
+    "$PGREP" -x -U "$UID" Awake >/dev/null 2>&1 || break
     sleep 1
   done
-  if "$PGREP" -x Awake >/dev/null 2>&1; then
+  if "$PGREP" -x -U "$UID" Awake >/dev/null 2>&1; then
     echo "Awake is still running after ${QUIT_WAIT_SECONDS}s (it may be refusing to quit until its own recovery finishes)." >&2
     echo "Let it finish or quit it from its menu, then rerun. $SUDOERS is installed; the app (with backstop.sh) and the LaunchAgent were not touched." >&2
     exit 1
@@ -532,7 +533,7 @@ fi
 # session. A sudo that does not stop on SIGTERM keeps the lock until it ends.
 # A pgrep that cannot answer does not say the app is gone, so the run stops.
 pgrep_rc=0
-bounded "$PGREP" -x Awake || pgrep_rc=$?
+bounded "$PGREP" -x -U "$UID" Awake || pgrep_rc=$?
 if (( pgrep_rc == 0 )); then
   echo "Awake started again; quit it and rerun. The app at $APP and the LaunchAgent were not touched." >&2
   exit 1
