@@ -15,58 +15,14 @@ final class CountdownTests: XCTestCase {
 final class StatusMenuControlTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
-    func testIdleControls() {
-        let items = StatusMenu.controlItems(awakeOn: false, awakeEndsAt: nil, lidRemaining: nil, lidPaused: false, clickDuration: 8 * 3600, now: now)
-        XCTAssertEqual(items.map(\.title), ["Keep screen awake", "Keep screen awake for", "Lid closed for 8 hours", "Lid closed for"])
-        XCTAssertEqual(items[0].kind, .toggleAwake(isOn: false))
-        XCTAssertEqual(items[0].symbol, MenuSymbol.flame)
-        XCTAssertEqual(items[2].kind, .startLid(8 * 3600))
-        XCTAssertEqual(items[2].symbol, MenuSymbol.lid)
-        guard case let .submenu(awake) = items[1].kind, case let .submenu(lid) = items[3].kind else {
-            return XCTFail("expected two submenus")
-        }
-        XCTAssertEqual(awake.map(\.title), ["Until I turn it off", "1 hour", "2 hours", "4 hours"])
-        XCTAssertEqual(awake.map(\.kind), [.awakeFor(nil), .awakeFor(3600), .awakeFor(7200), .awakeFor(14400)])
-        XCTAssertEqual(lid.map(\.title), ["1 hour", "2 hours", "4 hours", "8 hours", "12 hours", "Custom\u{2026}"])
-        XCTAssertEqual(lid.last?.kind, .startLid(nil))
-    }
-
-    func testTheOneClickLidItemReadsTheSetting() {
-        let items = StatusMenu.controlItems(awakeOn: false, awakeEndsAt: nil, lidRemaining: nil, lidPaused: false, clickDuration: 2 * 3600, now: now)
-        XCTAssertEqual(items[2].title, "Lid closed for 2 hours")
-        XCTAssertEqual(items[2].kind, .startLid(7200))
-    }
-
-    func testTimedAwakeShowsTimeLeft() {
-        let items = StatusMenu.controlItems(awakeOn: true, awakeEndsAt: now.addingTimeInterval(3600), lidRemaining: nil, lidPaused: false, clickDuration: 8 * 3600, now: now)
-        XCTAssertEqual(items[0].title, "Keep screen awake \u{00B7} 1:00 left")
-        XCTAssertEqual(items[0].kind, .toggleAwake(isOn: true))
-    }
-
-    func testLidSessionControls() {
-        let items = StatusMenu.controlItems(awakeOn: false, awakeEndsAt: nil, lidRemaining: 102 * 60, lidPaused: false, clickDuration: 8 * 3600, now: now)
-        XCTAssertEqual(items.map(\.title), ["Lid mode \u{00B7} 1:42 left", "Add 1 hour", "End now"])
-        XCTAssertEqual(items.map(\.kind), [.info, .extendLid(3600), .endLid])
-        XCTAssertEqual(items.map(\.symbol), [MenuSymbol.lid, MenuSymbol.add, MenuSymbol.end])
-    }
-
-    func testPausedLidSessionSaysTheClockWaitsForTheLid() {
-        let items = StatusMenu.controlItems(awakeOn: false, awakeEndsAt: nil, lidRemaining: 102 * 60, lidPaused: true, clickDuration: 8 * 3600, now: now)
-        XCTAssertEqual(items[0].title, "Lid mode \u{00B7} 1:42 left \u{00B7} lid open, clock paused")
-    }
-
-    func testControlsThenMacBlockThenSettings() {
-        let controls = StatusMenu.controlItems(awakeOn: false, awakeEndsAt: nil, lidRemaining: nil, lidPaused: false, clickDuration: 8 * 3600, now: now)
+    func testMacBlockThenSettings() {
         let mac = StatusMenu.macLines(battery: "Battery 68%, charging", batterySymbol: "battery.100percent.bolt",
                                       thermal: "Temperature normal", wifi: nil, hotspot: nil, whileClosed: nil)
-        let items = StatusMenu.items(controls: controls, mac: mac, sessionActive: false, sleepHeld: false, throttledBrowsers: [], error: nil)
-        XCTAssertEqual(items.map(\.kind), [
-            .toggleAwake(isOn: false), .submenu(controls[1].children), .startLid(8 * 3600), .submenu(controls[3].children),
-            .separator, .header, .info, .info, .separator, .settings, .quit,
-        ])
-        XCTAssertEqual(items[5].title, StatusMenu.headerTitle)
-        XCTAssertEqual(items[6], StatusMenu.Item(title: "Battery 68%, charging", kind: .info, symbol: "battery.100percent.bolt"))
-        XCTAssertEqual(items[7], StatusMenu.Item(title: "Temperature normal", kind: .info, symbol: MenuSymbol.thermal))
+        let items = StatusMenu.items(mac: mac, sessionActive: false, sleepHeld: false, throttledBrowsers: [], error: nil)
+        XCTAssertEqual(items.map(\.kind), [.header, .info, .info, .separator, .settings, .quit])
+        XCTAssertEqual(items[0].title, StatusMenu.headerTitle)
+        XCTAssertEqual(items[1], StatusMenu.Item(title: "Battery 68%, charging", kind: .info, symbol: "battery.100percent.bolt"))
+        XCTAssertEqual(items[2], StatusMenu.Item(title: "Temperature normal", kind: .info, symbol: MenuSymbol.thermal))
         XCTAssertEqual(items.last?.title, StatusMenu.quitTitle)
         XCTAssertEqual(items[items.count - 2].symbol, MenuSymbol.settings)
     }
@@ -76,7 +32,7 @@ final class StatusMenuControlTests: XCTestCase {
     func testMacBlockDropsUnknownLinesAndItsHeaderWhenEmpty() {
         let mac = StatusMenu.macLines(battery: nil, batterySymbol: nil, thermal: "Temperature normal", wifi: nil, hotspot: nil, whileClosed: nil)
         XCTAssertEqual(mac.map(\.title), ["Temperature normal"])
-        let items = StatusMenu.items(controls: [], mac: [], sessionActive: false, sleepHeld: false, throttledBrowsers: [], error: nil)
+        let items = StatusMenu.items(mac: [], sessionActive: false, sleepHeld: false, throttledBrowsers: [], error: nil)
         XCTAssertEqual(items.map(\.kind), [.settings, .quit])
     }
 
@@ -88,26 +44,18 @@ final class StatusMenuControlTests: XCTestCase {
     }
 
     @MainActor
-    func testMenuBuildsSubmenusHeadersAndSymbols() {
-        let controls = StatusMenu.controlItems(awakeOn: false, awakeEndsAt: nil, lidRemaining: nil, lidPaused: false, clickDuration: 8 * 3600, now: now)
-        let mac = StatusMenu.macLines(battery: "Battery 68%", batterySymbol: "battery.75percent", thermal: "Temperature normal",
-                                      wifi: "Wi-Fi: Home", hotspot: nil, whileClosed: nil)
+    func testMenuPutsTheHeaderViewFirst() {
         let s = #selector(NSObject.description)
-        let menu = StatusMenu.menu(StatusMenu.items(controls: controls, mac: mac, sessionActive: false, sleepHeld: false,
-                                                    throttledBrowsers: [], error: nil),
-                                   target: nil, settings: s, quit: s, relaunchBrowser: s, stopWaitingForOutput: s,
-                                   toggleAwake: s, awakeFor: s, startLid: s, extendLid: s, endLid: s)
-        let lid = menu.items[3]
-        XCTAssertEqual(lid.title, "Lid closed for")
-        XCTAssertEqual(lid.submenu?.items.count, 6)
-        XCTAssertEqual(lid.submenu?.items.first?.representedObject as? NSNumber, NSNumber(value: 3600.0))
-        XCTAssertNil(lid.submenu?.items.last?.representedObject, "Custom… carries no duration")
-        XCTAssertTrue(lid.submenu?.items.allSatisfy(\.isEnabled) ?? false)
-        XCTAssertEqual(menu.items[2].representedObject as? NSNumber, NSNumber(value: 28800.0), "the one-click item carries 8 h")
-        XCTAssertTrue(menu.items[5].isSectionHeader, "the Mac header is a section header")
-        XCTAssertNotNil(menu.items[0].image, "symbols are attached")
-        XCTAssertNil(menu.items[6].attributedTitle, "status lines use the menu's own font, no small text")
-        XCTAssertFalse(menu.items[6].isEnabled)
+        let header = NSView(frame: NSRect(x: 0, y: 0, width: 260, height: 60))
+        let mac = StatusMenu.macLines(battery: "Battery 68%", batterySymbol: "battery.75percent", thermal: "Temperature normal", wifi: nil, hotspot: nil, whileClosed: nil)
+        let menu = StatusMenu.menu(StatusMenu.items(mac: mac, sessionActive: false, sleepHeld: false, throttledBrowsers: [], error: nil),
+                                   header: header, target: nil, settings: s, quit: s, relaunchBrowser: s, stopWaitingForOutput: s)
+        XCTAssertTrue(menu.items[0].view === header)
+        XCTAssertTrue(menu.items[1].isSeparatorItem)
+        XCTAssertTrue(menu.items[2].isSectionHeader)
+        XCTAssertNotNil(menu.items[3].image, "symbols are attached")
+        XCTAssertNil(menu.items[3].attributedTitle, "status lines keep the menu's own font")
+        XCTAssertFalse(menu.items[3].isEnabled)
     }
 
     /// Review focus 4: a symbol macOS does not have leaves the item's text
@@ -258,14 +206,14 @@ final class StatusItemControllerLogicTests: XCTestCase {
         let typed = Locked<String?>("soon")
         let notices = Locked<[String]>([])
         let c = StatusItemController(manager: m, status: PlaceholderStatus(), awake: AwakeController(assertion: FakeAwakeAssertion()),
-                                     showSettings: {}, askDurationText: { typed.value }, showNotice: { notices.value.append($0) })
+                                     showSettings: {}, askDurationText: { _ in typed.value }, showNotice: { notices.value.append($0) })
         defer { c.stop() }
-        XCTAssertNil(c.customDuration())
+        XCTAssertNil(c.customDuration(.lid))
         XCTAssertEqual(notices.value, ["Couldn't read that duration. Try 90m, 3h or 1h30m."])
         typed.value = "1h30m"
-        XCTAssertEqual(c.customDuration(), 5400)
+        XCTAssertEqual(c.customDuration(.lid), 5400)
         typed.value = nil
-        XCTAssertNil(c.customDuration())
+        XCTAssertNil(c.customDuration(.lid))
         XCTAssertEqual(notices.value.count, 1, "a cancel says nothing")
     }
 
@@ -285,6 +233,103 @@ final class StatusItemControllerLogicTests: XCTestCase {
         await m.start(duration: 3600)
         await pollUntil("observation never delivered the lid session to screen mode") { a.isHeld }
         XCTAssertTrue(awake.lidHoldActive)
+    }
+}
+
+@MainActor
+final class ModeHeaderControllerTests: XCTestCase {
+    /// Spec "Tabs": each move against a real manager (review focus 4: the
+    /// screen hold folds in once and nothing is left held).
+    func testTabsSwitchModes() async {
+        let h = Harness()
+        defer { h.home.destroy() }
+        h.clamshell.closed = false
+        let m = h.makeManager(closedLidClock: true)
+        let a = FakeAwakeAssertion()
+        let awake = AwakeController(assertion: a, clock: { h.clock.now })
+        let c = StatusItemController(manager: m, status: PlaceholderStatus(), awake: awake, showSettings: {})
+        defer { c.stop() }
+
+        await c.applyTab(.screen)
+        XCTAssertEqual(awake.state, .on(until: nil))
+        await c.applyTab(.lid)
+        c.stateChanged()
+        XCTAssertTrue(m.isActive)
+        XCTAssertEqual(m.session?.closedLidRemaining(at: h.clock.now) ?? 0, 8 * 3600, accuracy: 1)
+        XCTAssertEqual(awake.state, .off)
+        XCTAssertTrue(a.isHeld, "lid open: the screen stays on")
+        await c.applyTab(.screen)
+        c.stateChanged()
+        XCTAssertFalse(m.isActive)
+        XCTAssertEqual(awake.state, .on(until: nil))
+        await c.applyTab(.off)
+        XCTAssertEqual(awake.state, .off)
+        XCTAssertFalse(a.isHeld)
+    }
+
+    func testChipsSetLengths() async {
+        let h = Harness()
+        defer { h.home.destroy() }
+        h.clamshell.closed = false
+        let m = h.makeManager(closedLidClock: true)
+        let awake = AwakeController(assertion: FakeAwakeAssertion(), clock: { h.clock.now })
+        let c = StatusItemController(manager: m, status: PlaceholderStatus(), awake: awake, showSettings: {})
+        defer { c.stop() }
+        await c.applyTab(.screen)
+        await c.applyChip(.screenFor(7200))
+        XCTAssertEqual(awake.endsAt, h.clock.now.addingTimeInterval(7200))
+        XCTAssertEqual(c.screenChosen, 7200)
+        XCTAssertEqual(c.headerModel(now: h.clock.now).chips.first { $0.isSelected }?.action, .screenFor(7200))
+        await c.applyTab(.lid)
+        await c.applyChip(.lidRemaining(2 * 3600))
+        XCTAssertEqual(m.session?.pausedRemaining, 2 * 3600)
+        XCTAssertEqual(c.lidChosen, 2 * 3600)
+    }
+
+    /// Review focus 5: a chip for a mode that has ended does nothing.
+    func testAStaleChipIsIgnored() async {
+        let h = Harness()
+        defer { h.home.destroy() }
+        let m = h.makeManager()
+        let awake = AwakeController(assertion: FakeAwakeAssertion(), clock: { h.clock.now })
+        let c = StatusItemController(manager: m, status: PlaceholderStatus(), awake: awake, showSettings: {})
+        defer { c.stop() }
+        await c.applyChip(.lidRemaining(3600))
+        XCTAssertFalse(m.isActive, "no session is started by a lid chip")
+        await c.applyChip(.screenFor(3600))
+        XCTAssertEqual(awake.state, .off, "no screen mode is started by a screen chip")
+    }
+
+    /// Review focus 1: a cancelled lid start from the Lid tab leaves the
+    /// header on the real mode.
+    func testACancelledLidTabLeavesTheModeWhereItWas() async {
+        let h = Harness()
+        defer { h.home.destroy() }
+        h.guardFake.cancelDisable = true
+        let m = h.makeManager()
+        let awake = AwakeController(assertion: FakeAwakeAssertion(), clock: { h.clock.now })
+        let c = StatusItemController(manager: m, status: PlaceholderStatus(), awake: awake, showSettings: {})
+        defer { c.stop() }
+        await c.applyTab(.screen)
+        await c.applyTab(.lid)
+        XCTAssertEqual(StatusItemController.mode(lidActive: m.isActive, awake: awake.state), .screen)
+        XCTAssertEqual(c.headerModel(now: h.clock.now).selected, .screen)
+    }
+
+    /// Leaving a mode forgets the length picked for it, so the next session
+    /// does not highlight a stale chip.
+    func testLeavingAModeForgetsItsChosenLength() async {
+        let h = Harness()
+        defer { h.home.destroy() }
+        let m = h.makeManager()
+        let awake = AwakeController(assertion: FakeAwakeAssertion(), clock: { h.clock.now })
+        let c = StatusItemController(manager: m, status: PlaceholderStatus(), awake: awake, showSettings: {})
+        defer { c.stop() }
+        await c.applyTab(.screen)
+        await c.applyChip(.screenFor(3600))
+        await c.applyTab(.off)
+        c.stateChanged()
+        XCTAssertNil(c.screenChosen)
     }
 }
 
@@ -367,7 +412,7 @@ final class StatusMenuTests: XCTestCase {
     func testMenuListsSleepLineMacBlockWarningsThenSettingsAndQuit() {
         let mac = StatusMenu.macLines(battery: "Battery 82%", batterySymbol: "battery.75percent", thermal: nil, wifi: nil, hotspot: nil,
                                       whileClosed: "While closed: 3 apps frozen")
-        let items = StatusMenu.items(controls: [], mac: mac, sessionActive: true, sleepHeld: true, throttledBrowsers: [Self.chrome], error: nil)
+        let items = StatusMenu.items(mac: mac, sessionActive: true, sleepHeld: true, throttledBrowsers: [Self.chrome], error: nil)
         XCTAssertEqual(items, [
             StatusMenu.Item(title: StatusMenu.headerTitle, kind: .header),
             StatusMenu.Item(title: "Sleep off while the lid is closed", kind: .info, symbol: MenuSymbol.sleep),
@@ -518,9 +563,3 @@ final class RecordingStatusSource: StatusSource {
     func relaunchUnthrottled(_ browser: ThrottledBrowser) { relaunched.append(browser) }
 }
 
-private extension StatusMenu.Item {
-    var children: [StatusMenu.Item] {
-        if case let .submenu(items) = kind { return items }
-        return []
-    }
-}
