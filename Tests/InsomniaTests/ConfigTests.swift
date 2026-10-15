@@ -312,6 +312,38 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(try Store.makeDecoder().decode(Config.self, from: data), c)
     }
 
+    /// A config.json written by Insomnia carries keys Awake dropped (the
+    /// tmux nudge, the Docker rule). It still loads: the dropped keys are
+    /// ignored, the shared ones are kept, the rest take their defaults, and
+    /// a save writes none of the dropped keys back.
+    func testAnInsomniaEraConfigWithDroppedKeysLoads() throws {
+        let json = """
+        {
+          "presets": [1800, 3600, 259200],
+          "defaultPreset": 14400,
+          "maxDuration": 2592000,
+          "freezeList": ["com.tinyspeck.slackmacgap"],
+          "dockerRule": true,
+          "nudgeThreshold": 120,
+          "tmuxTargets": ["work:1.0", "agents:0.1"],
+          "tmuxNudgePressesEnter": true,
+          "hotspotSSID": "iPhone",
+          "lowPowerFloor": 30
+        }
+        """
+        let c = try Store.makeDecoder().decode(Config.self, from: Data(json.utf8))
+        XCTAssertEqual(c.freezeList, ["com.tinyspeck.slackmacgap"])
+        XCTAssertEqual(c.hotspotSSID, "iPhone")
+        XCTAssertEqual(c.lowPowerFloor, 30)
+        XCTAssertEqual(c.endFloor, Config().endFloor)
+        XCTAssertEqual(c.agentList, Config.defaultAgentList)
+        XCTAssertFalse(c.awakeHotspotFailover)
+        let saved = try XCTUnwrap(String(data: try Store.makeEncoder().encode(c), encoding: .utf8))
+        for dropped in ["dockerRule", "nudgeThreshold", "tmuxTargets", "tmuxNudgePressesEnter"] {
+            XCTAssertFalse(saved.contains(dropped), "\(dropped) written back: \(saved)")
+        }
+    }
+
     /// The install on file for the login item is absent in configs written
     /// before it existed, decodes as nil, and round-trips when set.
     func testLaunchAtLoginInstallIsOptional() throws {
