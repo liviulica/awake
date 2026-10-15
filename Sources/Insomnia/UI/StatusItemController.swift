@@ -2,8 +2,9 @@ import AppKit
 import Observation
 
 /// The menu bar item (spec 2026-10-15 "Left-click"): a fixed template icon,
-/// a countdown when something is timed, left-click cycles off → screen →
-/// lid → off, right-click (or ctrl-click) opens the menu. A plain
+/// a countdown when something is timed, left-click turns screen mode on and
+/// off (during a lid session it opens the menu), right-click (or ctrl-click)
+/// opens the menu. A plain
 /// NSStatusItem with no hosted view and no key window: nothing here takes
 /// the keyboard, and the item's width changes only when the countdown
 /// appears or goes, or gains or loses a digit (crossing 10:00).
@@ -24,8 +25,7 @@ final class StatusItemController: NSObject {
     /// What a click on the item does.
     enum ClickAction: Equatable {
         case turnOnScreen
-        case startLid
-        case endLid
+        case turnOffScreen
         case showMenu
     }
 
@@ -129,15 +129,15 @@ final class StatusItemController: NSObject {
         return awake == .off ? .off : .screen
     }
 
-    /// Right-click and ctrl-click open the menu. A plain left click walks
-    /// off → screen → lid → off. The third step ends a session with one
-    /// click; the spec records that the owner accepted this.
+    /// Right-click and ctrl-click open the menu. A plain left click toggles
+    /// screen mode; during a lid session it opens the menu, so a stray click
+    /// never ends a session (spec 2026-10-16 "Left-click").
     static func clickAction(isRightClick: Bool, controlHeld: Bool, mode: Mode) -> ClickAction {
         if isRightClick || controlHeld { return .showMenu }
         switch mode {
         case .off: return .turnOnScreen
-        case .screen: return .startLid
-        case .lid: return .endLid
+        case .screen: return .turnOffScreen
+        case .lid: return .showMenu
         }
     }
 
@@ -202,8 +202,8 @@ final class StatusItemController: NSObject {
 
     @objc private func buttonClicked(_ sender: NSStatusBarButton) {
         let event = NSApp.currentEvent
-        // A double-click is one step: the second mouse-up of a pair would
-        // otherwise move the cycle on again (off → screen → lid prompt).
+        // A double-click is one click: the second mouse-up of a pair would
+        // otherwise toggle screen mode straight back.
         if Self.isRepeatClick(clickCount: event?.clickCount ?? 1, isRightClick: event?.type == .rightMouseUp) { return }
         let action = Self.clickAction(
             isRightClick: event?.type == .rightMouseUp,
@@ -224,10 +224,8 @@ final class StatusItemController: NSObject {
         case .turnOnScreen:
             awake.turnOn(for: nil)
             refresh()
-        case .startLid:
-            await startLidSession(manager.config.lidClickDuration)
-        case .endLid:
-            _ = await manager.end(reason: .user)
+        case .turnOffScreen:
+            awake.turnOff(reason: "user")
             refresh()
         case .showMenu:
             break

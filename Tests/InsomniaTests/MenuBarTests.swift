@@ -143,53 +143,33 @@ final class StatusItemControllerLogicTests: XCTestCase {
         XCTAssertEqual(StatusItemController.mode(lidActive: true, awake: .on(until: nil)), .lid, "a lid session wins")
     }
 
-    /// Spec "Left-click": off → screen → lid → off; right-click and
-    /// ctrl-click open the menu in every state.
-    func testLeftClickCyclesAndModifiedClicksOpenTheMenu() {
+    /// Spec 2026-10-16 "Left-click": off ↔ screen; a lid session opens the
+    /// menu; right-click and ctrl-click open it in every mode.
+    func testLeftClickTogglesScreenModeAndALidSessionOpensTheMenu() {
         XCTAssertEqual(StatusItemController.clickAction(isRightClick: false, controlHeld: false, mode: .off), .turnOnScreen)
-        XCTAssertEqual(StatusItemController.clickAction(isRightClick: false, controlHeld: false, mode: .screen), .startLid)
-        XCTAssertEqual(StatusItemController.clickAction(isRightClick: false, controlHeld: false, mode: .lid), .endLid)
+        XCTAssertEqual(StatusItemController.clickAction(isRightClick: false, controlHeld: false, mode: .screen), .turnOffScreen)
+        XCTAssertEqual(StatusItemController.clickAction(isRightClick: false, controlHeld: false, mode: .lid), .showMenu)
         for mode in [StatusItemController.Mode.off, .screen, .lid] {
             XCTAssertEqual(StatusItemController.clickAction(isRightClick: true, controlHeld: false, mode: mode), .showMenu, "\(mode)")
             XCTAssertEqual(StatusItemController.clickAction(isRightClick: false, controlHeld: true, mode: mode), .showMenu, "\(mode)")
         }
     }
 
-    /// The cycle against a real manager: a click from screen mode starts a
-    /// lid session of the configured length and folds screen mode in; a
-    /// click during it (lid open, so the session is paused: review focus
-    /// 3) ends it and leaves nothing held.
-    func testClickCycleStartsAnEightHourSessionAndEndsIt() async {
+    func testClicksTurnScreenModeOnAndOff() async {
         let h = Harness()
         defer { h.home.destroy() }
-        h.clamshell.closed = false
-        let m = h.makeManager(closedLidClock: true)
         let a = FakeAwakeAssertion()
         let awake = AwakeController(assertion: a, clock: { h.clock.now })
-        let c = StatusItemController(manager: m, status: PlaceholderStatus(), awake: awake, showSettings: {})
+        let c = StatusItemController(manager: h.makeManager(), status: PlaceholderStatus(), awake: awake, showSettings: {})
         defer { c.stop() }
-
         await c.handle(.turnOnScreen)
         XCTAssertEqual(awake.state, .on(until: nil))
-        XCTAssertTrue(a.isHeld)
-
-        await c.handle(.startLid)
-        c.stateChanged()
-        XCTAssertTrue(m.isActive)
-        XCTAssertEqual(m.session?.isPaused, true, "lid open: the closed-lid clock waits")
-        XCTAssertEqual(m.session?.closedLidRemaining(at: h.clock.now) ?? 0, 8 * 3600, accuracy: 1)
-        XCTAssertEqual(awake.state, .off, "screen mode folds into lid mode")
-        XCTAssertTrue(a.isHeld, "lid open: the screen stays on")
-
-        await c.handle(.endLid)
-        c.stateChanged()
-        XCTAssertFalse(m.isActive)
+        await c.handle(.turnOffScreen)
         XCTAssertEqual(awake.state, .off)
         XCTAssertFalse(a.isHeld)
     }
 
-    /// A double-click is one step of the cycle; right-click is never a
-    /// repeat.
+    /// A double-click is one click; right-click is never a repeat.
     func testTheSecondMouseUpOfADoubleClickIsIgnored() {
         XCTAssertFalse(StatusItemController.isRepeatClick(clickCount: 1, isRightClick: false))
         XCTAssertTrue(StatusItemController.isRepeatClick(clickCount: 2, isRightClick: false))
@@ -239,7 +219,7 @@ final class StatusItemControllerLogicTests: XCTestCase {
         let c = StatusItemController(manager: m, status: PlaceholderStatus(), awake: awake, showSettings: {})
         defer { c.stop() }
         await c.handle(.turnOnScreen)
-        await c.handle(.startLid)
+        await c.startLidSession(8 * 3600)
         c.stateChanged()
         XCTAssertFalse(m.isActive)
         XCTAssertEqual(awake.state, .on(until: nil), "screen mode is untouched")
