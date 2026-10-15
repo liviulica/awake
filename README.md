@@ -82,16 +82,14 @@ The menu bar icon is a flame, like a pilot light:
 | Filled flame | Screen mode: the Mac and its screen stay on. A countdown shows beside it when the mode is timed. |
 | Flame on a thick line (the closed lid) | Lid mode. The remaining time always shows beside it. |
 
-- **Left-click** cycles through the modes: off, screen mode ("until I turn it
-  off"), lid mode (8 hours by default; the administrator prompt appears),
-  then off again. The third click ends a running lid session, so use the
-  menu's **End now** when you want to be deliberate.
+- **Left-click** turns screen mode on and off ("until I turn it off").
+  During a lid session it opens the menu, so a stray click never ends it.
 - **Right-click** (or ctrl-click) opens the menu:
-  - **Keep screen awake**, and **Keep screen awake for** (until I turn it
-    off, 1, 2 or 4 hours).
-  - **Lid closed for 8 hours** (one click; the length is a setting) and
-    **Lid closed for** (1, 2, 4, 8 or 12 hours, or Custom).
-  - During a lid session: the time left, **Add 1 hour** and **End now**.
+  - At the top, **Off | Screen | Lid**: click one to switch. Lid starts for
+    8 hours by default (a setting); Off ends whatever runs.
+  - Under it, quick times for the running mode. Screen: until I turn it
+    off, 1, 2 or 4 hours, or Custom. Lid: 1, 2, 4, 8 or 12 hours, or
+    Custom, which set the closed-lid time left. A line shows the time left.
   - A **Mac** block: battery, temperature, Wi-Fi and hotspot failover, and
     what the lid close changed while it is still in effect.
   - Warnings only when something needs a decision (a browser that pauses
@@ -99,8 +97,9 @@ The menu bar icon is a flame, like a pilot light:
     by the item that resolves it.
   - **Settings…** and **Quit Ember**.
 
-**Lid mode** asks for your administrator password each time it starts (the
-standard macOS prompt), because it turns sleep off for the whole system. It is
+**Lid mode** turns sleep off for the whole system, through the sudoers rule
+(no password; an install from before October 2026 still shows the standard
+macOS administrator prompt until `scripts/install.sh` runs again). It is
 always timed, and its timer counts only the time the lid is closed: it pauses
 while the lid is open and resumes when the lid closes. A session holds at most
 24 hours of closed-lid time, and Add 1 hour never goes past that. While the lid
@@ -115,7 +114,7 @@ session below 10%. Those are the defaults, and you can change both in
 Settings (an end floor of 0 turns the battery end off). The heat rules turn on
 Low Power Mode when the Mac gets seriously hot and end the session at critical
 heat. They are on by default. These rules only work while the app runs. The
-length of the one-click lid mode is under Settings → Modes (1 to 24 hours).
+length the Lid tab starts with is under Settings → Modes (1 to 24 hours).
 
 Before your first lid session, check Settings. Then run a short session you
 can watch, and read `~/Library/Logs/Ember/ember.log` afterward.
