@@ -1,9 +1,9 @@
 import AppKit
 import Observation
 
-/// The menu bar item (spec "Interaction"): a fixed template icon, a
-/// countdown when something is timed, left-click toggles screen mode,
-/// right-click (or any click during a lid session) opens the menu. A plain
+/// The menu bar item (spec 2026-10-15 "Left-click"): a fixed template icon,
+/// a countdown when something is timed, left-click cycles off → screen →
+/// lid → off, right-click (or ctrl-click) opens the menu. A plain
 /// NSStatusItem with no hosted view and no key window: nothing here takes
 /// the keyboard, and the item's width changes only when the countdown
 /// appears or goes, or gains or loses a digit (crossing 10:00).
@@ -16,9 +16,16 @@ final class StatusItemController: NSObject {
         let title: String
     }
 
+    /// Which of the three states the item is in (spec 2026-10-15 "Left-click").
+    enum Mode: Equatable {
+        case off, screen, lid
+    }
+
     /// What a click on the item does.
     enum ClickAction: Equatable {
-        case toggleAwake
+        case turnOnScreen
+        case startLid
+        case endLid
         case showMenu
     }
 
@@ -46,6 +53,11 @@ final class StatusItemController: NSObject {
     /// Redraws the countdown while one is shown. It reads whole minutes,
     /// so every 30 s keeps it at most half a minute behind.
     private var tick: Timer?
+    /// True while a lid start waits on the administrator prompt. The
+    /// session does not exist until the password is accepted, so without
+    /// this a second click (or the menu's start) would queue another start,
+    /// and a cancel would bring the prompt straight back.
+    private(set) var lidStartInFlight = false
 
     init(
         manager: SessionManager,
@@ -111,12 +123,22 @@ final class StatusItemController: NSObject {
         }
     }
 
-    /// Right-click and ctrl-click open the menu. During a lid session a left
-    /// click opens it too: toggling there would do nothing (screen mode is
-    /// part of the session), and the spec wants nothing destructive on a
-    /// stray click.
-    static func clickAction(isRightClick: Bool, controlHeld: Bool, lidActive: Bool) -> ClickAction {
-        isRightClick || controlHeld || lidActive ? .showMenu : .toggleAwake
+    /// A lid session wins over screen mode (which is folded into it).
+    static func mode(lidActive: Bool, awake: AwakeController.State) -> Mode {
+        if lidActive { return .lid }
+        return awake == .off ? .off : .screen
+    }
+
+    /// Right-click and ctrl-click open the menu. A plain left click walks
+    /// off → screen → lid → off. The third step ends a session with one
+    /// click; the spec records that the owner accepted this.
+    static func clickAction(isRightClick: Bool, controlHeld: Bool, mode: Mode) -> ClickAction {
+        if isRightClick || controlHeld { return .showMenu }
+        switch mode {
+        case .off: return .turnOnScreen
+        case .screen: return .startLid
+        case .lid: return .endLid
+        }
     }
 
     /// Takes the item off the menu bar and stops the countdown tick. The
@@ -180,30 +202,67 @@ final class StatusItemController: NSObject {
 
     @objc private func buttonClicked(_ sender: NSStatusBarButton) {
         let event = NSApp.currentEvent
+        // A double-click is one step: the second mouse-up of a pair would
+        // otherwise move the cycle on again (off → screen → lid prompt).
+        if Self.isRepeatClick(clickCount: event?.clickCount ?? 1, isRightClick: event?.type == .rightMouseUp) { return }
         let action = Self.clickAction(
             isRightClick: event?.type == .rightMouseUp,
             controlHeld: event?.modifierFlags.contains(.control) ?? false,
-            lidActive: manager.isActive
+            mode: Self.mode(lidActive: manager.isActive, awake: awake.state)
         )
+        if action == .showMenu {
+            showMenu()
+            return
+        }
+        Task { @MainActor in await handle(action) }
+    }
+
+    /// The click's effect, apart from the menu. Internal so tests drive the
+    /// cycle without a menu bar.
+    func handle(_ action: ClickAction) async {
         switch action {
-        case .toggleAwake:
-            awake.toggle()
+        case .turnOnScreen:
+            awake.turnOn(for: nil)
+            refresh()
+        case .startLid:
+            await startLidSession(manager.config.lidClickDuration)
+        case .endLid:
+            _ = await manager.end(reason: .user)
             refresh()
         case .showMenu:
-            showMenu()
+            break
         }
     }
 
+    /// Starts a lid session, capped at 24 hours of closed-lid time
+    /// (`Config.lidMaxDuration`). Shared by the click and the menu. A start
+    /// already waiting on the prompt makes this one a no-op.
+    func startLidSession(_ duration: TimeInterval) async {
+        guard !lidStartInFlight else {
+            Log.info("lid mode start ignored: one is already waiting on the administrator prompt")
+            return
+        }
+        lidStartInFlight = true
+        defer { lidStartInFlight = false }
+        await manager.start(duration: min(duration, Config.lidMaxDuration))
+        refresh()
+    }
+
+    /// The second and later mouse-ups of a multi-click on the left button.
+    static func isRepeatClick(clickCount: Int, isRightClick: Bool) -> Bool {
+        !isRightClick && clickCount > 1
+    }
+
     /// Not assigned to `statusItem.menu`, which would swallow the left click
-    /// that toggles screen mode.
+    /// that cycles the modes.
     private func showMenu() {
         guard let button = statusItem.button else { return }
-        // The lid, the battery and the watts are read right here, so the menu
-        // opens on what the machine is doing now. The SSID and the throttled
-        // browser list are whatever the last scan found: both have to be
-        // awaited, and an open NSMenu blocks the main actor, so there is no
-        // moment at which they could be filled into a menu that is already up.
-        // Kick that scan off anyway, for the next opening.
+        // The lid and the battery are read right here, so the menu opens on
+        // what the machine is doing now. The SSID and the throttled browser
+        // list are whatever the last scan found: both have to be awaited,
+        // and an open NSMenu blocks the main actor, so there is no moment at
+        // which they could be filled into a menu that is already up. Kick
+        // that scan off anyway, for the next opening.
         status.refreshInstant()
         status.refreshOnDemand()
         // Same for the foreign-sleep line: re-read the bit now, and let the
@@ -228,28 +287,32 @@ final class StatusItemController: NSObject {
     /// The menu's lines from what the session, screen mode and the status
     /// source report now. Static, so a test can check them without a status item.
     static func menuItems(manager: SessionManager, status: any StatusSource, awake: AwakeController, now: Date) -> [StatusMenu.Item] {
-        StatusMenu.items(
+        let locationAuthorized = (status as? LiveStatusSource)?.locationPermission.isAuthorized ?? true
+        return StatusMenu.items(
             controls: StatusMenu.controlItems(
                 awakeOn: awake.isOn,
                 awakeEndsAt: awake.endsAt,
                 lidRemaining: manager.session?.closedLidRemaining(at: now),
                 lidPaused: manager.session?.isPaused ?? false,
+                clickDuration: manager.config.lidClickDuration,
                 now: now
             ),
-            thermal: StatusLines.thermal(ProcessInfo.processInfo.thermalState),
+            mac: StatusMenu.macLines(
+                battery: StatusLines.battery(percent: status.batteryPercent, isCharging: status.isCharging),
+                batterySymbol: StatusLines.batterySymbol(percent: status.batteryPercent, isCharging: status.isCharging),
+                thermal: StatusLines.thermal(ProcessInfo.processInfo.thermalState),
+                wifi: StatusLines.wifi(ssid: status.wifiSSID, locationAuthorized: locationAuthorized, lastGap: status.lastGap),
+                hotspot: StatusLines.hotspot(ssid: manager.config.hotspotSSID),
+                // Only during a session: outputs still waiting for a device
+                // outlive it and have their own warning and fix item.
+                whileClosed: manager.isActive ? StatusLines.whileClosed(
+                    frozenCount: status.frozenCount,
+                    muted: !manager.state.savedAudioOutputs.isEmpty,
+                    lowPower: manager.state.lowPowerSetByUs
+                ) : nil
+            ),
             sessionActive: manager.isActive,
             sleepHeld: manager.state.sleepDisabledByUs,
-            machine: StatusLines.machine(
-                lidClosed: status.lidClosed,
-                watts: status.instantWatts(),
-                wifiSSID: WiFiStatusName.display(
-                    ssid: status.wifiSSID,
-                    locationAuthorized: (status as? LiveStatusSource)?.locationPermission.isAuthorized ?? true
-                ),
-                batteryPercent: status.batteryPercent,
-                isCharging: status.isCharging
-            ),
-            actions: StatusLines.actions(frozenCount: status.frozenCount, lastGap: status.lastGap),
             throttledBrowsers: status.throttledBrowsers,
             relaunchProblems: status.relaunchProblems,
             // A report about an SSID edited away since is not shown.
@@ -275,16 +338,11 @@ final class StatusItemController: NSObject {
         refresh()
     }
 
-    /// No represented duration is "Custom…". Capped at 24 hours of
-    /// closed-lid time (`Config.lidMaxDuration`).
+    /// No represented duration is "Custom…"; `startLidSession` caps it.
     @objc private func menuStartLid(_ sender: NSMenuItem) {
         let chosen = (sender.representedObject as? NSNumber)?.doubleValue ?? customDuration()
         guard let chosen else { return }
-        let duration = min(chosen, Config.lidMaxDuration)
-        Task { @MainActor in
-            await manager.start(duration: duration)
-            refresh()
-        }
+        Task { @MainActor in await startLidSession(chosen) }
     }
 
     @objc private func menuExtendLid(_ sender: NSMenuItem) {
@@ -344,7 +402,7 @@ final class StatusItemController: NSObject {
 
     /// "Custom…": a duration typed as "90", "1h30m" or "2h" (DurationParser).
     /// Nil when cancelled, or when unreadable, which the person is told;
-    /// `menuStartLid` caps it at 24 hours. Internal so tests drive it.
+    /// `startLidSession` caps it at 24 hours. Internal so tests drive it.
     func customDuration() -> TimeInterval? {
         guard let text = askDurationText() else { return nil }
         guard let seconds = DurationParser.seconds(from: text) else {

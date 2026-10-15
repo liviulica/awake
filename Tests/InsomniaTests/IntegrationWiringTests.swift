@@ -151,7 +151,7 @@ final class IntegrationWiringTests: XCTestCase {
         let items = StatusItemController.menuItems(manager: h.makeManager(), status: source, awake: AwakeController(assertion: FakeAwakeAssertion()), now: h.clock.now)
         // The scan after the relaunch lists whatever browsers this Mac is
         // running, so only the line itself is checked.
-        XCTAssertTrue(items.contains(StatusMenu.Item(title: "\u{26A0} \(reason)", kind: .warning)), "\(items.map(\.title))")
+        XCTAssertTrue(items.contains(StatusMenu.Item(title: reason, kind: .warning, symbol: MenuSymbol.warning)), "\(items.map(\.title))")
     }
 
     /// The failover's report about the hotspot password is a menu line
@@ -173,16 +173,20 @@ final class IntegrationWiringTests: XCTestCase {
         let manager = h.makeManager()
         manager.config.hotspotSSID = "Phone"
         services.status.hotspotPasswordReport = HotspotPasswordReport(ssid: "Phone", problem: .unreadable)
-        // A debug build also has the lid simulation line.
+        // Warning lines only: the Mac block's "Hotspot failover: …" status
+        // line names the hotspot too, and a debug build adds the lid
+        // simulation warning.
         func warnings() -> [String] {
-            StatusItemController.menuItems(manager: manager, status: source, awake: AwakeController(assertion: FakeAwakeAssertion()), now: h.clock.now).map(\.title).filter { $0.contains("Hotspot") }
+            StatusItemController.menuItems(manager: manager, status: source, awake: AwakeController(assertion: FakeAwakeAssertion()), now: h.clock.now)
+                .filter { $0.kind == .warning }.map(\.title).filter { $0.contains("Hotspot") }
         }
+        let line = "Hotspot password unreadable by this build: enter it again in Settings"
 
-        XCTAssertEqual(warnings(), [HotspotPasswordProblem.unreadable.menuLine])
+        XCTAssertEqual(warnings(), [line])
         manager.config.hotspotSSID = "Other Phone"
         XCTAssertEqual(warnings(), [])
         manager.config.hotspotSSID = " Phone "
-        XCTAssertEqual(warnings(), [HotspotPasswordProblem.unreadable.menuLine])
+        XCTAssertEqual(warnings(), [line])
     }
 
     /// The line belongs to the last relaunch. Starting another clears it

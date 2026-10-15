@@ -55,64 +55,73 @@ final class PlaceholderStatus: StatusSource {
     func relaunchUnthrottled(_ browser: ThrottledBrowser) {}
 }
 
-/// Pure formatting for the menu's status block, kept out of the views so
-/// it can be tested.
+/// Pure formatting for the menu's "Mac" block (spec 2026-10-15 "The menu"),
+/// kept out of the views so it can be tested. A nil line is left out.
 enum StatusLines {
-    /// The thermal state as the menu shows it (spec "Interaction").
     static func thermal(_ state: ProcessInfo.ThermalState) -> String {
         switch state {
-        case .nominal: "Temperature: normal"
-        case .fair: "Temperature: warm"
-        case .serious: "Temperature: hot"
-        case .critical: "Temperature: critical"
-        @unknown default: "Temperature: unknown"
+        case .nominal: "Temperature normal"
+        case .fair: "Temperature warm"
+        case .serious: "Temperature hot"
+        case .critical: "Temperature critical"
+        @unknown default: "Temperature unknown"
         }
     }
 
-    /// "Lid: closed · 4.1 W · Wi-Fi: iPhone". Unknown parts are omitted.
-    static func machine(lidClosed: Bool, watts: Double?, wifiSSID: String?, batteryPercent: Int?, isCharging: Bool) -> String {
-        var parts: [String] = ["Lid: \(lidClosed ? "closed" : "open")"]
-        if let w = watts {
-            parts.append(String(format: "%.1f W", w))
-        }
-        if let p = batteryPercent {
-            parts.append(isCharging ? "\(p)% charging" : "\(p)%")
-        }
-        if let ssid = wifiSSID, !ssid.isEmpty {
-            parts.append("Wi-Fi: \(ssid)")
-        }
-        return parts.joined(separator: " \u{00B7} ")
+    /// "Battery 68%, charging"; nil on a Mac with no battery.
+    static func battery(percent: Int?, isCharging: Bool) -> String? {
+        guard let percent else { return nil }
+        return isCharging ? "Battery \(percent)%, charging" : "Battery \(percent)%"
     }
 
-    /// "3 apps frozen", or nil when nothing is held.
-    static func actions(frozenCount: Int, lastGap: TimeInterval?) -> String? {
+    /// The SF Symbol for the battery line: the bolt while charging, else
+    /// the nearest quarter.
+    static func batterySymbol(percent: Int?, isCharging: Bool) -> String? {
+        guard let percent else { return nil }
+        if isCharging { return "battery.100percent.bolt" }
+        let quarter = Int((Double(percent) / 25).rounded()) * 25
+        return "battery.\(min(max(quarter, 0), 100))percent"
+    }
+
+    /// "Wi-Fi: Home", with " · last outage 12 s" after an outage this
+    /// session. macOS hides the name until Location is allowed: say so.
+    /// Nothing known and Location allowed: no line.
+    static func wifi(ssid: String?, locationAuthorized: Bool, lastGap: TimeInterval?) -> String? {
+        guard let shown = WiFiStatusName.display(ssid: ssid, locationAuthorized: locationAuthorized) else { return nil }
+        var line = shown == WiFiStatusName.redacted ? "Wi-Fi on \u{00B7} name needs Location access" : "Wi-Fi: \(shown)"
+        if let gap = lastGap, gap > 0 {
+            line += " \u{00B7} last outage \(Int(gap.rounded())) s"
+        }
+        return line
+    }
+
+    /// "Hotspot failover: iPhone"; nil when no hotspot is configured.
+    static func hotspot(ssid: String) -> String? {
+        let name = ssid.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? nil : "Hotspot failover: \(name)"
+    }
+
+    /// What the lid close changed and has not undone yet; nil when nothing.
+    static func whileClosed(frozenCount: Int, muted: Bool, lowPower: Bool) -> String? {
         var parts: [String] = []
         if frozenCount > 0 {
             parts.append(frozenCount == 1 ? "1 app frozen" : "\(frozenCount) apps frozen")
         }
-        if let gap = lastGap, gap > 0 {
-            parts.append("last gap \(Int(gap.rounded()))s")
-        }
-        return parts.isEmpty ? nil : parts.joined(separator: " \u{00B7} ")
+        if muted { parts.append("audio muted") }
+        if lowPower { parts.append("Low Power Mode") }
+        return parts.isEmpty ? nil : "While closed: " + parts.joined(separator: " \u{00B7} ")
     }
 
-    /// "⚠ Chrome is throttled" / "⚠ Chrome and Arc are throttled".
-    static func throttleWarning(_ browsers: [String]) -> String? {
-        guard !browsers.isEmpty else { return nil }
-        let names: String
-        switch browsers.count {
-        case 1: names = browsers[0]
-        case 2: names = "\(browsers[0]) and \(browsers[1])"
-        default: names = browsers.dropLast().joined(separator: ", ") + ", and " + browsers.last!
-        }
-        return "\u{26A0} \(names) \(browsers.count == 1 ? "is" : "are") throttled"
+    /// One warning per browser running without the occlusion flags.
+    static func throttleWarning(_ browser: String) -> String {
+        "\(browser) pauses hidden tabs; agents in it may stall"
     }
 }
 
 /// The one line about sleep, read from the journal
 /// (`RuntimeState.sleepDisabledByUs`) rather than inferred from the presence
-/// of a session. The journal records what Insomnia asked pmset to do; it is
-/// not live proof, so the line never promises the lid is safe to close.
+/// of a session. The journal records what Ember asked pmset to do; it is
+/// not live proof. The texts are plain; that caveat lives in the spec.
 /// Pure so it can be tested.
 enum SleepHeldLine {
     struct Line: Equatable {
@@ -123,11 +132,11 @@ enum SleepHeldLine {
     static func line(sessionActive: Bool, sleepHeld: Bool) -> Line? {
         switch (sessionActive, sleepHeld) {
         case (true, true):
-            Line(text: "Sleep held per journal \u{2014} not verified live", isWarning: false)
+            Line(text: "Sleep off while the lid is closed", isWarning: false)
         case (true, false):
-            Line(text: "Sleep is not held \u{2014} this session is not keeping the Mac awake", isWarning: true)
+            Line(text: "Sleep is not off: this session is not keeping the Mac awake", isWarning: true)
         case (false, true):
-            Line(text: "Sleep still held with no session", isWarning: true)
+            Line(text: "Sleep is still off with no session running", isWarning: true)
         case (false, false):
             nil
         }
@@ -137,14 +146,10 @@ enum SleepHeldLine {
 /// macOS hides Wi-Fi network names until Location is allowed; say so rather
 /// than reporting no network at all.
 enum WiFiStatusName {
+    static let redacted = "on (name hidden until Location is allowed)"
+
     static func display(ssid: String?, locationAuthorized: Bool) -> String? {
         if let ssid, !ssid.isEmpty { return ssid }
-        return locationAuthorized ? nil : "on (name hidden until Location is allowed)"
+        return locationAuthorized ? nil : redacted
     }
-}
-
-/// Short label for a duration: "30m", "2h", "3d". Used by the preset list in
-/// Settings.
-func chipLabel(for seconds: TimeInterval) -> String {
-    SessionMath.formatRemaining(seconds).replacingOccurrences(of: " ", with: "")
 }

@@ -291,7 +291,7 @@ final class AppServices {
     /// The part of the refresh that reads straight out of the system: battery
     /// and lid. Split out so a caller that cannot await — the right-click
     /// menu, which blocks the main actor once it is up — still opens on these.
-    /// Watts are not read here: the menu calls `instantWatts()` itself.
+    /// Watts are not read here; the menu no longer shows them.
     func refreshInstant() {
         power.refreshBattery()
         syncPower()

@@ -5,17 +5,25 @@ import Foundation
 /// with defaults filled in.
 struct Config: Codable, Equatable, Sendable {
     // Session
-    /// Deprecated: Insomnia's preset chips, which Ember no longer shows
-    /// (its menu offers fixed durations). Kept only so a config.json that
-    /// has the keys decodes and saves back unchanged.
-    var presets: [TimeInterval] = Config.defaultPresets
-    /// Deprecated, as `presets`.
-    var defaultPreset: TimeInterval = 4 * 3600
+    /// Closed-lid time a left-click in screen mode starts a lid session
+    /// with (spec 2026-10-15 "The click duration"). One of `lidClickChoices`;
+    /// any other value loads as the nearest choice.
+    var lidClickDuration: TimeInterval = 8 * 3600
     /// Hard ceiling on a lid session: 24 hours (spec "Interaction"). An
     /// extension never pushes the end past `now + maxDuration`.
     var maxDuration: TimeInterval = Config.lidMaxDuration
 
     static let lidMaxDuration: TimeInterval = 24 * 3600
+
+    /// What Settings offers for the click duration: 1, 2, 4, 8, 12 and 24 h.
+    static let lidClickChoices: [TimeInterval] = [1, 2, 4, 8, 12, 24].map { $0 * 3600 }
+
+    /// A hand-edited value becomes the nearest of `lidClickChoices`, so the
+    /// menu title and the Settings picker always name what a click starts.
+    static func clampedLidClickDuration(_ value: TimeInterval) -> TimeInterval {
+        guard value.isFinite else { return 8 * 3600 }
+        return lidClickChoices.min { abs($0 - value) < abs($1 - value) } ?? 8 * 3600
+    }
 
     // Lid-close actions
     /// Bundle ids to SIGSTOP while the lid is closed.
@@ -87,17 +95,6 @@ struct Config: Codable, Equatable, Sendable {
     /// after dismissal.
     var lidCloseDefaultsNotice: LidCloseDefaultsChange?
 
-    /// Deprecated, as `presets`. Never past `lidMaxDuration`.
-    static let defaultPresets: [TimeInterval] = [
-        30 * 60,
-        1 * 3600,
-        2 * 3600,
-        4 * 3600,
-        8 * 3600,
-        12 * 3600,
-        24 * 3600,
-    ]
-
     /// Default freeze list: chat apps that burn battery in the background.
     static let defaultFreezeList: [String] = [
         "com.tinyspeck.slackmacgap",      // Slack
@@ -135,8 +132,8 @@ struct Config: Codable, Equatable, Sendable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = Config()
-        presets = try c.decodeIfPresent([TimeInterval].self, forKey: .presets) ?? d.presets
-        defaultPreset = try c.decodeIfPresent(TimeInterval.self, forKey: .defaultPreset) ?? d.defaultPreset
+        lidClickDuration = Config.clampedLidClickDuration(
+            try c.decodeIfPresent(TimeInterval.self, forKey: .lidClickDuration) ?? d.lidClickDuration)
         maxDuration = try c.decodeIfPresent(TimeInterval.self, forKey: .maxDuration) ?? d.maxDuration
         freezeList = try c.decodeIfPresent([String].self, forKey: .freezeList) ?? d.freezeList
         freezeAllApps = try c.decodeIfPresent(Bool.self, forKey: .freezeAllApps) ?? d.freezeAllApps
