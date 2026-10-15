@@ -43,7 +43,7 @@ Accessibility descriptions do not change.
 | From | Left-click does | Notes |
 |---|---|---|
 | Off | Screen mode on, until turned off | As today. |
-| Screen mode (timed or not) | Start a lid session for the click duration | The administrator prompt appears. Cancel or a failed start leaves screen mode on; the reason shows in the menu, as for a menu start today. |
+| Screen mode (timed or not) | Start a lid session for the click duration | The administrator prompt appears. Cancel or a failed start leaves screen mode on. A failed start shows its reason in the menu, as for a menu start today; a cancel is the person's own choice and shows nothing. |
 | Lid session (clock running or paused with the lid open) | End the session | Sleep restored, screen hold released, state off. One stray click ends a session; the owner accepted this cost (the next start is another password prompt). "End now" in the menu remains the deliberate route. |
 
 Right-click and ctrl-click open the menu in every state. The decision is a
