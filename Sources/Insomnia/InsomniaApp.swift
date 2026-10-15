@@ -23,7 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let secrets: any HotspotSecretStore
     let locationPermission: LocationPermission
     let loginItem = LoginItem()
-    /// Awake mode (spec "Interaction"): the left-click hold.
+    /// Screen mode (spec "Interaction"): the left-click hold.
     let awake = AwakeController(assertion: IOPMAwakeAssertion())
     private var statusItem: StatusItemController?
     private var settingsWindow: SettingsWindow?
@@ -115,14 +115,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             testControl = control
         }
         #endif
-        // Awake mode runs hotspot failover when the setting is on. A lid
+        // Screen mode runs hotspot failover when the setting is on. A lid
         // session (which includes screen mode) runs its own.
         awake.onChange = { [weak self] _ in self?.reconcileAwakeFailover() }
         observeAwakeFailoverInputs()
         Task { await manager.reconcile() }
     }
 
-    /// Starts or stops Awake mode's failover from the current Awake state,
+    /// Starts or stops screen mode's failover from the current screen mode state,
     /// setting, hotspot and lid session. Idempotent.
     private func reconcileAwakeFailover() {
         guard let services = manager.services else { return }
@@ -139,7 +139,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Re-reconciles when the setting, the hotspot, a lid session or Awake
+    /// Re-reconciles when the setting, the hotspot, a lid session or Ember
     /// mode changes (Settings edits `manager.config` directly), and lets a
     /// lid session's failover start or stop its internet check.
     private func observeAwakeFailoverInputs() {
@@ -172,7 +172,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !terminating else { return .terminateCancel }
         terminating = true
-        // Awake mode ends with the quit, right away: it needs no cleanup,
+        // Screen mode ends with the quit, right away: it needs no cleanup,
         // and a deferred session end below must not keep it running.
         awake.turnOff(reason: "quit")
         Task {

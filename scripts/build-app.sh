@@ -1,9 +1,9 @@
 #!/bin/bash
-# Build Awake and assemble an ad-hoc signed Awake.app. install.sh runs this for
+# Build Ember and assemble an ad-hoc signed Ember.app. install.sh runs this for
 # source installs and the smoke test builds its test bundle with it.
 #
 # Usage: scripts/build-app.sh --output DIR
-#   Writes DIR/Awake.app, replacing a bundle already at that path. DIR is
+#   Writes DIR/Ember.app, replacing a bundle already at that path. DIR is
 #   created if needed. Prints the bundle path last.
 #
 # The signature is always ad-hoc (`codesign --sign -`): releases are ad-hoc
@@ -63,11 +63,11 @@ BIN="$("$SWIFT" build -c release ${BUILD_FLAGS[@]+"${BUILD_FLAGS[@]}"} --show-bi
 [[ -x "$BIN" ]] || { echo "binary not found at $BIN" >&2; exit 1; }
 
 # 2. Bundle ------------------------------------------------------------------
-APP="$OUTPUT/Awake.app"
+APP="$OUTPUT/Ember.app"
 step "Assembling $APP"
 "$RM" -rf "$APP"
 "$MKDIR" -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-"$CP" "$BIN" "$APP/Contents/MacOS/Awake"
+"$CP" "$BIN" "$APP/Contents/MacOS/Ember"
 "$CP" "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 "$CP" "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 # backstop.sh goes into the bundle before it is signed, so the signature's

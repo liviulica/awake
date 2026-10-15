@@ -82,7 +82,7 @@ final class AppServices {
     private var floors: FloorRuleDriver?
     private var network: NetworkFailover?
     private var networkTask: Task<Void, Never>?
-    /// Failover for Awake mode, separate from the session's (`network`).
+    /// Failover for screen mode, separate from the session's (`network`).
     private var awakeNetwork: NetworkFailover?
     var awakeFailoverRunning: Bool { awakeNetwork != nil }
     private var lidTasks: [Task<Void, Never>] = []
@@ -201,7 +201,7 @@ final class AppServices {
         syncState()
     }
 
-    /// Whether Awake mode should be running hotspot failover: Awake mode on,
+    /// Whether screen mode should be running hotspot failover: screen mode on,
     /// the setting on, a hotspot configured, and no lid session (which runs
     /// its own failover).
     static func shouldRunAwakeFailover(awakeOn: Bool, setting: Bool, hotspotSSID: String, lidActive: Bool) -> Bool {
@@ -209,7 +209,7 @@ final class AppServices {
             && !hotspotSSID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// Starts failover for Awake mode. Never alongside a lid session, which
+    /// Starts failover for screen mode. Never alongside a lid session, which
     /// runs its own.
     func startAwakeFailover(config: @escaping @MainActor () -> Config) {
         guard awakeNetwork == nil, !running else { return }
@@ -233,7 +233,7 @@ final class AppServices {
 
     /// The config changed: the lid session's failover starts or stops its
     /// internet check as a hotspot is configured or cleared
-    /// (`NetworkFailover.syncProbe`). Awake mode's failover runs only with a
+    /// (`NetworkFailover.syncProbe`). Screen mode's failover runs only with a
     /// hotspot configured, so the app starts and stops it instead.
     func configChanged() {
         network?.syncProbe()

@@ -23,9 +23,9 @@ enum StatusMenu {
             /// save the item was built for, its save ID included, so a
             /// later one is not dropped.
             case stopWaitingForOutput(SavedAudioOutput)
-            /// Left-click's action from the menu: Awake mode on or off.
+            /// Left-click's action from the menu: screen mode on or off.
             case toggleAwake(isOn: Bool)
-            /// Turn Awake mode on for this long; nil is "until I turn it off".
+            /// Turn screen mode on for this long; nil is "until I turn it off".
             case awakeFor(TimeInterval?)
             /// Start a lid session for this long; nil asks for a custom duration.
             case startLid(TimeInterval?)
@@ -39,13 +39,13 @@ enum StatusMenu {
     }
 
     static let settingsTitle = "Settings\u{2026}"
-    static let quitTitle = "Quit Awake"
+    static let quitTitle = "Quit Ember"
 
     static let awakeDurations: [TimeInterval?] = [nil, 3600, 7200, 14400]
     static let lidDurations: [TimeInterval] = [3600, 7200, 14400, 28800]
 
     /// The controls above the status block (spec "Interaction"). During a
-    /// lid session only its own controls show: Awake mode is off then.
+    /// lid session only its own controls show: screen mode is off then.
     /// `lidRemaining` is the closed-lid time left (`Session.closedLidRemaining`).
     static func controlItems(awakeOn: Bool, awakeEndsAt: Date?, lidRemaining: TimeInterval?, lidPaused: Bool, now: Date) -> [Item] {
         if let lid = lidRemaining {
@@ -293,6 +293,6 @@ struct RelaunchPrompt: Equatable {
 
     init(browser name: String) {
         title = "Quit and relaunch \(name)?"
-        message = "Awake quits \(name) and opens it again with the two flags that stop it throttling hidden windows. Your windows and tabs come back only if \(name) is set to reopen them on startup. If \(name) has not quit after \(Int(BrowserThrottle.quitTimeout)) s, nothing is relaunched."
+        message = "Ember quits \(name) and opens it again with the two flags that stop it throttling hidden windows. Your windows and tabs come back only if \(name) is set to reopen them on startup. If \(name) has not quit after \(Int(BrowserThrottle.quitTimeout)) s, nothing is relaunched."
     }
 }

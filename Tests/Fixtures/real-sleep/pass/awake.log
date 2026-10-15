@@ -1,9 +1,0 @@
-2026-10-14T16:02:11Z [info] awake: session started until 2026-10-14T17:02:11Z (3600s requested)
-2026-10-14T16:20:00Z [info] awake: session end (user)
-2026-10-14T17:59:58Z [info] awake: startup lid state open
-2026-10-14T18:00:00Z [info] awake: session started until 2026-10-14T18:03:00Z (180s requested)
-2026-10-14T18:00:40Z [info] awake: lid closed
-2026-10-14T18:00:40Z [info] awake: display sleep requested
-2026-10-14T18:03:41Z [info] awake: session end with the lid closed: sleep requested
-2026-10-14T18:03:41Z [info] awake: session end (timer)
-2026-10-14T18:09:05Z [info] awake: lid open

@@ -218,7 +218,7 @@ final class DisplayServicesDimmer: DisplayDimming, @unchecked Sendable {
 
     func wake() {
         var id: IOPMAssertionID = 0
-        let kr = IOPMAssertionDeclareUserActivity("Awake lid open" as CFString, kIOPMUserActiveLocal, &id)
+        let kr = IOPMAssertionDeclareUserActivity("Ember lid open" as CFString, kIOPMUserActiveLocal, &id)
         if kr != kIOReturnSuccess {
             Log.error("display wake failed: IOPMAssertionDeclareUserActivity returned \(kr)")
         }

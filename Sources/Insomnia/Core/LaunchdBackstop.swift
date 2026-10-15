@@ -53,13 +53,13 @@ struct LaunchdBackstop: BackstopScheduling {
     /// The program verifies the bundle ($2) against the requirement ($1) with
     /// codesign and execs the sealed backstop.sh only when that passes; the
     /// resource seal covers the script, so an edited copy fails here. On
-    /// failure it appends one line to ~/Library/Logs/Awake/awake.log
+    /// failure it appends one line to ~/Library/Logs/Ember/ember.log
     /// (the LaunchAgent only ever exists in the standard layout) and exits 1
     /// without running anything. install.sh embeds this same text (its
     /// AGENT_PROGRAM line); LaunchdBackstopTests checks the two are equal so
     /// the app recognises the plist install.sh wrote. No single quotes, so
     /// the shell can hold it in one.
-    static let agentProgram = #"r="$(/usr/bin/codesign --verify --strict "-R=$1" "$2" 2>&1)" && exec /bin/bash "$2/Contents/Resources/backstop.sh"; mkdir -p "$HOME/Library/Logs/Awake"; printf "%s [error] backstop agent: %s does not satisfy the pinned code requirement; backstop.sh not run. Reinstall Awake (scripts/install.sh). codesign: %s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$2" "$(printf %s "$r" | tr "\n" " ")" >> "$HOME/Library/Logs/Awake/awake.log"; exit 1"#
+    static let agentProgram = #"r="$(/usr/bin/codesign --verify --strict "-R=$1" "$2" 2>&1)" && exec /bin/bash "$2/Contents/Resources/backstop.sh"; mkdir -p "$HOME/Library/Logs/Ember"; printf "%s [error] backstop agent: %s does not satisfy the pinned code requirement; backstop.sh not run. Reinstall Ember (scripts/install.sh). codesign: %s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$2" "$(printf %s "$r" | tr "\n" " ")" >> "$HOME/Library/Logs/Ember/ember.log"; exit 1"#
 
     let plistURL: URL
     let bundle: URL

@@ -556,14 +556,14 @@ final class StoreTests: XCTestCase {
     }
 
     func testPathsFromEnvironment() {
-        let p = Paths.fromEnvironment(["AWAKE_HOME": "/tmp/x"])
+        let p = Paths.fromEnvironment(["EMBER_HOME": "/tmp/x"])
         XCTAssertEqual(p.sessionFile.path, "/tmp/x/session.json")
         XCTAssertEqual(p.recoveryLock.path, "/tmp/x/.recovery.lock")
-        XCTAssertEqual(p.logFile.path, "/tmp/x/Logs/awake.log")
-        XCTAssertEqual(p.backstopPlist.path, "/tmp/x/LaunchAgents/app.chargingpixels.awake.recovery.plist")
+        XCTAssertEqual(p.logFile.path, "/tmp/x/Logs/ember.log")
+        XCTAssertEqual(p.backstopPlist.path, "/tmp/x/LaunchAgents/app.chargingpixels.ember.recovery.plist")
         let std = Paths.fromEnvironment([:])
-        XCTAssertTrue(std.sessionFile.path.hasSuffix("/Library/Application Support/Awake/session.json"))
-        XCTAssertTrue(std.backstopPlist.path.hasSuffix("/Library/LaunchAgents/app.chargingpixels.awake.recovery.plist"))
+        XCTAssertTrue(std.sessionFile.path.hasSuffix("/Library/Application Support/Ember/session.json"))
+        XCTAssertTrue(std.backstopPlist.path.hasSuffix("/Library/LaunchAgents/app.chargingpixels.ember.recovery.plist"))
     }
 
     /// A journal that does not decode is evidence of what a previous run

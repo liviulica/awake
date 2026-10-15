@@ -125,7 +125,7 @@ final class AdminPromptTests: XCTestCase {
     }
 
     /// The sudoers hint is for sudo failures only: the administrator
-    /// prompt does not use /etc/sudoers.d/awake.
+    /// prompt does not use /etc/sudoers.d/ember.
     func testAdminPromptFailureCarriesNoSudoersHint() {
         let e = SleepGuardError(command: "osascript: \(PmsetSleepGuard.disableSleepCommand)", status: 1, stderr: "execution error: incorrect password (-60005)")
         XCTAssertFalse(e.localizedDescription.contains("install.sh"), e.localizedDescription)

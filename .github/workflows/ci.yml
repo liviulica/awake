@@ -41,8 +41,8 @@ jobs:
 
   smoke:
     name: End-to-end smoke test
-    # Builds the test build of Awake.app and runs scripts/smoke-test.sh: the
-    # real app, launched in test mode in a throwaway AWAKE_HOME, driven
+    # Builds the test build of Ember.app and runs scripts/smoke-test.sh: the
+    # real app, launched in test mode in a throwaway EMBER_HOME, driven
     # through its test-only control channel, with the real IOPM assertion
     # checked in `pmset -g assertions`. Test mode needs no root, no password
     # and no launchctl (TestMode.swift), so it runs on a hosted runner as is.

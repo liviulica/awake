@@ -3129,7 +3129,7 @@ final class OwedKeptClearQuitTests: XCTestCase {
         XCTAssertTrue(body.hasPrefix("state.json could not record that a brightness kept after a refused restore is settled. "), body)
         XCTAssertTrue(body.hasSuffix("do not quit until state.json can be written."), body)
         XCTAssertFalse(body.contains(SessionManager.brightnessRetrySentence), body)
-        XCTAssertTrue(logText().contains("end: the journal has not taken the clear of a brightness kept after a refused restore and settled in this process; a relaunch would read that entry again and could write its saved value over a 0 set since, so Awake keeps it and retries"), logText())
+        XCTAssertTrue(logText().contains("end: the journal has not taken the clear of a brightness kept after a refused restore and settled in this process; a relaunch would read that entry again and could write its saved value over a 0 set since, so Ember keeps it and retries"), logText())
 
         await m.start(duration: 3600)
 

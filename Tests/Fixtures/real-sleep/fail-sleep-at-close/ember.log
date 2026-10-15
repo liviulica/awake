@@ -1,0 +1,9 @@
+2026-10-14T16:02:11Z [info] ember: session started until 2026-10-14T17:02:11Z (3600s requested)
+2026-10-14T16:20:00Z [info] ember: session end (user)
+2026-10-14T17:59:58Z [info] ember: startup lid state open
+2026-10-14T18:00:00Z [info] ember: session started until 2026-10-14T18:03:00Z (180s requested)
+2026-10-14T18:00:40Z [info] ember: lid closed
+2026-10-14T18:00:40Z [info] ember: display sleep requested
+2026-10-14T18:03:41Z [info] ember: session end with the lid closed: sleep requested
+2026-10-14T18:03:41Z [info] ember: session end (timer)
+2026-10-14T18:09:05Z [info] ember: lid open

@@ -19,18 +19,18 @@
 # while a session is active; otherwise the file is consumed and ignored at
 # the next session start, so run this only during a session.
 #
-# Honours AWAKE_HOME with the same layout as the app (see Paths.swift).
+# Honours EMBER_HOME with the same layout as the app (see Paths.swift).
 set -euo pipefail
 
-APP_SUPPORT="${AWAKE_HOME:-$HOME/Library/Application Support/Awake}"
+APP_SUPPORT="${EMBER_HOME:-$HOME/Library/Application Support/Ember}"
 TRIGGER="$APP_SUPPORT/simulate-lid"
 
 usage() {
   cat >&2 <<USAGE
 usage: $(basename "$0") closed|open
 
-Writes the lid event to "$TRIGGER" for a running Awake
-session to act on. Set AWAKE_HOME to target a relocated support dir.
+Writes the lid event to "$TRIGGER" for a running Ember
+session to act on. Set EMBER_HOME to target a relocated support dir.
 
 Only a build with the watcher compiled in reads it: a debug build, or a
 release build installed with INSOMNIA_LID_SIMULATION=1 ./scripts/install.sh.
@@ -45,7 +45,7 @@ case "$1" in
   *) usage ;;
 esac
 
-[[ -d "$APP_SUPPORT" ]] || { echo "no support directory at $APP_SUPPORT; is Awake installed?" >&2; exit 1; }
+[[ -d "$APP_SUPPORT" ]] || { echo "no support directory at $APP_SUPPORT; is Ember installed?" >&2; exit 1; }
 
 # Write next to the target and rename, so the watcher never reads a
 # half-written or empty file.

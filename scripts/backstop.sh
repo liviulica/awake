@@ -1,10 +1,10 @@
 #!/bin/bash
-# Awake backstop: restore the machine from the JSON journal alone.
+# Ember backstop: restore the machine from the JSON journal alone.
 # Runs from launchd (RunAtLoad + StartInterval 60, installed by install.sh)
-# and from install.sh / uninstall.sh. Needs no Awake process and no Swift.
+# and from install.sh / uninstall.sh. Needs no Ember process and no Swift.
 #
 # Where it lives: install.sh copies this file into the app bundle at
-# Awake.app/Contents/Resources/backstop.sh before signing the bundle, so
+# Ember.app/Contents/Resources/backstop.sh before signing the bundle, so
 # the signature's resource seal covers it. The LaunchAgent's command line
 # runs `codesign --verify --strict` on the bundle against the requirement
 # pinned in the plist (for an ad-hoc build, the cdhash of that build) and
@@ -28,7 +28,7 @@
 #
 # Decision, driven only by what the journal says was changed:
 #   - session.json valid (endsAt in the future) and no --force: exit 0 while
-#     the app runs (pgrep -x -U <this user's uid>, so another user's Awake
+#     the app runs (pgrep -x -U <this user's uid>, so another user's Ember
 #     does not count; a pgrep that does not answer counts as running).
 #     The first run that finds it gone writes app-absent-since; once it has
 #     been gone APP_ABSENT_SECONDS (2 minutes) the session is ended as if
@@ -158,7 +158,7 @@
 # --force: treat the session as expired even if endsAt is in the future
 # (used by install.sh / uninstall.sh to end a stale session deliberately).
 #
-# Honours AWAKE_HOME with the same layout as the app (see Paths.swift).
+# Honours EMBER_HOME with the same layout as the app (see Paths.swift).
 set -euo pipefail
 export LC_ALL=C TZ=UTC
 # Everything this run creates (log lines, the lock file, the published
@@ -192,8 +192,8 @@ STAT=/usr/bin/stat
 # binary is run: an older build has no such mode and would open the menu bar
 # app instead. Fixed paths like the tools, never PATH. install.sh puts the
 # bundle here, copying the binary before Info.plist.
-INSOMNIA_BIN="${HOME:-}/Applications/Awake.app/Contents/MacOS/Awake"
-INSOMNIA_INFO="${HOME:-}/Applications/Awake.app/Contents/Info.plist"
+INSOMNIA_BIN="${HOME:-}/Applications/Ember.app/Contents/MacOS/Ember"
+INSOMNIA_INFO="${HOME:-}/Applications/Ember.app/Contents/Info.plist"
 RESUME_FROZEN_VERSION=1
 LOCK_TIMEOUT_SECONDS=10
 # Longest a single undo command (sudo pmset, defaults) may run before it is
@@ -203,7 +203,7 @@ KILL_GRACE_SECONDS=3
 # A valid session whose app has not been running for this long is ended
 # (spec "Recovery"): with a 24 h session, waiting for the deadline could
 # leave a crashed app's Mac sleepless for a day.
-APP_PROCESS_NAME=Awake
+APP_PROCESS_NAME=Ember
 APP_ABSENT_SECONDS=120
 
 force=0
@@ -215,12 +215,12 @@ for arg in "$@"; do
   esac
 done
 
-if [[ -n "${AWAKE_HOME:-}" ]]; then
-  APP_SUPPORT="$AWAKE_HOME"
-  LOG_DIR="$AWAKE_HOME/Logs"
+if [[ -n "${EMBER_HOME:-}" ]]; then
+  APP_SUPPORT="$EMBER_HOME"
+  LOG_DIR="$EMBER_HOME/Logs"
 else
-  APP_SUPPORT="$HOME/Library/Application Support/Awake"
-  LOG_DIR="$HOME/Library/Logs/Awake"
+  APP_SUPPORT="$HOME/Library/Application Support/Ember"
+  LOG_DIR="$HOME/Library/Logs/Ember"
 fi
 SESSION="$APP_SUPPORT/session.json"
 STATE="$APP_SUPPORT/state.json"
@@ -228,7 +228,7 @@ LOCK="$APP_SUPPORT/.recovery.lock"
 # Epoch seconds of the first run that found the app gone. Not .backstop.*:
 # that prefix is swept by run_bounded.
 ABSENT_MARKER="$APP_SUPPORT/app-absent-since"
-LOG="$LOG_DIR/awake.log"
+LOG="$LOG_DIR/ember.log"
 
 log() { # level message
   "$MKDIR" -p "$LOG_DIR"
@@ -373,7 +373,7 @@ run_bounded() { # command args...
       log error "'$*' did not finish within ${COMMAND_TIMEOUT_SECONDS}s; terminated with SIGTERM (pid ${cpid:-?})"
       rc=124 ;;
     alive)
-      log error "'$*' (pid ${cpid:-?}) did not finish within ${COMMAND_TIMEOUT_SECONDS}s and did not stop on SIGTERM. It is not killed, because that could leave a root pmset running outside the transaction. It keeps the recovery lock until it ends, so Awake cannot start and recovery cannot run until then; stop it by hand (sudo kill ${cpid:-<pid>}, after 'ps -p ${cpid:-<pid>}' shows that pid is still this command) and the next run will retry"
+      log error "'$*' (pid ${cpid:-?}) did not finish within ${COMMAND_TIMEOUT_SECONDS}s and did not stop on SIGTERM. It is not killed, because that could leave a root pmset running outside the transaction. It keeps the recovery lock until it ends, so Ember cannot start and recovery cannot run until then; stop it by hand (sudo kill ${cpid:-<pid>}, after 'ps -p ${cpid:-<pid>}' shows that pid is still this command) and the next run will retry"
       command_alive=1
       return 125 ;;
     *)
@@ -889,7 +889,7 @@ if [[ "$session_state" != valid ]]; then
   "$RM" -f "$ABSENT_MARKER"
 elif (( force == 0 )); then
   app_rc=0
-  # This user's app only: another account's Awake does not hold this
+  # This user's app only: another account's Ember does not hold this
   # user's session. $UID is bash's own, never taken from the environment.
   run_bounded "$PGREP" -x -U "$UID" "$APP_PROCESS_NAME" >/dev/null 2>&1 || app_rc=$?
   if (( app_rc != 1 )); then
@@ -936,7 +936,7 @@ if [[ "$journal_state" == malformed ]]; then
   while IFS= read -r line; do
     [[ -n "$line" ]] && log error "$STATE: $line"
   done <<< "$shape_problems"
-  log error "$STATE is unreadable or malformed; nothing undone, evidence kept. Open Awake or repair the file, then rerun"
+  log error "$STATE is unreadable or malformed; nothing undone, evidence kept. Open Ember or repair the file, then rerun"
   exit 1
 fi
 
@@ -1434,8 +1434,8 @@ if (( has_audio == 1 || has_display == 1 || has_keyboard == 1 )); then
   (( has_audio == 1 )) && pending+=("saved audio (volume/mute)")
   (( has_display == 1 )) && pending+=("saved display brightness")
   (( has_keyboard == 1 )) && pending+=("saved keyboard backlight")
-  log error "$(IFS=,; echo "${pending[*]}") can only be restored by the app; kept. Open Awake"
-  failures+=("saved audio, display brightness or keyboard backlight settings need the app: open Awake to restore them")
+  log error "$(IFS=,; echo "${pending[*]}") can only be restored by the app; kept. Open Ember"
+  failures+=("saved audio, display brightness or keyboard backlight settings need the app: open Ember to restore them")
 fi
 [[ -n "$refused_note" ]] && log info "$refused_note"
 

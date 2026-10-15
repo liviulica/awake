@@ -1,6 +1,6 @@
 # Security
 
-Awake is experimental software. There is no security-response SLA.
+Ember is experimental software. There is no security-response SLA.
 
 ## Reporting a vulnerability
 
@@ -15,14 +15,14 @@ anywhere public.
 ## What the app can and cannot protect
 
 The installer grants the user account passwordless access to three exact pmset
-commands listed in the README. This grant is not exclusive to the Awake app:
+commands listed in the README. This grant is not exclusive to the Ember app:
 other processes running as that user can invoke them too. The app is not
 sandboxed; local logs can contain SSIDs, process metadata.
-The lines the app writes to `awake.log` also reach the unified log with the
+The lines the app writes to `ember.log` also reach the unified log with the
 body marked private, so programs reading `log show` see `<private>` instead of
 those names unless private data logging is enabled on the Mac. The files
-Awake creates (logs, journal, session, config, recovery lock) are mode 0600
-and its directories 0700; the backstop runs with `umask 077`. Awake sets
+Ember creates (logs, journal, session, config, recovery lock) are mode 0600
+and its directories 0700; the backstop runs with `umask 077`. Ember sets
 only these modes and leaves any access control list (ACL) on these files as it
 is, so an ACL someone added can still give another account access. Logs are capped at
 1 MiB with one older copy kept. A log the user replaced with a symlink is not
@@ -35,9 +35,9 @@ list, after recording the previous value in its journal, and puts it back at
 session end.
 
 The hotspot password is a generic-password item in the login Keychain
-(service `awake-hotspot`). Its access list names only the Awake build
+(service `ember-hotspot`). Its access list names only the Ember build
 that saved it, so any other program asking for it gets the system Keychain
-prompt, which you can refuse. Awake itself reads the item with prompts
+prompt, which you can refuse. Ember itself reads the item with prompts
 switched off: an item it may not read is reported in the menu and in Settings
 instead of being prompted for or silently ignored. Two limits remain. Ad-hoc
 signing gives every install a new code identity, so the access list pins one
@@ -62,9 +62,9 @@ tampered bundle; they are not a boundary against a process running as the
 same user, which can edit the plist, load its own agent, replace and relaunch
 the app, and invoke the three pmset commands directly.
 
-There is no signed release yet. Awake is built from source and ad-hoc signed
+There is no signed release yet. Ember is built from source and ad-hoc signed
 on the machine that installs it; `scripts/install.sh` runs the build itself.
-Awake makes one network request: while hotspot failover runs with a hotspot
+Ember makes one network request: while hotspot failover runs with a hotspot
 configured, a `GET` of `http://captive.apple.com/hotspot-detect.html` with a
 neutral user agent (see the README). Starting a lid session raises the
 standard macOS administrator prompt for `pmset -a disablesleep 1`; the

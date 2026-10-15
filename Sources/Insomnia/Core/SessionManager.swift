@@ -840,7 +840,7 @@ final class SessionManager {
     }
 
     private static func unreadableJournalMessage(_ error: Error) -> String {
-        "\(error.localizedDescription). Awake has changed nothing and will not start, extend or end sessions until the file is fixed or moved by hand; it is the only record of what a previous run changed."
+        "\(error.localizedDescription). Ember has changed nothing and will not start, extend or end sessions until the file is fixed or moved by hand; it is the only record of what a previous run changed."
     }
 
     /// Keep `handle` until `command` exits, then release it and settle what
@@ -854,7 +854,7 @@ final class SessionManager {
     /// removed. Any other exit, a signal included, confirms nothing, and
     /// the retry runs the undo again.
     private func holdLock(_ handle: RecoveryLockHandle, until command: UnfinishedCommand) {
-        Log.error("recovery lock kept for \(command.description) until it exits; Awake cannot start, end or recover until then; stop it by hand (sudo kill \(command.pid)) and the end is retried when it exits")
+        Log.error("recovery lock kept for \(command.description) until it exits; Ember cannot start, end or recover until then; stop it by hand (sudo kill \(command.pid)) and the end is retried when it exits")
         Task { @MainActor [weak self] in
             await command.waitUntilExit()
             let status = command.terminationStatus
@@ -1016,7 +1016,7 @@ final class SessionManager {
     /// the lock and removes it (`exclusive`). Announced once per command.
     private func recordedLockHolder(_ error: Error) -> String {
         guard case .busy? = error as? RecoveryLockError, let record = store.loadUnfinishedCommand() else { return "" }
-        let command = "`\(record.command)`, left running by Awake since \(iso(record.since)),"
+        let command = "`\(record.command)`, left running by Ember since \(iso(record.since)),"
         switch (record.identity, processLookup(record.pid)) {
         case let (recorded?, .present(live)) where live.identity == recorded:
             let line = "\(command) still runs as pid \(record.pid) and holds it; stop it by hand with sudo kill \(record.pid)"
@@ -1024,14 +1024,14 @@ final class SessionManager {
                 announcedLockHolder = record.pid
                 notifier.post(
                     title: Self.commandRunningTitle,
-                    body: "The recovery lock is busy: \(line). Awake changes nothing until the lock is free."
+                    body: "The recovery lock is busy: \(line). Ember changes nothing until the lock is free."
                 )
             }
             return "; \(line)"
         case (_?, .absent), (_?, .present):
             return "; \(command) has exited since, so another process holds it"
         case (nil, _), (_?, .unreadable):
-            return "; \(command) may still hold it, but Awake cannot confirm that pid \(record.pid) is still that command, so it names no process to stop"
+            return "; \(command) may still hold it, but Ember cannot confirm that pid \(record.pid) is still that command, so it names no process to stop"
         }
     }
 
@@ -1188,10 +1188,10 @@ final class SessionManager {
         } catch {
             Log.error("could not record the command left running in \(paths.unfinishedCommandFile.path): \(error.localizedDescription)")
         }
-        warnAboutCommand("\(error.localizedDescription); Awake holds the recovery lock and will not quit until it exits (sudo kill \(error.command.pid) to stop it by hand)")
+        warnAboutCommand("\(error.localizedDescription); Ember holds the recovery lock and will not quit until it exits (sudo kill \(error.command.pid) to stop it by hand)")
         notifier.post(
             title: Self.commandRunningTitle,
-            body: "\(error.command.description) did not stop on SIGTERM and is left running, because killing it could leave a root pmset changing power settings outside the transaction. Nothing else was changed and the journal keeps its entries. Awake holds the recovery lock until it exits and will not quit or start a session before then. To stop it by hand: sudo kill \(error.command.pid)."
+            body: "\(error.command.description) did not stop on SIGTERM and is left running, because killing it could leave a root pmset changing power settings outside the transaction. Nothing else was changed and the journal keeps its entries. Ember holds the recovery lock until it exits and will not quit or start a session before then. To stop it by hand: sudo kill \(error.command.pid)."
         )
         if let reason {
             pendingEnd = reason
@@ -1420,7 +1420,7 @@ final class SessionManager {
         case .locked:
             notifier.post(
                 title: Self.notEndedTitle,
-                body: "The recovery lock is held by another process, so nothing was changed. The session is still active; Awake retries in \(Int(recoveryRetryDelay)) s."
+                body: "The recovery lock is held by another process, so nothing was changed. The session is still active; Ember retries in \(Int(recoveryRetryDelay)) s."
             )
             scheduleEndRetry(reason)
         case .incomplete(agentArmed: false), .sessionRetained:
@@ -1569,7 +1569,7 @@ final class SessionManager {
                 let journalNote = dirty ? " Some changes are also still journaled." : ""
                 notifier.post(
                     title: Self.incompleteTitle,
-                    body: "\(retainedBecause)\(journalNote) Awake retries in \(Int(recoveryRetryDelay)) s; do not quit until it is gone."
+                    body: "\(retainedBecause)\(journalNote) Ember retries in \(Int(recoveryRetryDelay)) s; do not quit until it is gone."
                 )
                 scheduleEndRetry(reason)
                 return .sessionRetained
@@ -1579,13 +1579,13 @@ final class SessionManager {
             // passes over it, so this process keeps it and quit waits until
             // the restore lands or the flag is off the disk.
             if armed, owedEdits.hidesARestore {
-                Log.info("end: the recovery agent cannot see a failed brightness restore whose flag the journal has not taken; Awake retries it itself")
+                Log.info("end: the recovery agent cannot see a failed brightness restore whose flag the journal has not taken; Ember retries it itself")
             }
             if let owedReadLit {
-                Log.info("end: the journal has not taken that display brightness \(owedReadLit), kept after a refused restore, read above 0; a relaunch without it would write that value over a 0 set since, so Awake keeps it and retries")
+                Log.info("end: the journal has not taken that display brightness \(owedReadLit), kept after a refused restore, read above 0; a relaunch without it would write that value over a 0 set since, so Ember keeps it and retries")
             }
             if owedSettlement {
-                Log.info("end: the journal has not taken the clear of a brightness kept after a refused restore and settled in this process; a relaunch would read that entry again and could write its saved value over a 0 set since, so Awake keeps it and retries")
+                Log.info("end: the journal has not taken the clear of a brightness kept after a refused restore and settled in this process; a relaunch would read that entry again and could write its saved value over a 0 set since, so Ember keeps it and retries")
             }
             let agentCanFinish = armed && !owedEdits.hidesARestore && owedReadLit == nil && !owedSettlement
             let unrecorded = [owedSettlement ? "that a brightness kept after a refused restore is settled" : nil,
@@ -1610,9 +1610,9 @@ final class SessionManager {
                 if owesBrightness { sentences.append(Self.brightnessRetrySentence) }
                 retry = sentences.joined(separator: " ")
             } else if owedReadLit != nil || owedSettlement {
-                retry = "Awake retries in \(Int(recoveryRetryDelay)) s; do not quit until state.json can be written."
+                retry = "Ember retries in \(Int(recoveryRetryDelay)) s; do not quit until state.json can be written."
             } else {
-                retry = "Awake retries in \(Int(recoveryRetryDelay)) s; do not quit until it is restored."
+                retry = "Ember retries in \(Int(recoveryRetryDelay)) s; do not quit until it is restored."
             }
             notifier.post(title: Self.incompleteTitle, body: "\(detail). \(retry)")
             // Reconcile and a failed start reach here without `end()`; the
@@ -2224,7 +2224,7 @@ final class SessionManager {
             }
             if !report.unverifiable.isEmpty {
                 let list = report.unverifiable.map(String.init).joined(separator: ", ")
-                errors.append("pid(s) \(list) are stopped but journaled without identity, so Awake cannot prove it froze them and will not resume them. Either an older build recorded the pid alone, or a freeze stopped the pid and Awake quit, crashed or failed to write before the stop was confirmed in the journal. Check each one first, for example `ps -o pid,stat,lstart,command -p <pid>`, and only if it is a process you expected Awake to freeze run `kill -CONT <pid>`; the entry stays in the journal until resumed or gone")
+                errors.append("pid(s) \(list) are stopped but journaled without identity, so Ember cannot prove it froze them and will not resume them. Either an older build recorded the pid alone, or a freeze stopped the pid and Ember quit, crashed or failed to write before the stop was confirmed in the journal. Check each one first, for example `ps -o pid,stat,lstart,command -p <pid>`, and only if it is a process you expected Ember to freeze run `kill -CONT <pid>`; the entry stays in the journal until resumed or gone")
             }
         } else if state.dockerFrozen {
             clearUndone("Docker Desktop has no frozen process left") { $0.dockerFrozen = false }
@@ -2792,8 +2792,8 @@ final class SessionManager {
             }
             guard stillHeld else {
                 fail(unreadable
-                    ? "Lid closed mode ended: Awake could not read the sleep setting at launch. Start it again from the menu."
-                    : "Lid closed mode ended: sleep was turned back on while Awake was not running. Start it again from the menu.")
+                    ? "Lid closed mode ended: Ember could not read the sleep setting at launch. Start it again from the menu."
+                    : "Lid closed mode ended: sleep was turned back on while Ember was not running. Start it again from the menu.")
                 _ = await performEnd(reason: .recoveryUnavailable)
                 return
             }
@@ -2917,7 +2917,7 @@ final class SessionManager {
             Log.error("session.json unreadable (\(detail)); moved to \(moved.path) and treated as no session")
             notifier.post(
                 title: Self.sessionFileTitle,
-                body: "session.json is not a valid session file (\(detail)). It was moved to \(moved.path); Awake treats it as no session."
+                body: "session.json is not a valid session file (\(detail)). It was moved to \(moved.path); Ember treats it as no session."
             )
         } catch let moveError {
             // Kept, not deleted. A start is refused while it is there, and
@@ -2927,7 +2927,7 @@ final class SessionManager {
             fail("session.json unreadable (\(detail)) and could not be moved aside: \(moveError.localizedDescription); left in place and treated as no session")
             notifier.post(
                 title: Self.sessionFileTitle,
-                body: "session.json is not a valid session file (\(detail)). It could not be moved aside (\(moveError.localizedDescription)) and was left in place; Awake treats it as no session. Awake retries the rename and will not quit until it is gone. Remove it or move it out of \(paths.appSupport.path)."
+                body: "session.json is not a valid session file (\(detail)). It could not be moved aside (\(moveError.localizedDescription)) and was left in place; Ember treats it as no session. Ember retries the rename and will not quit until it is gone. Remove it or move it out of \(paths.appSupport.path)."
             )
         }
     }
@@ -2936,7 +2936,7 @@ final class SessionManager {
     /// opened; a FIFO or a file without read permission moves the same way.
     /// The restore of a dirty journal reports its own outcome.
     private func moveAsideSessionThatCannotBeRead(_ detail: String) {
-        let expired = "session.json could not be read (\(detail)), so its end time is unknown. Awake treats the session as expired and undoes what its journal recorded."
+        let expired = "session.json could not be read (\(detail)), so its end time is unknown. Ember treats the session as expired and undoes what its journal recorded."
         do {
             let moved = try store.moveAsideUnreadableSession(now: clock())
             Log.error("session.json could not be read (\(detail)); treated as expired and moved, unopened, to \(moved.path)")
@@ -2949,7 +2949,7 @@ final class SessionManager {
             fail("session.json could not be read (\(detail)) and could not be moved aside: \(moveError.localizedDescription); treated as expired and left in place")
             notifier.post(
                 title: Self.sessionFileTitle,
-                body: "\(expired) The file could not be moved aside (\(moveError.localizedDescription)) and was left in place. If it became readable there, a relaunch would resume it, so Awake retries the rename and will not quit until it is gone. Remove it or move it out of \(paths.appSupport.path)."
+                body: "\(expired) The file could not be moved aside (\(moveError.localizedDescription)) and was left in place. If it became readable there, a relaunch would resume it, so Ember retries the rename and will not quit until it is gone. Remove it or move it out of \(paths.appSupport.path)."
             )
         }
     }
@@ -3006,7 +3006,7 @@ final class SessionManager {
         Log.info("reconcile: \(Self.foreignSleepLine)")
         notifier.post(
             title: Self.foreignSleepTitle,
-            body: "pmset reports SleepDisabled 1, but Awake has no session and did not set it, so it is left alone. To re-enable sleep: \(Self.foreignSleepCommand). Ending an Awake session also sets it to 0."
+            body: "pmset reports SleepDisabled 1, but Ember has no session and did not set it, so it is left alone. To re-enable sleep: \(Self.foreignSleepCommand). Ending an Ember session also sets it to 0."
         )
     }
 
@@ -3330,7 +3330,7 @@ final class SessionManager {
             try journal { $0[keyPath: flag] = false }
         } catch {
             owedEdits[keyPath: owed] = .unflag(saved)
-            errors.append("could not mark the \(what) for retry: \(error.localizedDescription); it still counts as not restored, and Awake retries it itself until the journal takes the change")
+            errors.append("could not mark the \(what) for retry: \(error.localizedDescription); it still counts as not restored, and Ember retries it itself until the journal takes the change")
         }
     }
     private func iso(_ d: Date) -> String {
@@ -3344,7 +3344,7 @@ final class SessionManager {
     static let sessionFileTitle = "Session file unreadable"
     static let foreignSleepTitle = "Sleep is disabled by something else"
     static let foreignSleepCommand = "sudo pmset -a disablesleep 0"
-    static let foreignSleepLine = "Sleep is disabled by something other than Awake; to re-enable it: \(foreignSleepCommand)"
+    static let foreignSleepLine = "Sleep is disabled by something other than Ember; to re-enable it: \(foreignSleepCommand)"
 
     private static func endTitle(_ reason: EndReason, had: Bool) -> String {
         switch reason {
@@ -3365,40 +3365,40 @@ final class SessionManager {
     nonisolated static func stillMutedSentence(_ waiting: [SavedAudioOutput]) -> String {
         let names = waiting.map(\.label)
         if names.count == 1 {
-            return "\(names[0]) was not connected, so it is still muted. Awake restores its volume when it reconnects while Awake is running, or at the next launch."
+            return "\(names[0]) was not connected, so it is still muted. Ember restores its volume when it reconnects while Ember is running, or at the next launch."
         }
         let list = names.dropLast().joined(separator: ", ") + " and " + names[names.count - 1]
-        return "\(list) were not connected, so they are still muted. Awake restores each one's volume when it reconnects while Awake is running, or at the next launch."
+        return "\(list) were not connected, so they are still muted. Ember restores each one's volume when it reconnects while Ember is running, or at the next launch."
     }
 
     /// The incomplete-restore notification's sentence about saved output
     /// volume that could not be restored on a connected device.
     nonisolated static func audioRetrySentence(_ delay: TimeInterval) -> String {
-        "The recovery agent cannot restore output volume. Awake tries again in \(Int(delay)) s while it runs, and at its next launch."
+        "The recovery agent cannot restore output volume. Ember tries again in \(Int(delay)) s while it runs, and at its next launch."
     }
 
     /// The same for display brightness or keyboard backlight, which the
     /// next end (`restoreAll`) or the launch reconcile restores.
-    nonisolated static let brightnessRetrySentence = "The recovery agent cannot restore display brightness or keyboard backlight. Awake tries again when a later session ends, and at its next launch."
+    nonisolated static let brightnessRetrySentence = "The recovery agent cannot restore display brightness or keyboard backlight. Ember tries again when a later session ends, and at its next launch."
 
     /// The menu line for an output device still waiting for its volume.
     nonisolated static func stillMutedLine(_ output: SavedAudioOutput) -> String {
-        "\(output.label) is still muted from a lid close; Awake restores it when it reconnects"
+        "\(output.label) is still muted from a lid close; Ember restores it when it reconnects"
     }
 
     private func endBody(_ reason: EndReason, outputsWaiting: Bool) -> String {
         switch reason {
         case .timer: "Time is up. Sleep is back to normal."
         case .user: "Ended by you. Sleep is back to normal."
-        case .quit: "Awake quit. Sleep is back to normal."
+        case .quit: "Ember quit. Sleep is back to normal."
         case .batteryFloor: "Battery fell below \(config.endFloor)%. Sleep is back to normal."
         case .batteryUnreadable: "The battery level could not be read twice in a row, so the \(config.endFloor)% floor could not be applied. Sleep is back to normal."
         case .thermalCritical: "Thermal state is critical. Sleep is back to normal."
         case .backstop: outputsWaiting
             ? "A previous session left changes behind. Sleep is back to normal."
             : "A previous session left changes behind; everything has been undone."
-        case .recoveryUnavailable: "Awake could not keep the session's recovery in place, so it ended the session. Sleep is back to normal."
-        case .startFailed: "Awake could not disable sleep, so no session was started. Sleep is back to normal."
+        case .recoveryUnavailable: "Ember could not keep the session's recovery in place, so it ended the session. Sleep is back to normal."
+        case .startFailed: "Ember could not disable sleep, so no session was started. Sleep is back to normal."
         case .startCancelled: "The administrator prompt was cancelled, so no session was started. Sleep is back to normal."
         }
     }

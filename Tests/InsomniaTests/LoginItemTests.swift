@@ -52,8 +52,8 @@ final class LoginItemTests: XCTestCase {
     private var activity: NotificationCenter!
 
     /// The running install and the one a reinstall leaves behind.
-    private let thisInstall = "0b1c@/Users/me/Applications/Awake.app"
-    private let earlierInstall = "a9f0@/Users/me/Applications/Awake.app"
+    private let thisInstall = "0b1c@/Users/me/Applications/Ember.app"
+    private let earlierInstall = "a9f0@/Users/me/Applications/Ember.app"
 
     override func setUp() async throws {
         home = TempHome()
@@ -473,8 +473,8 @@ final class LoginItemTests: XCTestCase {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("loginitem-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
-        let exe = dir.appendingPathComponent("Awake").path
-        let bundle = "/Users/me/Applications/Awake.app"
+        let exe = dir.appendingPathComponent("Ember").path
+        let bundle = "/Users/me/Applications/Ember.app"
         let hash = Data([0x0b, 0x1c])
         let bytes = Data("same build".utf8)
 

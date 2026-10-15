@@ -5,7 +5,7 @@ import Foundation
 /// with defaults filled in.
 struct Config: Codable, Equatable, Sendable {
     // Session
-    /// Deprecated: Insomnia's preset chips, which Awake no longer shows
+    /// Deprecated: Insomnia's preset chips, which Ember no longer shows
     /// (its menu offers fixed durations). Kept only so a config.json that
     /// has the keys decodes and saves back unchanged.
     var presets: [TimeInterval] = Config.defaultPresets
@@ -61,7 +61,7 @@ struct Config: Codable, Equatable, Sendable {
 
     // Network failover
     var hotspotSSID: String = ""
-    /// Run hotspot failover in Awake mode too, not only in lid sessions.
+    /// Run hotspot failover in screen mode too, not only in lid sessions.
     var awakeHotspotFailover: Bool = false
 
     // App
@@ -201,7 +201,7 @@ struct LidCloseDefaultsChange: Codable, Equatable, Sendable {
 
     var notificationBody: String {
         "This update changed \(both ? "two lid-close settings" : "a lid-close setting"): \(changes). "
-            + "To change \(both ? "them" : "it") back, choose Settings\u{2026} from the Awake menu bar icon and look under Lid-close actions."
+            + "To change \(both ? "them" : "it") back, choose Settings\u{2026} from the Ember menu bar icon and look under Lid-close actions."
     }
 
     var settingsLine: String {
@@ -258,7 +258,7 @@ extension Config {
         return "battery floors corrected: lowPowerFloor \(before.0) -> \(lowPowerFloor), endFloor \(before.1) -> \(endFloor)"
     }
 
-    /// Insomnia allowed 30 days; Awake allows 24 hours. A config.json an
+    /// Insomnia allowed 30 days; Ember allows 24 hours. A config.json an
     /// earlier build saved is brought down to the ceiling once and saved.
     mutating func normalizeMaxDuration() -> String? {
         guard maxDuration > Config.lidMaxDuration || maxDuration < SessionMath.minimumDuration else { return nil }

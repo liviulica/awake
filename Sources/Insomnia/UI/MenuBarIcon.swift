@@ -26,9 +26,9 @@ enum MenuBarIcon: Equatable, CaseIterable {
         }
         image.isTemplate = true
         image.accessibilityDescription = switch icon {
-        case .off: "Awake: off"
-        case .awake: "Awake: keeping the Mac awake"
-        case .lid: "Awake: running with the lid closed"
+        case .off: "Ember: off"
+        case .awake: "Ember: keeping the Mac awake"
+        case .lid: "Ember: running with the lid closed"
         }
         return image
     }

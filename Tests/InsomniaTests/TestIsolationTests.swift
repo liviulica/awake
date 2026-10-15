@@ -5,7 +5,7 @@ import InsomniaTestHome
 
 /// The suite must never write to the real ~/Library, which holds Insomnia's
 /// Logs, Application Support files and LaunchAgent. `Log.append` and
-/// `SessionManager.live` resolve AWAKE_HOME at call time, so these tests
+/// `SessionManager.live` resolve EMBER_HOME at call time, so these tests
 /// check that the variable names an existing directory outside ~/Library,
 /// that every path the app resolves sits inside it, that a default-argument
 /// log line lands there, and that a TempHome hands the variable back instead
@@ -54,22 +54,22 @@ final class TestIsolationTests: XCTestCase {
     func testLoaderCreatedItsHomeOutsideTheRealLibrary() {
         XCTAssertEqual(String(cString: insomnia_test_home_key()), Paths.environmentKey)
         let root = ProcessTestHome.root
-        XCTAssertTrue(root.lastPathComponent.hasPrefix("awake-tests-process-"), root.path)
+        XCTAssertTrue(root.lastPathComponent.hasPrefix("ember-tests-process-"), root.path)
         XCTAssertTrue(isDirectory(root), "the loader's directory does not exist: \(root.path)")
         XCTAssertFalse(isInside(root, realLibrary), root.path)
     }
 
     func testEveryResolvedPathSitsInsideTheTestHome() throws {
-        let value = try XCTUnwrap(ProcessTestHome.current, "AWAKE_HOME is unset")
-        XCTAssertFalse(value.isEmpty, "AWAKE_HOME is empty")
+        let value = try XCTUnwrap(ProcessTestHome.current, "EMBER_HOME is unset")
+        XCTAssertFalse(value.isEmpty, "EMBER_HOME is empty")
         let home = URL(fileURLWithPath: value, isDirectory: true)
-        XCTAssertTrue(isDirectory(home), "AWAKE_HOME does not exist: \(home.path)")
+        XCTAssertTrue(isDirectory(home), "EMBER_HOME does not exist: \(home.path)")
         XCTAssertFalse(isInside(home, realLibrary), home.path)
 
         let resolved = Paths.fromEnvironment()
         XCTAssertNotEqual(resolved, Paths.standard)
         for url in locations(resolved) {
-            XCTAssertTrue(isInside(url, home), "\(url.path) is outside AWAKE_HOME \(home.path)")
+            XCTAssertTrue(isInside(url, home), "\(url.path) is outside EMBER_HOME \(home.path)")
             XCTAssertFalse(isInside(url, realLibrary), url.path)
         }
     }
@@ -79,7 +79,7 @@ final class TestIsolationTests: XCTestCase {
         // Stop here rather than write the probe into the real log, which is
         // the outcome this test exists to prevent.
         guard isIsolated(resolved) else {
-            return XCTFail("AWAKE_HOME does not isolate the run (log would go to \(resolved.logFile.path)); not writing a probe")
+            return XCTFail("EMBER_HOME does not isolate the run (log would go to \(resolved.logFile.path)); not writing a probe")
         }
 
         // A line written the way production code writes one (default paths).

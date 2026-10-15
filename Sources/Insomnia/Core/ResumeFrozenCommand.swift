@@ -94,7 +94,7 @@ enum ResumeFrozenCommand {
     }
 
     private static func usage() -> Output {
-        FileHandle.standardError.write(Data("usage: Awake \(flag) <seconds 1-\(maxLifetimeSeconds)> < entries, one line each: <pid> <startedAt> <startedAtMicros> <bootSession>\n".utf8))
+        FileHandle.standardError.write(Data("usage: Ember \(flag) <seconds 1-\(maxLifetimeSeconds)> < entries, one line each: <pid> <startedAt> <startedAtMicros> <bootSession>\n".utf8))
         return Output(lines: ["usage"], status: usageStatus)
     }
 

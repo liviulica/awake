@@ -105,7 +105,7 @@ final class TestControlTests: XCTestCase {
     }
 
     /// The closed-lid clock runs: the time left is to `endsAt`, in whole
-    /// seconds, and the lid icon wins over the Awake state.
+    /// seconds, and the lid icon wins over the screen mode state.
     func testRunningLidSessionCountsDownToItsEnd() throws {
         let session = Session(startedAt: now, endsAt: now.addingTimeInterval(299.6))
         let json = try decode(TestControlStatus(awake: .on(until: nil), lidHoldActive: false, session: session, now: now))
@@ -141,12 +141,12 @@ final class TestControlTests: XCTestCase {
     }
 
     func testTestModeNeedsTheSwitchAndARelocatedHome() {
-        XCTAssertEqual(TestMode.requested(in: ["AWAKE_TEST_MODE": "1", "AWAKE_HOME": "/tmp/x"])?.paths, Paths(root: URL(fileURLWithPath: "/tmp/x", isDirectory: true)))
+        XCTAssertEqual(TestMode.requested(in: ["EMBER_TEST_MODE": "1", "EMBER_HOME": "/tmp/x"])?.paths, Paths(root: URL(fileURLWithPath: "/tmp/x", isDirectory: true)))
         XCTAssertNil(TestMode.requested(in: [:]))
-        XCTAssertNil(TestMode.requested(in: ["AWAKE_HOME": "/tmp/x"]))
-        XCTAssertNil(TestMode.requested(in: ["AWAKE_TEST_MODE": "1"]))
-        XCTAssertNil(TestMode.requested(in: ["AWAKE_TEST_MODE": "1", "AWAKE_HOME": ""]))
-        XCTAssertNil(TestMode.requested(in: ["AWAKE_TEST_MODE": "yes", "AWAKE_HOME": "/tmp/x"]))
+        XCTAssertNil(TestMode.requested(in: ["EMBER_HOME": "/tmp/x"]))
+        XCTAssertNil(TestMode.requested(in: ["EMBER_TEST_MODE": "1"]))
+        XCTAssertNil(TestMode.requested(in: ["EMBER_TEST_MODE": "1", "EMBER_HOME": ""]))
+        XCTAssertNil(TestMode.requested(in: ["EMBER_TEST_MODE": "yes", "EMBER_HOME": "/tmp/x"]))
     }
 
     // MARK: Simulated sleep guard

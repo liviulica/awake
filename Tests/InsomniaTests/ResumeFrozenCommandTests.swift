@@ -259,7 +259,7 @@ final class ResumeFrozenCommandTests: XCTestCase {
     }
 
     /// Runs the real binary in the mode with `input` as standard input, and
-    /// with AWAKE_HOME in a temp dir so its log line (if any) never
+    /// with EMBER_HOME in a temp dir so its log line (if any) never
     /// touches ~/Library. Standard input, output and error are files: nothing
     /// to drain, nothing to deadlock, whatever the size.
     private func runBinary(_ arguments: [String] = ["--resume-frozen", "30"], input: String) throws -> (status: Int32, stdout: String, stderr: String) {
@@ -278,7 +278,7 @@ final class ResumeFrozenCommandTests: XCTestCase {
         let p = Process()
         p.executableURL = builtBinary
         p.arguments = arguments
-        p.environment = ["AWAKE_HOME": home.root.path, "PATH": "/usr/bin:/bin"]
+        p.environment = ["EMBER_HOME": home.root.path, "PATH": "/usr/bin:/bin"]
         p.standardInput = stdin
         p.standardOutput = stdout
         p.standardError = stderr
@@ -301,7 +301,7 @@ final class ResumeFrozenCommandTests: XCTestCase {
         let usage = try runBinary(input: "4242\n")
         XCTAssertEqual(usage.status, 64)
         XCTAssertEqual(usage.stdout, "usage\n")
-        XCTAssertTrue(usage.stderr.contains("usage: Awake --resume-frozen"), usage.stderr)
+        XCTAssertTrue(usage.stderr.contains("usage: Ember --resume-frozen"), usage.stderr)
 
         // A child that has already exited: its pid is gone.
         let child = Process()
@@ -443,7 +443,7 @@ final class ResumeFrozenCommandTests: XCTestCase {
             ? ["/bin/bash", "-c", #"trap '' ALRM; exec "$0" "$@""#, binary, "--resume-frozen", lifetime]
             : [binary, "--resume-frozen", lifetime]
         let argv: [UnsafeMutablePointer<CChar>?] = arguments.map { strdup($0) } + [nil]
-        let environment = ["AWAKE_HOME=\(home.root.path)", "PATH=/usr/bin:/bin"]
+        let environment = ["EMBER_HOME=\(home.root.path)", "PATH=/usr/bin:/bin"]
         let envp: [UnsafeMutablePointer<CChar>?] = environment.map { strdup($0) } + [nil]
         defer { (argv + envp).forEach { free($0) } }
 

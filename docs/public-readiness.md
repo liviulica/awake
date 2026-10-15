@@ -9,14 +9,14 @@ hashes are the ones before the history rewrite.
 
 1. **Old file contents still carry the personal address and a private link.**
    The planned history rewrite changes commit author and committer emails
-   only. Awake commits also put strings in file contents: the phase 1 plan
-   (from `256e3c5`, "docs: Awake phase 1 implementation plan") held a `git -c
+   only. Ember commits also put strings in file contents: the phase 1 plan
+   (from `256e3c5`, "docs: Ember phase 1 implementation plan") held a `git -c
    user.email=<personal Gmail address>` command; the design spec (from
-   `85f3501`, "docs: Awake design spec") and the plan held a private claude.ai
+   `85f3501`, "docs: Ember design spec") and the plan held a private claude.ai
    mockup link; and `2ba6abc` wrote the home folder path, the personal address
    and the employer's name into the plan as search terms. The current tree is
    scrubbed, but every older commit still has them. *Proposal:* run the same
-   rewrite with `git filter-repo --replace-text` for these strings. Only Awake
+   rewrite with `git filter-repo --replace-text` for these strings. Only Ember
    commits contain them (checked with `git log --all -S`), so Insomnia's
    commits keep their hashes. *Otherwise:* accept that the address stays
    readable in old revisions of the plan.
@@ -46,9 +46,8 @@ hashes are the ones before the history rewrite.
    Info) said "Copyright © 2026 Krish Garg. MIT License.", Insomnia's line. It
    now matches LICENSE: "Copyright © 2026 Liviu Lica. Portions copyright ©
    2026 Krish Garg. MIT License." Revert if you prefer the old line.
-7. **Name.** README says "Awake" is a working title that may become Ember.
-   Going public under `liviulica/awake` is fine either way: GitHub redirects a
-   renamed repository. No action unless the name is settled first.
+7. **Name.** The app is Ember (renamed from Awake on 2026-10-15) and the
+   repository is `liviulica/ember`. No action.
 
 ## 1. Secrets
 
@@ -98,12 +97,12 @@ links and `.superpowers`.
 | Home folder path, personal address, employer name and the artifact link pattern as search terms in Task 20's text | same plan | Described in words |
 | Private claude.ai mockup link (2 in the plan, 1 in the spec) | plan, `docs/superpowers/specs/2026-10-14-awake-design.md` | "(private mockup)" |
 | `/Users/…` paths | Tests only, all made-up (`/Users/me`, `/Users/tester`, `/Users/x`, `/Users/u` in the plan) | None needed |
-| `~/Coding/Awake`, `~/Coding/Insomnia` | plan | Already `~/…`; kept |
+| `~/Coding/Ember`, `~/Coding/Insomnia` | plan | Already `~/…`; kept |
 | `.superpowers/` (working notes of the build process) | Not tracked: ignored by its own `.gitignore` | Added `.superpowers/` to the root `.gitignore` too |
 
 Values that are public on purpose and stay:
 
-- **Bundle id `app.chargingpixels.awake`** (and the `.recovery` agent label,
+- **Bundle id `app.chargingpixels.ember`** (and the `.recovery` agent label,
   the `.keychain` queue label): `Resources/Info.plist`,
   `Sources/Insomnia/Store/Paths.swift`, `Sources/Insomnia/System/NetworkFailover.swift`,
   `scripts/install.sh`, `scripts/uninstall.sh`, `README.md`, the tests
@@ -124,7 +123,7 @@ September design notes) stays public as design history.
 | `.github/ISSUE_TEMPLATE/*` | Never existed in this repository | None |
 | `.github/pull_request_template.md`, `docs/releasing.md`, `docs/release-validation.md`, `docs/install.md`, the release workflow | Already removed in `08e200c` | None |
 | `SECURITY.md` | Contact said "if GitHub shows a Report a vulnerability action … otherwise open a public issue" | Contact is now GitHub private vulnerability reporting only (enabled in Task 21). The osascript SIGTERM window paragraph stays. |
-| `CONTRIBUTING.md` | Already written for Awake | None |
+| `CONTRIBUTING.md` | Already written for Ember | None |
 | `docs/assets/session-flow.svg`, `docs/assets/lid-actions.svg`, `docs/assets/recovery-flow.svg` | Insomnia's README diagrams: eye icons, "Quit Insomnia", the Docker rule; referenced nowhere | Deleted |
 | `docs/mockups/menubar-ux.html` | Insomnia's menu bar mockup ("Quit Insomnia", eye icon); referenced only by the deleted SVGs | Deleted |
 | `docs/assets/eye-open.svg` | Still the app icon's source (PackagingTests, `scripts/generate-app-icon.sh`) | Kept |
@@ -140,7 +139,7 @@ installer changes, the one network request, uninstall, credits, license.
   states, the menu without and with a lid session, the start prompt,
   Settings). None are taken yet.
 - The clone line was a placeholder; it is now
-  `git clone https://github.com/liviulica/awake.git` and `cd awake`.
+  `git clone https://github.com/liviulica/ember.git` and `cd ember`.
 - Added a **Credits** section (Insomnia and its contributors; Caffeine's
   authors).
 - The License section links to [LICENSE](../LICENSE) again.
@@ -148,7 +147,7 @@ installer changes, the one network request, uninstall, credits, license.
   release), the three-line sudoers rule and the recovery LaunchAgent, the
   single `captive.apple.com` request, uninstall.
 
-LICENSE: the Caffeine section's intro now reads "Awake's one-click mode
+LICENSE: the Caffeine section's intro now reads "Ember's one-click mode
 follows the idea of Caffeine:". The Caffeine copyright lines and text are
 unchanged.
 

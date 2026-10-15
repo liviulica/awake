@@ -3,7 +3,7 @@ import XCTest
 @testable import Insomnia
 
 /// scripts/real-sleep-check.sh in `--dry-run` mode: it parses the saved
-/// excerpts under Tests/Fixtures/real-sleep/ (an awake.log in UTC and a
+/// excerpts under Tests/Fixtures/real-sleep/ (an ember.log in UTC and a
 /// `log show` powerd excerpt in the Mac's local time, here UTC+3) instead of
 /// the live logs, skips the preconditions and the guided steps, and prints
 /// the verdict. The real run needs a person at a real Mac and is Task 18.

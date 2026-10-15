@@ -28,14 +28,14 @@ final class OwnerOnlyTests: XCTestCase {
         try FileManager.default.setAttributes([.posixPermissions: mode], ofItemAtPath: url.path)
     }
 
-    // MARK: awake.log
+    // MARK: ember.log
 
     func testLogIsCreatedOwnerOnlyInAnOwnerOnlyDirectory() throws {
         Log.append(level: "info", "hello", paths: home.paths)
 
         XCTAssertEqual(try mode(home.paths.logFile), 0o600)
         XCTAssertEqual(try mode(home.paths.logs), 0o700)
-        XCTAssertTrue(try String(contentsOf: home.paths.logFile, encoding: .utf8).hasSuffix("awake: hello\n"))
+        XCTAssertTrue(try String(contentsOf: home.paths.logFile, encoding: .utf8).hasSuffix("ember: hello\n"))
     }
 
     func testLooseLogAndDirectoryAreTightenedOnAppendAndKeepTheirText() throws {
@@ -49,13 +49,13 @@ final class OwnerOnlyTests: XCTestCase {
         XCTAssertEqual(try mode(home.paths.logs), 0o700)
         let text = try String(contentsOf: home.paths.logFile, encoding: .utf8)
         XCTAssertTrue(text.hasPrefix("old line\n"), text)
-        XCTAssertTrue(text.hasSuffix("awake: new line\n"), text)
+        XCTAssertTrue(text.hasSuffix("ember: new line\n"), text)
     }
 
     func testLogPastTheCapRotatesToDotOneAndStartsAFreshFile() throws {
         let log = home.paths.logFile
         let rotated = OwnerOnly.rotated(log)
-        XCTAssertEqual(rotated.lastPathComponent, "awake.log.1")
+        XCTAssertEqual(rotated.lastPathComponent, "ember.log.1")
         try FileManager.default.createDirectory(at: home.paths.logs, withIntermediateDirectories: true)
         let first = Data(repeating: UInt8(ascii: "a"), count: Int(OwnerOnly.maxLogBytes) + 1)
         try first.write(to: log)
@@ -64,7 +64,7 @@ final class OwnerOnlyTests: XCTestCase {
 
         XCTAssertEqual(try Data(contentsOf: rotated), first, "the full log was not moved aside intact")
         let fresh = try String(contentsOf: log, encoding: .utf8)
-        XCTAssertTrue(fresh.hasSuffix("awake: after first rotation\n"), fresh)
+        XCTAssertTrue(fresh.hasSuffix("ember: after first rotation\n"), fresh)
         XCTAssertLessThan(fresh.utf8.count, 200, "the new file must hold only the new line")
         XCTAssertEqual(try mode(log), 0o600)
 
@@ -73,7 +73,7 @@ final class OwnerOnlyTests: XCTestCase {
         try second.write(to: log)
         Log.append(level: "info", "after second rotation", paths: home.paths)
         XCTAssertEqual(try Data(contentsOf: rotated), second)
-        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: home.paths.logs.path).sorted(), ["awake.log", "awake.log.1"])
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: home.paths.logs.path).sorted(), ["ember.log", "ember.log.1"])
     }
 
     /// Exactly at the cap nothing moves; one byte over, the next append rotates.
@@ -183,7 +183,7 @@ final class OwnerOnlyTests: XCTestCase {
         let log = try String(contentsOf: home.paths.logFile, encoding: .utf8)
         let lines = log.split(whereSeparator: \.isNewline).filter { $0.contains("config.json") }
         XCTAssertEqual(lines.count, 1, log)
-        XCTAssertTrue(lines.first?.hasSuffix("[error] awake: could not make \(home.paths.configFile.path) owner-only: Operation not permitted") ?? false, log)
+        XCTAssertTrue(lines.first?.hasSuffix("[error] ember: could not make \(home.paths.configFile.path) owner-only: Operation not permitted") ?? false, log)
     }
 
     /// Tightening only clears bits outside the owner-only mode. It never
@@ -246,7 +246,7 @@ final class OwnerOnlyTests: XCTestCase {
         Log.append(level: "info", "via symlink", paths: home.paths)
 
         XCTAssertEqual(try mode(elsewhere), 0o755)
-        XCTAssertTrue(try String(contentsOf: home.paths.logFile, encoding: .utf8).hasSuffix("awake: via symlink\n"))
+        XCTAssertTrue(try String(contentsOf: home.paths.logFile, encoding: .utf8).hasSuffix("ember: via symlink\n"))
 
         let sharedLog = home.root.appendingPathComponent("shared.log")
         try writeLoose("", to: sharedLog)
@@ -256,7 +256,7 @@ final class OwnerOnlyTests: XCTestCase {
         Log.append(level: "info", "via symlinked file", paths: home.paths)
 
         XCTAssertEqual(try mode(sharedLog), 0o644)
-        XCTAssertTrue(try String(contentsOf: sharedLog, encoding: .utf8).hasSuffix("awake: via symlinked file\n"))
+        XCTAssertTrue(try String(contentsOf: sharedLog, encoding: .utf8).hasSuffix("ember: via symlinked file\n"))
 
         // Past the cap, the symlinked log is not rotated: a rename would move
         // the link to `.1` and the next line would start a plain file.

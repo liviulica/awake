@@ -110,7 +110,7 @@ final class StatusItemControllerLogicTests: XCTestCase {
         awake.turnOn(for: nil)
         await m.start(duration: 3600)
         c.stateChanged()
-        XCTAssertEqual(awake.state, .off, "Awake mode folds into lid mode")
+        XCTAssertEqual(awake.state, .off, "screen mode folds into lid mode")
         XCTAssertTrue(a.isHeld, "lid open: the screen stays on")
         h.clamshell.closed = true
         await m.lidClosedClock()
@@ -119,7 +119,7 @@ final class StatusItemControllerLogicTests: XCTestCase {
         _ = await m.end(reason: .user)
         c.stateChanged()
         XCTAssertFalse(a.isHeld)
-        XCTAssertEqual(awake.state, .off, "ending the lid session does not bring Awake mode back")
+        XCTAssertEqual(awake.state, .off, "ending the lid session does not bring screen mode back")
     }
 
     /// "Custom…" with text that is not a duration says so instead of doing
@@ -156,7 +156,7 @@ final class StatusItemControllerLogicTests: XCTestCase {
         defer { c.stop() }
         XCTAssertFalse(a.isHeld)
         await m.start(duration: 3600)
-        await pollUntil("observation never delivered the lid session to Awake mode") { a.isHeld }
+        await pollUntil("observation never delivered the lid session to screen mode") { a.isHeld }
         XCTAssertTrue(awake.lidHoldActive)
     }
 }
@@ -366,7 +366,7 @@ final class StatusMenuTests: XCTestCase {
         XCTAssertEqual(prompt.title, "Quit and relaunch Chrome?")
         XCTAssertEqual(
             prompt.message,
-            "Awake quits Chrome and opens it again with the two flags that stop it throttling hidden windows. Your windows and tabs come back only if Chrome is set to reopen them on startup. If Chrome has not quit after 10 s, nothing is relaunched."
+            "Ember quits Chrome and opens it again with the two flags that stop it throttling hidden windows. Your windows and tabs come back only if Chrome is set to reopen them on startup. If Chrome has not quit after 10 s, nothing is relaunched."
         )
         XCTAssertEqual(RelaunchPrompt.confirmTitle, "Quit and relaunch")
         XCTAssertEqual(RelaunchPrompt.cancelTitle, "Cancel")

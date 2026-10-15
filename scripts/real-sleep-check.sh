@@ -1,5 +1,5 @@
 #!/bin/bash
-# Guided check, on your own Mac, that Awake's lid-closed promise holds in
+# Guided check, on your own Mac, that Ember's lid-closed promise holds in
 # macOS's own sleep log: with a 3-minute "Keep awake with lid closed"
 # session, the Mac stays awake while the lid is closed and the timer runs,
 # the session ends by its timer about 3 minutes after the lid closed, and
@@ -8,14 +8,14 @@
 #   scripts/real-sleep-check.sh              guided run (needs a person, a lid
 #                                            and about 10 minutes)
 #   scripts/real-sleep-check.sh --dry-run DIR
-#                                            parse DIR/awake.log and
+#                                            parse DIR/ember.log and
 #                                            DIR/powerd.txt (saved excerpts,
 #                                            see Tests/Fixtures/real-sleep/)
 #                                            and print the verdict only
 #
 # Not run in CI. Task 18's checklist item 4c.
 #
-# Time zones: awake.log is UTC (`2026-10-14T18:03:41Z`); `log show` prints
+# Time zones: ember.log is UTC (`2026-10-14T18:03:41Z`); `log show` prints
 # the Mac's local time. Both are turned into epoch seconds before they are
 # compared, and every time is shown in UTC.
 # The awk programs are single-quoted on purpose: $0 and $2 are awk fields.
@@ -33,8 +33,8 @@ LOGSHOW=/usr/bin/log
 MKTEMP=/usr/bin/mktemp
 RM=/bin/rm
 SLEEP=/bin/sleep
-APP="$HOME/Applications/Awake.app"
-SUDOERS=/etc/sudoers.d/awake
+APP="$HOME/Applications/Ember.app"
+SUDOERS=/etc/sudoers.d/ember
 SESSION_MINUTES=3
 # The end must land this close to the planned length: the session clock
 # counts closed-lid time only, and the lid event is debounced.
@@ -42,12 +42,12 @@ TOLERANCE_SECONDS=70
 SLEEP_WITHIN_SECONDS=60
 START_WAIT_SECONDS=360
 
-if [[ -n "${AWAKE_HOME:-}" ]]; then
-  APP_SUPPORT="$AWAKE_HOME"
-  LOG_FILE="$AWAKE_HOME/Logs/awake.log"
+if [[ -n "${EMBER_HOME:-}" ]]; then
+  APP_SUPPORT="$EMBER_HOME"
+  LOG_FILE="$EMBER_HOME/Logs/ember.log"
 else
-  APP_SUPPORT="$HOME/Library/Application Support/Awake"
-  LOG_FILE="$HOME/Library/Logs/Awake/awake.log"
+  APP_SUPPORT="$HOME/Library/Application Support/Ember"
+  LOG_FILE="$HOME/Library/Logs/Ember/ember.log"
 fi
 
 dry_dir=""
@@ -73,7 +73,7 @@ trap cleanup EXIT
 count_starts() {
   if [[ -f "$LOG_FILE" ]]; then
     local n=0
-    n=$("$GREP" -c ' awake: session started' "$LOG_FILE" || true)
+    n=$("$GREP" -c ' ember: session started' "$LOG_FILE" || true)
     echo "$n"
   else
     echo 0
@@ -85,8 +85,8 @@ preconditions() {
   if [[ ! -d "$APP" ]]; then
     echo "  MISSING: $APP. Run scripts/install.sh first."; ok=0
   fi
-  if ! "$PGREP" -x Awake >/dev/null 2>&1; then
-    echo "  MISSING: Awake is not running. Open $APP and look for its icon in the menu bar."; ok=0
+  if ! "$PGREP" -x Ember >/dev/null 2>&1; then
+    echo "  MISSING: Ember is not running. Open $APP and look for its icon in the menu bar."; ok=0
   fi
   if [[ ! -e "$SUDOERS" ]]; then
     echo "  MISSING: $SUDOERS. scripts/install.sh writes it (it asks for your password)."; ok=0
@@ -103,31 +103,31 @@ preconditions() {
     fi
     if [[ -n "$cfg_floor" ]]; then floor="$cfg_floor"; fi
     if [[ -z "$pct" || "$pct" -le "$floor" ]]; then
-      echo "  On battery at ${pct:-an unknown level}%, not above Awake's end floor (${floor}%). Plug in the charger."; ok=0
+      echo "  On battery at ${pct:-an unknown level}%, not above Ember's end floor (${floor}%). Plug in the charger."; ok=0
     fi
   fi
   if [[ $ok -eq 0 ]]; then
     echo "Preconditions not met; nothing was started." >&2
     exit 2
   fi
-  echo "Preconditions: Awake installed and running, sudoers rule present, no lid session, power fine."
+  echo "Preconditions: Ember installed and running, sudoers rule present, no lid session, power fine."
 }
 
 # Prints the fields the verdict needs, as `key=value` lines, from the awake
 # log ($1) and the powerd excerpt ($2).
-analyse() { # awake.log powerd.txt
+analyse() { # ember.log powerd.txt
   local window start close end_line reason req
-  window=$("$AWK" '{ l[NR] = $0 } /awake: session started/ { n = NR } END { if (n) for (i = n; i <= NR; i++) print l[i] }' "$1")
+  window=$("$AWK" '{ l[NR] = $0 } /ember: session started/ { n = NR } END { if (n) for (i = n; i <= NR; i++) print l[i] }' "$1")
   if [[ -z "$window" ]]; then fail_setup "no 'session started' line in $1"; fi
-  start=$(echo "$window" | "$GREP" -m1 ' awake: session started' || true)
-  close=$(echo "$window" | "$GREP" -m1 ' awake: lid closed$' || true)
-  end_line=$(echo "$window" | "$GREP" -m1 ' awake: session end (' || true)
+  start=$(echo "$window" | "$GREP" -m1 ' ember: session started' || true)
+  close=$(echo "$window" | "$GREP" -m1 ' ember: lid closed$' || true)
+  end_line=$(echo "$window" | "$GREP" -m1 ' ember: session end (' || true)
   req=$(echo "$window" | "$GREP" -m1 'session end with the lid closed: sleep requested' || true)
   reason=""
   if [[ -n "$end_line" ]]; then reason="${end_line#*session end (}"; reason="${reason%%)*}"; fi
 
-  echo "Awake's log for this session:"
-  echo "$window" | "$GREP" -E ' awake: (session |lid )' | "$AWK" '{ print "  " $0 }' || true
+  echo "Ember's log for this session:"
+  echo "$window" | "$GREP" -E ' ember: (session |lid )' | "$AWK" '{ print "  " $0 }' || true
   echo
 
   S_START=$(utc_epoch "${start%% *}")
@@ -218,7 +218,7 @@ verdict() {
       failed=1
     fi
     if [[ -z "$S_REQ" ]]; then
-      echo "NOTE  Awake logged no 'sleep requested' line after the end (it only asks while the lid is closed)."
+      echo "NOTE  Ember logged no 'sleep requested' line after the end (it only asks while the lid is closed)."
     fi
   fi
 
@@ -228,18 +228,18 @@ verdict() {
 }
 
 if [[ -n "$dry_dir" ]]; then
-  [[ -f "$dry_dir/awake.log" && -f "$dry_dir/powerd.txt" ]] || fail_setup "$dry_dir needs awake.log and powerd.txt"
-  analyse "$dry_dir/awake.log" "$dry_dir/powerd.txt"
+  [[ -f "$dry_dir/ember.log" && -f "$dry_dir/powerd.txt" ]] || fail_setup "$dry_dir needs ember.log and powerd.txt"
+  analyse "$dry_dir/ember.log" "$dry_dir/powerd.txt"
   verdict
   exit $?
 fi
 
-echo "Awake real-sleep check: about 10 minutes, with a real lid."
+echo "Ember real-sleep check: about 10 minutes, with a real lid."
 preconditions
 echo
 before=$(count_starts)
 cat <<STEP
-Step 1. In the menu bar, right-click the Awake icon, then:
+Step 1. In the menu bar, right-click the Ember icon, then:
           Keep awake with lid closed -> Custom... -> type ${SESSION_MINUTES}m -> Start
         and enter your password when macOS asks.
         Keep the lid OPEN until this script says the session started.
@@ -262,7 +262,7 @@ STEP
 read -r _
 
 work=$("$MKTEMP" -d)
-start_line=$("$AWK" '/awake: session started/ { l = $0 } END { print l }' "$LOG_FILE")
+start_line=$("$AWK" '/ember: session started/ { l = $0 } END { print l }' "$LOG_FILE")
 start_epoch=$(utc_epoch "${start_line%% *}")
 show_rc=0
 echo "Reading macOS's sleep log (this can take a few seconds)..."

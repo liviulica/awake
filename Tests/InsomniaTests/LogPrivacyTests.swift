@@ -48,7 +48,7 @@ final class LogPrivacyTests: XCTestCase {
         XCTAssertTrue(messages.contains("<private>"), "no entry was redacted: \(messages)")
 
         let file = try String(contentsOf: home.paths.logFile, encoding: .utf8)
-        XCTAssertTrue(file.contains("[info] awake: joining hotspot \(token) on en0 (attempt 1)"), file)
-        XCTAssertTrue(file.contains("[error] awake: hotspot \(token) rejected"), file)
+        XCTAssertTrue(file.contains("[info] ember: joining hotspot \(token) on en0 (attempt 1)"), file)
+        XCTAssertTrue(file.contains("[error] ember: hotspot \(token) rejected"), file)
     }
 }

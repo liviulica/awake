@@ -3,13 +3,13 @@ import Foundation
 
 /// The mode scripts/smoke-test.sh launches the app in. Compiled in with the
 /// lid simulation (`LidSimulationBuild`), and on only when the environment
-/// asks for it twice over: `AWAKE_TEST_MODE=1` and a relocated
-/// `AWAKE_HOME`. A lid simulation build installed for the real-Mac checks
+/// asks for it twice over: `EMBER_TEST_MODE=1` and a relocated
+/// `EMBER_HOME`. A lid simulation build installed for the real-Mac checks
 /// (docs/superpowers/specs/2026-10-14-awake-design.md, "Testing") runs without either and keeps the real `pmset`, the
 /// real recovery agent and the real lid.
 ///
 /// In test mode the app needs no root and changes nothing outside its
-/// `AWAKE_HOME`:
+/// `EMBER_HOME`:
 /// - `SimulatedSleepGuard` keeps the sleep and Low Power Mode bits in
 ///   memory and logs every change to `sleepGuardLog`, in place of
 ///   `PmsetSleepGuard` (no sudo, no administrator prompt).
@@ -18,24 +18,24 @@ import Foundation
 ///   wrote (open until it writes), not the hinge, so a simulated close
 ///   runs the closed-lid clock too; macOS is never asked to sleep.
 /// - A simulated close changes nothing on the host, whatever config.json
-///   in `AWAKE_HOME` says: the output volume, the display and keyboard
+///   in `EMBER_HOME` says: the output volume, the display and keyboard
 ///   backlight, other apps' processes (no freeze) and other apps' App Nap
 ///   preferences are all left alone (`NoopAudioControl`,
 ///   `NoopDisplayDimmer`, `NoopKeyboardBacklight`, `NoopFreezer`,
 ///   `NoopAppNapPreferences`).
 /// - `TestControl` takes commands from `controlFile` and writes
 ///   `statusFile`.
-/// The Awake assertion stays the real IOPM one: that is what the smoke
+/// The Ember assertion stays the real IOPM one: that is what the smoke
 /// test checks with `pmset -g assertions`.
 struct TestMode: Equatable, Sendable {
-    static let switchKey = "AWAKE_TEST_MODE"
+    static let switchKey = "EMBER_TEST_MODE"
     /// Logged at launch in test mode. Also what the release gate looks for:
     /// a plain release binary must not contain it.
     static let marker = "Test mode: commands from test-control, simulated sleep guard (no root), recovery agent stand-in (no launchctl)"
 
     let paths: Paths
 
-    /// Test mode when `AWAKE_TEST_MODE` is exactly "1" and `AWAKE_HOME` is
+    /// Test mode when `EMBER_TEST_MODE` is exactly "1" and `EMBER_HOME` is
     /// set and not empty; nil otherwise.
     static func requested(in env: [String: String] = ProcessInfo.processInfo.environment) -> TestMode? {
         guard env[switchKey] == "1", let home = env[Paths.environmentKey], !home.isEmpty else { return nil }

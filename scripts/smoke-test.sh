@@ -1,14 +1,14 @@
 #!/bin/bash
-# End-to-end smoke test of the real Awake.app. Builds the test build (the
+# End-to-end smoke test of the real Ember.app. Builds the test build (the
 # lid simulation build: INSOMNIA_LID_SIMULATION=1 scripts/build-app.sh)
 # into a temp directory, launches it in test mode with a throwaway
-# AWAKE_HOME, drives it through the test-only control channel
-# ($AWAKE_HOME/test-control, see TestControl.swift) and scripts/simulate-lid.sh,
+# EMBER_HOME, drives it through the test-only control channel
+# ($EMBER_HOME/test-control, see TestControl.swift) and scripts/simulate-lid.sh,
 # and checks the real effects: the status the app writes
 # (test-status.json), session.json, the sleep guard log, and the real IOPM
-# "Awake mode" assertion in `pmset -g assertions`.
+# "Ember keep awake" assertion in `pmset -g assertions`.
 #
-# Test mode needs no root and touches nothing outside the temp AWAKE_HOME:
+# Test mode needs no root and touches nothing outside the temp EMBER_HOME:
 # the sleep guard is simulated (no pmset, no password prompt), the
 # recovery agent is a stand-in (no launchctl), and a simulated lid close
 # changes no volume, brightness, other app or App Nap preference. See
@@ -47,13 +47,13 @@ POLL=0.2
 LID_SECONDS=600
 
 TMP_ROOT="${TMPDIR:-/tmp}"
-WORK="$("$MKTEMP" -d "${TMP_ROOT%/}/awake-smoke.XXXXXX")"
-AWAKE_DIR="$WORK/home"
-CONTROL="$AWAKE_DIR/test-control"
-STATUS="$AWAKE_DIR/test-status.json"
-SESSION="$AWAKE_DIR/session.json"
-GUARD_LOG="$AWAKE_DIR/test-sleepguard.log"
-APP_LOG="$AWAKE_DIR/Logs/awake.log"
+WORK="$("$MKTEMP" -d "${TMP_ROOT%/}/ember-smoke.XXXXXX")"
+EMBER_DIR="$WORK/home"
+CONTROL="$EMBER_DIR/test-control"
+STATUS="$EMBER_DIR/test-status.json"
+SESSION="$EMBER_DIR/session.json"
+GUARD_LOG="$EMBER_DIR/test-sleepguard.log"
+APP_LOG="$EMBER_DIR/Logs/ember.log"
 APP_OUT="$WORK/app-output.log"
 APP_PID=""
 
@@ -82,7 +82,7 @@ diagnose() {
     echo "--- $(basename "$file")"
     if [[ -f $file ]]; then "$CAT" "$file"; else echo "(none)"; fi
   done
-  echo "--- awake.log (last 40 lines)"
+  echo "--- ember.log (last 40 lines)"
   if [[ -f $APP_LOG ]]; then "$TAIL" -n 40 "$APP_LOG"; else echo "(none)"; fi
   echo "--- app stdout/stderr (last 20 lines)"
   if [[ -f $APP_OUT ]]; then "$TAIL" -n 20 "$APP_OUT"; else echo "(none)"; fi
@@ -123,14 +123,14 @@ want() { # key expected: test-status.json has KEY equal to EXPECTED
   [[ $got == "$2" ]] || { REASON="$1 is $got, expected $2"; return 1; }
 }
 
-# Whether the app holds the "Awake mode" IOPM assertion, from pmset's list
-# by owning process. Matched on the app's pid, so another Awake running on
+# Whether the app holds the "Ember keep awake" IOPM assertion, from pmset's list
+# by owning process. Matched on the app's pid, so another Ember running on
 # this Mac (an installed copy) does not count.
 assertion() { # held|gone
   local out held=gone
   out=$("$PMSET" -g assertions) || { REASON="pmset -g assertions failed"; return 1; }
-  if "$GREP" -qE "pid $APP_PID\\(.*named: \"Awake mode\"" <<<"$out"; then held=held; fi
-  [[ $held == "$1" ]] || { REASON="the \"Awake mode\" assertion is $held, expected $1"; return 1; }
+  if "$GREP" -qE "pid $APP_PID\\(.*named: \"Ember keep awake\"" <<<"$out"; then held=held; fi
+  [[ $held == "$1" ]] || { REASON="the \"Ember keep awake\" assertion is $held, expected $1"; return 1; }
 }
 
 # Epoch seconds of an ISO 8601 UTC time as Store writes it.
@@ -162,23 +162,23 @@ send() { # command
     (( SECONDS < deadline )) || fail "the app did not take the previous command from test-control"
     "$SLEEP" "$POLL"
   done
-  printf '%s\n' "$1" >"$AWAKE_DIR/.test-control.tmp"
-  "$MV" -f "$AWAKE_DIR/.test-control.tmp" "$CONTROL"
+  printf '%s\n' "$1" >"$EMBER_DIR/.test-control.tmp"
+  "$MV" -f "$EMBER_DIR/.test-control.tmp" "$CONTROL"
 }
 
 lid() { # closed|open
-  AWAKE_HOME="$AWAKE_DIR" "$SIMULATE_LID" "$1" >/dev/null
+  EMBER_HOME="$EMBER_DIR" "$SIMULATE_LID" "$1" >/dev/null
 }
 
 # 1. Build and launch ---------------------------------------------------------
 echo "==> Building the test build into $WORK/build"
 INSOMNIA_LID_SIMULATION=1 "$BUILD_APP" --output "$WORK/build"
-APP="$WORK/build/Awake.app"
+APP="$WORK/build/Ember.app"
 
-"$MKDIR" -p "$AWAKE_DIR"
+"$MKDIR" -p "$EMBER_DIR"
 # Nothing on a simulated lid close may reach this Mac: no darkening, no
 # mute, no frozen apps, no Low Power Mode, no battery or thermal end.
-"$CAT" >"$AWAKE_DIR/config.json" <<'JSON'
+"$CAT" >"$EMBER_DIR/config.json" <<'JSON'
 {
   "lidCloseDefaultsApplied" : true,
   "darkenDisplayOnLidClose" : false,
@@ -192,34 +192,34 @@ APP="$WORK/build/Awake.app"
 }
 JSON
 
-echo "==> Launching $APP with AWAKE_HOME=$AWAKE_DIR"
-AWAKE_HOME="$AWAKE_DIR" AWAKE_TEST_MODE=1 "$APP/Contents/MacOS/Awake" </dev/null >"$APP_OUT" 2>&1 &
+echo "==> Launching $APP with EMBER_HOME=$EMBER_DIR"
+EMBER_HOME="$EMBER_DIR" EMBER_TEST_MODE=1 "$APP/Contents/MacOS/Ember" </dev/null >"$APP_OUT" 2>&1 &
 APP_PID=$!
 
-launched() { [[ -f $APP_LOG ]] && "$GREP" -qF "awake: launched" "$APP_LOG"; }
-in_test_mode() { "$GREP" -qF "awake: Test mode: " "$APP_LOG"; }
+launched() { [[ -f $APP_LOG ]] && "$GREP" -qF "ember: launched" "$APP_LOG"; }
+in_test_mode() { "$GREP" -qF "ember: Test mode: " "$APP_LOG"; }
 deadline=$((SECONDS + LAUNCH_DEADLINE))
 until launched; do
   app_alive || fail "launch: the app exited before logging \"launched\""
-  (( SECONDS < deadline )) || fail "launch: no \"launched\" in awake.log after ${LAUNCH_DEADLINE}s"
+  (( SECONDS < deadline )) || fail "launch: no \"launched\" in ember.log after ${LAUNCH_DEADLINE}s"
   "$SLEEP" "$POLL"
 done
 # Never drive a build that is not in test mode: its sleep guard is the real
 # one, and a lid start would ask for the administrator password.
 deadline=$((SECONDS + STEP_DEADLINE))
 until in_test_mode; do
-  (( SECONDS < deadline )) || fail "launch: the app is not in test mode (no \"Test mode:\" line in awake.log)"
+  (( SECONDS < deadline )) || fail "launch: the app is not in test mode (no \"Test mode:\" line in ember.log)"
   "$SLEEP" "$POLL"
 done
 echo "launched (pid $APP_PID) in test mode"
 
 # 2. Steps --------------------------------------------------------------------
 idle() { want icon off && want lidActive false && assertion gone; }
-step 1 "idle: icon off, no \"Awake mode\" assertion" idle
+step 1 "idle: icon off, no \"Ember keep awake\" assertion" idle
 
 send awake-on
 awake_on() { want icon awake && want awakeOn true && assertion held; }
-step 2 "awake-on: icon awake, \"Awake mode\" assertion held" awake_on
+step 2 "awake-on: icon awake, \"Ember keep awake\" assertion held" awake_on
 
 send awake-off
 awake_off() { want icon off && want awakeOn false && assertion gone; }
@@ -273,7 +273,7 @@ quit_done() {
   if app_alive; then REASON="the app is still running"; return 1; fi
   assertion gone
 }
-step 8 "quit: the app exits, no \"Awake mode\" assertion left" quit_done
+step 8 "quit: the app exits, no \"Ember keep awake\" assertion left" quit_done
 status=0
 wait "$APP_PID" || status=$?
 APP_PID=""

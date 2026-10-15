@@ -1,6 +1,6 @@
 import Foundation
 
-/// The only two things Awake ever does as root: through the three
+/// The only two things Ember ever does as root: through the three
 /// sudoers-allowed pmset commands written by install.sh, plus
 /// `disablesleep 1` through the administrator prompt (`AdminCommandRunning`).
 protocol SleepGuarding: Sendable {
@@ -24,7 +24,7 @@ struct SleepGuardError: Error, LocalizedError, Sendable {
         // Only a sudo failure is about the sudoers file; the administrator
         // prompt (osascript) does not use it.
         if command.hasPrefix("sudo "), detail.contains("password") || detail.contains("sudo") {
-            msg += " (run scripts/install.sh to install /etc/sudoers.d/awake)"
+            msg += " (run scripts/install.sh to install /etc/sudoers.d/ember)"
         }
         return msg
     }
@@ -62,7 +62,7 @@ struct PmsetSleepGuard: SleepGuarding {
     /// The one command that goes through the administrator prompt. A
     /// constant: nothing user-provided reaches it.
     static let disableSleepCommand = "/usr/bin/pmset -a disablesleep 1"
-    static let adminPrompt = "Awake needs your password to keep this Mac running with the lid closed."
+    static let adminPrompt = "Ember needs your password to keep this Mac running with the lid closed."
 
     /// The app uses the defaults; tests point `sudo` at a fake, shorten the
     /// limits, start the deadline once the fake is ready, and replace the

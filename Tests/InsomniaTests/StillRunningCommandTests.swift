@@ -59,7 +59,7 @@ final class StillRunningCommandTests: XCTestCase {
         XCTAssertTrue(last.body.contains("sudo kill 4242"), last.body)
         XCTAssertTrue(try XCTUnwrap(m.commandWarning).contains("sudo kill 4242"), m.commandWarning ?? "")
         XCTAssertNil(m.lastError, "the live command reported as a failure the next success would not clear")
-        let record = try XCTUnwrap(h.store.loadUnfinishedCommand(), "nothing on disk names the command if Awake dies first")
+        let record = try XCTUnwrap(h.store.loadUnfinishedCommand(), "nothing on disk names the command if Ember dies first")
         XCTAssertEqual(record.pid, 4242)
         XCTAssertEqual(record.command, "/usr/bin/sudo -n /usr/bin/pmset disablesleep 0")
         XCTAssertEqual(record.identity, FakeSleepGuard.identity(of: 4242), "nothing tells the pid apart once the command has exited")
@@ -177,7 +177,7 @@ final class StillRunningCommandTests: XCTestCase {
 
         let error = try XCTUnwrap(m.lastError)
         XCTAssertTrue(error.hasPrefix("reconcile skipped, nothing changed"), error)
-        XCTAssertTrue(error.contains("`/usr/bin/sudo -n /usr/bin/pmset -a disablesleep 0`, left running by Awake since"), error)
+        XCTAssertTrue(error.contains("`/usr/bin/sudo -n /usr/bin/pmset -a disablesleep 0`, left running by Ember since"), error)
         XCTAssertTrue(error.contains("still runs as pid 4321"), error)
         XCTAssertTrue(error.contains("sudo kill 4321"), error)
         let notices = h.notifier.posts.filter { $0.title == SessionManager.commandRunningTitle }
@@ -519,7 +519,7 @@ final class StillRunningCommandTests: XCTestCase {
         await waitUntil("session never settled after the exit") { resyncs.value.count == 1 }
         XCTAssertEqual(resyncs.value, [false], "no lid event was refused, so only the floors run")
         XCTAssertEqual(h.guardFake.calls.suffix(2), ["lowpowermode 1", "pmset -g custom"])
-        XCTAssertEqual(try h.store.loadState()?.lowPowerSetByUs, true, "ownership of a mode Awake switched on dropped")
+        XCTAssertEqual(try h.store.loadState()?.lowPowerSetByUs, true, "ownership of a mode Ember switched on dropped")
 
         let ended = await m.end(reason: .user)
         XCTAssertEqual(ended, .restored)

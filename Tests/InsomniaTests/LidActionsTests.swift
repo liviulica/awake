@@ -175,7 +175,7 @@ final class LidActionsTests: XCTestCase {
         XCTAssertEqual(h.display.sets, [0])
         XCTAssertNil(m.lastError)
         XCTAssertTrue(logText().contains("display brightness read while dimmed or asleep and no trusted sample; restoring that value on open"), logText())
-        XCTAssertFalse(logText().contains("[error] awake: display brightness read while dimmed"), "a known-dim save is a warning, not an error")
+        XCTAssertFalse(logText().contains("[error] ember: display brightness read while dimmed"), "a known-dim save is a warning, not an error")
 
         await actions.onOpen()
         XCTAssertEqual(h.display.sets, [0, 0.0625])
@@ -913,7 +913,7 @@ final class LidActionsTests: XCTestCase {
         XCTAssertEqual(outcome, .incomplete(agentArmed: true))
         let post = try XCTUnwrap(h.notifier.posts.last)
         XCTAssertEqual(post.title, SessionManager.incompleteTitle)
-        XCTAssertEqual(post.body, "could not restore display brightness: set brightness. The recovery agent cannot restore display brightness or keyboard backlight. Awake tries again when a later session ends, and at its next launch.")
+        XCTAssertEqual(post.body, "could not restore display brightness: set brightness. The recovery agent cannot restore display brightness or keyboard backlight. Ember tries again when a later session ends, and at its next launch.")
         XCTAssertEqual(try h.store.loadState()?.savedDisplayBrightness, 0.7)
 
         h.display.throwOnSet = false
@@ -1116,7 +1116,7 @@ final class LidActionsTests: XCTestCase {
         XCTAssertFalse(h.audio.muted)
         XCTAssertEqual(try h.store.loadState()?.savedAudioOutputs.map(\.withoutSaveID), [Self.headsetSaved])
         let lines = StatusItemController.menuItems(manager: m, status: PlaceholderStatus(), awake: AwakeController(assertion: FakeAwakeAssertion()), now: h.clock.now).map(\.title)
-        XCTAssertTrue(lines.contains("\u{26A0} USB Headset is still muted from a lid close; Awake restores it when it reconnects"), "\(lines)")
+        XCTAssertTrue(lines.contains("\u{26A0} USB Headset is still muted from a lid close; Ember restores it when it reconnects"), "\(lines)")
         XCTAssertTrue(lines.contains("Stop waiting for USB Headset"), "\(lines)")
 
         // macOS keeps a device's mute, so the headset comes back muted.
@@ -1173,7 +1173,7 @@ final class LidActionsTests: XCTestCase {
         XCTAssertFalse(h.audio.muted, "the speakers are not touched")
         let post = try XCTUnwrap(h.notifier.posts.last)
         XCTAssertEqual(post.title, "Session ended")
-        XCTAssertEqual(post.body, "Awake quit. Sleep is back to normal. USB Headset was not connected, so it is still muted. Awake restores its volume when it reconnects while Awake is running, or at the next launch.")
+        XCTAssertEqual(post.body, "Ember quit. Sleep is back to normal. USB Headset was not connected, so it is still muted. Ember restores its volume when it reconnects while Ember is running, or at the next launch.")
         XCTAssertFalse(h.notifier.posts.contains { $0.title == SessionManager.incompleteTitle })
         XCTAssertEqual(m.outputsWaitingForRestore.map(\.withoutSaveID), [Self.headsetSaved])
 
@@ -1320,7 +1320,7 @@ final class LidActionsTests: XCTestCase {
         XCTAssertNil(m.pendingEnd)
         let post = try XCTUnwrap(h.notifier.posts.last)
         XCTAssertEqual(post.title, SessionManager.incompleteTitle)
-        XCTAssertEqual(post.body, "could not restore audio on MacBook Pro Speakers: apply failed (OSStatus -1); kept in the journal to retry. The recovery agent cannot restore output volume. Awake tries again in 1 s while it runs, and at its next launch.")
+        XCTAssertEqual(post.body, "could not restore audio on MacBook Pro Speakers: apply failed (OSStatus -1); kept in the journal to retry. The recovery agent cannot restore output volume. Ember tries again in 1 s while it runs, and at its next launch.")
         XCTAssertTrue(h.audio.muted)
 
         h.audio.throwOnApply = false
@@ -1876,7 +1876,7 @@ final class LidActionsTests: XCTestCase {
 
         await actions.onOpen()
         XCTAssertEqual(h.procs.resumed, [[100, 101]])
-        XCTAssertFalse(h.procs.resumed.flatMap { $0 }.contains(102), "SIGCONT sent to a process Awake never stopped")
+        XCTAssertFalse(h.procs.resumed.flatMap { $0 }.contains(102), "SIGCONT sent to a process Ember never stopped")
     }
 
     /// The kernel is re-checked at SIGSTOP time. A pid it would not stop
@@ -1974,7 +1974,7 @@ final class LidActionsTests: XCTestCase {
             let m2 = relaunch.makeManager()
             await m2.reconcile()
 
-            XCTAssertFalse(relaunch.procs.signaled.contains(101), "\(moment): SIGCONT to a process Awake never stopped")
+            XCTAssertFalse(relaunch.procs.signaled.contains(101), "\(moment): SIGCONT to a process Ember never stopped")
             XCTAssertEqual(relaunch.procs.signaled, resumed, moment)
             let kept = try XCTUnwrap(try relaunch.store.loadState(), moment).frozenProcesses
             XCTAssertTrue(kept.allSatisfy { $0.identity == nil }, "\(moment): \(kept)")
@@ -2037,7 +2037,7 @@ final class LidActionsTests: XCTestCase {
         try FileManager.default.setAttributes([.immutable: false], ofItemAtPath: file)
 
         XCTAssertEqual(h.procs.suspended, [[100, 101, 102]])
-        XCTAssertEqual(h.procs.cancelled, [[100, 102]], "the stops Awake made were not undone at once")
+        XCTAssertEqual(h.procs.cancelled, [[100, 102]], "the stops Ember made were not undone at once")
         XCTAssertEqual(h.procs.resumed, [], "a rollback through resume skips a stop that is still pending")
         let after = try XCTUnwrap(try h.store.loadState())
         XCTAssertEqual(after.frozenProcesses, [
@@ -2056,7 +2056,7 @@ final class LidActionsTests: XCTestCase {
         // 101 is still stopped by its other owner; 100 and 102 run again.
         h.procs.stoppedNow = [101]
         await actions.onOpen()
-        XCTAssertEqual(h.procs.signaled, [100, 102], "SIGCONT to a process Awake never stopped")
+        XCTAssertEqual(h.procs.signaled, [100, 102], "SIGCONT to a process Ember never stopped")
         XCTAssertEqual(try h.store.loadState()?.frozenProcesses, [])
         XCTAssertEqual(m.effectiveState, m.state)
         XCTAssertFalse(m.lastError?.contains("journaled without identity") ?? false, "lid open reported a pid this freeze never stopped: \(m.lastError ?? "")")

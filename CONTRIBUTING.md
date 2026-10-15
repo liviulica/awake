@@ -1,11 +1,11 @@
 # Contributing
 
-Awake is a native Swift macOS app, forked from
+Ember is a native Swift macOS app, forked from
 [Insomnia](https://github.com/krishhgg/Insomnia). Build and run the Swift test
 suite on macOS 26 with an Xcode toolchain that supports the package's Swift 6.2
 tools version. Pull requests should include regression tests for changed
 behavior and pass CI. The Swift module and type names are still `Insomnia`, to
-keep upstream fixes mergeable; user-visible names are Awake.
+keep upstream fixes mergeable; user-visible names are Ember.
 
 ## Tests
 
@@ -20,7 +20,7 @@ keep upstream fixes mergeable; user-visible names are Awake.
   loaded machine, to show they do not depend on how fast the machine is. Run it
   after changing one of them, or pass filters to stress other tests.
 - `scripts/smoke-test.sh` builds the test build of the app, launches it in test
-  mode in a throwaway `AWAKE_HOME`, and drives it end to end. CI runs it too.
+  mode in a throwaway `EMBER_HOME`, and drives it end to end. CI runs it too.
 
 ## CI
 
@@ -39,10 +39,10 @@ array expansion under `set -u`.
 
 Use injected system dependencies and temporary journals for automated tests.
 The test bundle links the InsomniaTestHome target (Tests/InsomniaTestHome),
-whose constructor points `AWAKE_HOME` at a throwaway directory when the bundle
+whose constructor points `EMBER_HOME` at a throwaway directory when the bundle
 loads, before XCTest runs anything and whatever `--filter` is used, so no test
 writes to the real ~/Library/Logs or ~/Library/Application Support.
-TestIsolationTests fails if `AWAKE_HOME` is unset or missing, or if any path
+TestIsolationTests fails if `EMBER_HOME` is unset or missing, or if any path
 the app resolves, such as the log a default-argument line goes to, falls
 outside it or inside the real ~/Library.
 
@@ -64,7 +64,7 @@ work; never stress or heat a machine in a bag. The checklist is in the design
 spec, "Testing" ([docs/superpowers/specs/2026-10-14-awake-design.md](docs/superpowers/specs/2026-10-14-awake-design.md)).
 New behavior that needs a real-Mac check adds an item to it. In a pull
 request, say which checks you ran, on which macOS and hardware, with the log
-lines (`~/Library/Logs/Awake/awake.log`) and `pmset` readings that show the
+lines (`~/Library/Logs/Ember/ember.log`) and `pmset` readings that show the
 result, and which you did not run.
 
 ## App icon

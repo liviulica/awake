@@ -1,12 +1,12 @@
-> This is Insomnia's original spec; Awake's changes are in docs/superpowers/specs/2026-10-14-awake-design.md.
+> This is Insomnia's original spec; Ember's changes are in docs/superpowers/specs/2026-10-14-awake-design.md.
 
 # Insomnia — keep the Mac awake and working with the lid closed
 
 These are design notes, not a release certification. The
 [README](../README.md) describes supported use and recovery limits; the
-release validation record (Insomnia's doc, removed in Awake; see git history) records the real-Mac
+release validation record (Insomnia's doc, removed in Ember; see git history) records the real-Mac
 checks each release passed, and
-Releasing, "Real-Mac checks before a release" (Insomnia's doc, removed in Awake; see git history) lists the checks
+Releasing, "Real-Mac checks before a release" (Insomnia's doc, removed in Ember; see git history) lists the checks
 to run before the next one. Historical model sketches and UI proposals below
 are not exhaustive descriptions of the current code.
 

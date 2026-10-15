@@ -27,7 +27,7 @@ final class ReconcileTests: XCTestCase {
         XCTAssertFalse(h.guardFake.calls.contains("disablesleep 1"), "\(h.guardFake.calls)")
     }
 
-    /// Sleep was turned back on while Awake was not running: the session
+    /// Sleep was turned back on while Ember was not running: the session
     /// ends instead of prompting for the password at launch.
     func testReconcileEndsSessionWhenSleepWasTurnedBackOn() async throws {
         try h.store.saveSession(Session(startedAt: h.clock.now, endsAt: h.clock.now.addingTimeInterval(3600)))
@@ -39,7 +39,7 @@ final class ReconcileTests: XCTestCase {
         await m.reconcile()
         XCTAssertNil(m.session)
         XCTAssertFalse(h.guardFake.calls.contains("disablesleep 1"), "never prompt at launch: \(h.guardFake.calls)")
-        XCTAssertEqual(m.lastError, "Lid closed mode ended: sleep was turned back on while Awake was not running. Start it again from the menu.")
+        XCTAssertEqual(m.lastError, "Lid closed mode ended: sleep was turned back on while Ember was not running. Start it again from the menu.")
     }
 
     /// The sleep setting cannot be read at launch: the session ends too (it
@@ -56,7 +56,7 @@ final class ReconcileTests: XCTestCase {
         await m.reconcile()
         XCTAssertNil(m.session)
         XCTAssertFalse(h.guardFake.calls.contains("disablesleep 1"), "never prompt at launch: \(h.guardFake.calls)")
-        XCTAssertEqual(m.lastError, "Lid closed mode ended: Awake could not read the sleep setting at launch. Start it again from the menu.")
+        XCTAssertEqual(m.lastError, "Lid closed mode ended: Ember could not read the sleep setting at launch. Start it again from the menu.")
     }
 
     // (a) expired session on disk -> sleep restored, pids resumed, low power cleared, files cleared
@@ -133,13 +133,13 @@ final class ReconcileTests: XCTestCase {
         let m = h.makeManager()
         await m.reconcile()
         XCTAssertNil(m.session)
-        XCTAssertEqual(h.guardFake.calls, ["pmset -g"], "a SleepDisabled bit Awake did not set was cleared")
+        XCTAssertEqual(h.guardFake.calls, ["pmset -g"], "a SleepDisabled bit Ember did not set was cleared")
         XCTAssertTrue(h.guardFake.sleepDisabled)
         XCTAssertNil(try h.store.loadSession())
         XCTAssertEqual(h.notifier.posts.map(\.title), [SessionManager.foreignSleepTitle])
         XCTAssertTrue(h.notifier.posts[0].body.contains(SessionManager.foreignSleepCommand), h.notifier.posts[0].body)
         XCTAssertTrue(try XCTUnwrap(m.foreignSleepWarning).contains(SessionManager.foreignSleepCommand), m.foreignSleepWarning ?? "")
-        XCTAssertNil(m.lastError, "a bit someone else set is not an Awake failure")
+        XCTAssertNil(m.lastError, "a bit someone else set is not an Ember failure")
 
         // A second reconcile keeps the warning line but does not post again.
         await m.reconcile()

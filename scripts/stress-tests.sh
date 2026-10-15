@@ -50,7 +50,7 @@ else
   FILTERS=("${DEFAULT_FILTERS[@]}")
 fi
 
-LOGS="$("$MKTEMP" -d "${TMPDIR:-/tmp}/awake-stress.XXXXXX")"
+LOGS="$("$MKTEMP" -d "${TMPDIR:-/tmp}/ember-stress.XXXXXX")"
 load_pids=""
 stop_load() {
   local pid

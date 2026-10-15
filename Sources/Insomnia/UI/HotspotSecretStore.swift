@@ -1,7 +1,7 @@
 import Foundation
 
 /// Where the hotspot password lives. The system layer ships the Keychain
-/// implementation (`awake-hotspot` in the login keychain); the settings
+/// implementation (`ember-hotspot` in the login keychain); the settings
 /// window only ever talks to this protocol. A save may wait on a keychain
 /// dialog until the user answers it, so every call is async and the
 /// keychain work runs off the main actor.

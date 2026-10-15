@@ -2,7 +2,7 @@ import AppKit
 import Observation
 
 /// The menu bar item (spec "Interaction"): a fixed template icon, a
-/// countdown when something is timed, left-click toggles Awake mode,
+/// countdown when something is timed, left-click toggles screen mode,
 /// right-click (or any click during a lid session) opens the menu. A plain
 /// NSStatusItem with no hosted view and no key window: nothing here takes
 /// the keyboard, and the item's width changes only when the countdown
@@ -23,7 +23,7 @@ final class StatusItemController: NSObject {
     }
 
     /// Autosave name so macOS remembers where the user drags the item.
-    static let autosaveName = "awake.status"
+    static let autosaveName = "ember.status"
 
     let manager: SessionManager
     let status: any StatusSource
@@ -96,8 +96,8 @@ final class StatusItemController: NSObject {
         defaults.set(40, forKey: key)
     }
 
-    /// A lid session wins over Awake mode (which is off during one anyway):
-    /// the robot and the closed-lid time left. Awake mode shows its time
+    /// A lid session wins over screen mode (which is off during one anyway):
+    /// the robot and the closed-lid time left. Screen mode shows its time
     /// left only when it was given a duration.
     static func presentation(lidRemaining: TimeInterval?, awake: AwakeController.State, now: Date) -> Presentation {
         if let lid = lidRemaining {
@@ -112,7 +112,7 @@ final class StatusItemController: NSObject {
     }
 
     /// Right-click and ctrl-click open the menu. During a lid session a left
-    /// click opens it too: toggling there would do nothing (Awake mode is
+    /// click opens it too: toggling there would do nothing (screen mode is
     /// part of the session), and the spec wants nothing destructive on a
     /// stray click.
     static func clickAction(isRightClick: Bool, controlHeld: Bool, lidActive: Bool) -> ClickAction {
@@ -132,7 +132,7 @@ final class StatusItemController: NSObject {
     // MARK: State
 
     /// Sessions can start, pause or end without the UI (reconcile at launch,
-    /// the lid, the deadline, the battery floor), and Awake mode can end on
+    /// the lid, the deadline, the battery floor), and screen mode can end on
     /// its own timer. Keep the item, the lid hold and the reminder in step.
     private func observe() {
         withObservationTracking {
@@ -195,7 +195,7 @@ final class StatusItemController: NSObject {
     }
 
     /// Not assigned to `statusItem.menu`, which would swallow the left click
-    /// that toggles Awake mode.
+    /// that toggles screen mode.
     private func showMenu() {
         guard let button = statusItem.button else { return }
         // The lid, the battery and the watts are read right here, so the menu
@@ -225,7 +225,7 @@ final class StatusItemController: NSObject {
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 4), in: button)
     }
 
-    /// The menu's lines from what the session, Awake mode and the status
+    /// The menu's lines from what the session, screen mode and the status
     /// source report now. Static, so a test can check them without a status item.
     static func menuItems(manager: SessionManager, status: any StatusSource, awake: AwakeController, now: Date) -> [StatusMenu.Item] {
         StatusMenu.items(

@@ -1,3 +1,5 @@
+Note (2026-10-15): the app was renamed from Awake to Ember; this document keeps the name it was written with.
+
 # Awake: design
 
 Date: 2026-10-14 · Status: approved in conversation, awaiting written review · Working title: **Awake**

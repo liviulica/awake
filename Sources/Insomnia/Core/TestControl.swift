@@ -7,9 +7,9 @@ import Foundation
 // of it: scripts/check-lid-simulation-gate.sh fails on any copy of the
 // `TestMode.marker` text in that binary.
 
-/// One line of `$AWAKE_HOME/test-control`.
+/// One line of `$EMBER_HOME/test-control`.
 enum TestControlCommand: Equatable, Sendable {
-    /// Awake mode on, for `seconds` or (nil) until turned off.
+    /// Screen mode on, for `seconds` or (nil) until turned off.
     case awakeOn(TimeInterval?)
     case awakeOff
     /// A lid session of this many seconds of closed-lid time.
@@ -60,12 +60,12 @@ enum TestControlCommand: Equatable, Sendable {
     }
 }
 
-/// What `$AWAKE_HOME/test-status.json` holds: the state the status item
+/// What `$EMBER_HOME/test-status.json` holds: the state the status item
 /// shows, and the lid hold that decides the real IOPM assertion. Every key
 /// is always written; a value that does not apply is JSON null.
 struct TestControlStatus: Equatable, Encodable {
     let awakeOn: Bool
-    /// ISO 8601; nil when Awake mode is off or runs until turned off.
+    /// ISO 8601; nil when screen mode is off or runs until turned off.
     let awakeEndsAt: String?
     let lidActive: Bool
     /// nil without a lid session.

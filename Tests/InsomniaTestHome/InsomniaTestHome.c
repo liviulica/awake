@@ -1,6 +1,6 @@
 // Test-only. Linked into the test bundle, so this constructor runs when the
 // bundle loads, before XCTest discovers a single test and whatever filter
-// the run uses. Log.append and SessionManager.live resolve AWAKE_HOME
+// the run uses. Log.append and SessionManager.live resolve EMBER_HOME
 // at call time and fall back to the real ~/Library when it is unset; with
 // the variable set here, no test, filtered or not, can write there.
 // The directory is removed when the process exits normally.
@@ -13,7 +13,7 @@
 #include <string.h>
 #include <unistd.h>
 
-static const char *const kKey = "AWAKE_HOME";
+static const char *const kKey = "EMBER_HOME";
 static char g_root[1024];
 static int g_have_root = 0;
 static pid_t g_owner = 0;
@@ -39,7 +39,7 @@ static void insomnia_test_home_install(void) {
     size_t len = strlen(tmp);
     if (len > 0 && tmp[len - 1] == '/') tmp[len - 1] = '\0';
 
-    snprintf(g_root, sizeof g_root, "%s/awake-tests-process-%d-XXXXXX", tmp, (int)getpid());
+    snprintf(g_root, sizeof g_root, "%s/ember-tests-process-%d-XXXXXX", tmp, (int)getpid());
     if (mkdtemp(g_root) == NULL) {
         perror("InsomniaTestHome: mkdtemp");
         fprintf(stderr, "InsomniaTestHome: refusing to run tests against the real ~/Library\n");

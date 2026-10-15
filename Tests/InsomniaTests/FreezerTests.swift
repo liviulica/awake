@@ -19,7 +19,7 @@ final class FreezerTests: XCTestCase {
     let apps: [RunningApp] = [
         RunningApp(pid: 100, bundleId: "com.tinyspeck.slackmacgap", name: "Slack"),
         RunningApp(pid: 200, bundleId: "com.apple.Safari", name: "Safari"),
-        RunningApp(pid: 300, bundleId: Paths.bundleIdentifier, name: "Awake"),
+        RunningApp(pid: 300, bundleId: Paths.bundleIdentifier, name: "Ember"),
         RunningApp(pid: 400, bundleId: "com.docker.docker", name: "Docker"),
     ]
 
@@ -185,8 +185,8 @@ final class FreezerTests: XCTestCase {
         var c = Config()
         c.freezeAllApps = true
         c.freezeList = []
-        XCTAssertEqual(scope(c, [RunningApp(pid: 300, bundleId: Paths.bundleIdentifier, name: "Awake")]), [])
-        let other = RunningApp(pid: 301, bundleId: "dev.other.awake", name: "Awake")
+        XCTAssertEqual(scope(c, [RunningApp(pid: 300, bundleId: Paths.bundleIdentifier, name: "Ember")]), [])
+        let other = RunningApp(pid: 301, bundleId: "dev.other.awake", name: "Ember")
         XCTAssertEqual(FreezePlanner.lidCloseBundleIds(config: c, apps: [other], selfBundleId: "dev.other.awake"), [])
         XCTAssertEqual(FreezePlanner.lidCloseBundleIds(config: c, apps: [other], selfBundleId: "x.y"), ["dev.other.awake"])
     }

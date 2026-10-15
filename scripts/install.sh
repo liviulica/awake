@@ -1,8 +1,8 @@
 #!/bin/bash
-# Install Awake: put Awake.app (with backstop.sh sealed inside it) in
+# Install Ember: put Ember.app (with backstop.sh sealed inside it) in
 # ~/Applications, install the LaunchAgent that verifies the bundle and runs
 # that script, and write the sudoers rule. Idempotent; asks for sudo once (for
-# /etc/sudoers.d/awake), before anything of a previous install is touched.
+# /etc/sudoers.d/ember), before anything of a previous install is touched.
 # The bundle and the LaunchAgent are replaced together, in one locked step
 # (the agent pins one build, so the two must match at every moment), and a
 # run that stops after that step began puts the previous bundle back. Not
@@ -14,7 +14,7 @@
 #                                             (scripts/build-app.sh, ad-hoc
 #                                             signed); only from a checkout's
 #                                             scripts/ folder (in_checkout)
-#   ./install.sh --app /path/to/Awake.app  installs a prebuilt bundle, such
+#   ./install.sh --app /path/to/Ember.app  installs a prebuilt bundle, such
 #                                             as the one in a release zip
 #                                             (arm64 only, so this stops on a
 #                                             Mac without Apple Silicon), after
@@ -35,11 +35,11 @@
 set -euo pipefail
 
 # Installation always uses the standard per-user layout. A relocated
-# AWAKE_HOME would make the backstop run here act on one tree while the
+# EMBER_HOME would make the backstop run here act on one tree while the
 # app is installed against another, so refuse rather than guess.
-if [[ -n "${AWAKE_HOME:-}" ]]; then
-  echo "AWAKE_HOME is set ($AWAKE_HOME). install.sh only supports the standard layout under ~/Library;" >&2
-  echo "unset AWAKE_HOME and rerun. Nothing was changed." >&2
+if [[ -n "${EMBER_HOME:-}" ]]; then
+  echo "EMBER_HOME is set ($EMBER_HOME). install.sh only supports the standard layout under ~/Library;" >&2
+  echo "unset EMBER_HOME and rerun. Nothing was changed." >&2
   exit 1
 fi
 
@@ -71,26 +71,26 @@ LOCK_TIMEOUT_SECONDS=10
 CALL_TIMEOUT_SECONDS=30
 
 # What a prebuilt bundle (--app) must be.
-BUNDLE_ID=app.chargingpixels.awake
+BUNDLE_ID=app.chargingpixels.ember
 
 # The folder this script is in. build-app.sh and backstop.sh are taken from
 # there, and only when it is the scripts/ folder of a source checkout, with
 # Package.swift one level up (in_checkout). A release zip's folder is not: it
-# holds Awake.app, install.sh and uninstall.sh, so a build-app.sh found
+# holds Ember.app, install.sh and uninstall.sh, so a build-app.sh found
 # beside this script there was added after the zip was unpacked, for example
 # by another account that created the folder in /tmp beforehand. Never the
-# folder above either: a zip unpacked at /tmp/Awake-<version> would make
+# folder above either: a zip unpacked at /tmp/Ember-<version> would make
 # that /tmp, where any account can create scripts/build-app.sh.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 in_checkout() { [[ "${SCRIPT_DIR##*/}" == scripts && -f "${SCRIPT_DIR%/*}/Package.swift" ]]; }
 APP_DIR="$HOME/Applications"
-APP="$APP_DIR/Awake.app"
-APP_SUPPORT="$HOME/Library/Application Support/Awake"
-LOG_DIR="$HOME/Library/Logs/Awake"
+APP="$APP_DIR/Ember.app"
+APP_SUPPORT="$HOME/Library/Application Support/Ember"
+LOG_DIR="$HOME/Library/Logs/Ember"
 LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
-LABEL="app.chargingpixels.awake.recovery"
+LABEL="app.chargingpixels.ember.recovery"
 PLIST="$LAUNCH_AGENTS/$LABEL.plist"
-SUDOERS=/etc/sudoers.d/awake
+SUDOERS=/etc/sudoers.d/ember
 # Insomnia drives the same SleepDisabled bit; the two must not be installed
 # together (spec "Coexistence").
 INSOMNIA_SUDOERS=/etc/sudoers.d/insomnia
@@ -102,7 +102,7 @@ UID_NUM="$(id -u)"
 # renames on one filesystem. The staging directory's name carries the PID of
 # the run that made it, so a later run can tell a dead run's leftover from
 # the directory of an install that is still running (step 5).
-PREVIOUS_APP="$APP_DIR/.Awake.app.previous"
+PREVIOUS_APP="$APP_DIR/.Ember.app.previous"
 STAGE=""
 NEW_APP=""
 # Where build-app.sh writes a source build before it is staged.
@@ -113,7 +113,7 @@ CANDIDATE_DIR=""
 WORK=""
 
 step() { printf '\n==> %s\n' "$*"; }
-usage() { echo "usage: $0 [--app /path/to/Awake.app [--allow-unverified-origin]]" >&2; }
+usage() { echo "usage: $0 [--app /path/to/Ember.app [--allow-unverified-origin]]" >&2; }
 # A command for the user to paste, each word quoted for the shell, so a space,
 # quote or $ in a path stays part of that path.
 command_line() { local line; line="$(printf '%q ' "$@")"; printf '%s' "${line% }"; }
@@ -296,7 +296,7 @@ cleanup() {
 }
 trap cleanup EXIT
 # Scratch space for bounded(): this run's own directory, emptied on exit.
-WORK="$("$MKTEMP" -d "${TMPDIR:-/tmp}/awake-install.XXXXXX")"
+WORK="$("$MKTEMP" -d "${TMPDIR:-/tmp}/ember-install.XXXXXX")"
 
 # 0. Insomnia ----------------------------------------------------------------
 #    Refused before anything else (the build, the password prompt), so
@@ -306,7 +306,7 @@ for path in "$INSOMNIA_SUDOERS" "$INSOMNIA_PLIST" "$INSOMNIA_APP"; do
   if [[ -e "$path" ]]; then insomnia_found="$insomnia_found $path"; fi
 done
 if [[ -n "$insomnia_found" ]]; then
-  echo "Insomnia is installed (found:$insomnia_found). Awake and Insomnia both control this Mac's sleep setting and cannot be installed together. Uninstall Insomnia first (scripts/uninstall.sh in your Insomnia checkout), then run this installer again. Nothing was changed." >&2
+  echo "Insomnia is installed (found:$insomnia_found). Ember and Insomnia both control this Mac's sleep setting and cannot be installed together. Uninstall Insomnia first (scripts/uninstall.sh in your Insomnia checkout), then run this installer again. Nothing was changed." >&2
   exit 1
 fi
 
@@ -315,13 +315,13 @@ fi
 #    changed when this step fails.
 if [[ -n "$PREBUILT" ]]; then
   step "Checking the prebuilt bundle $PREBUILT"
-  # Release bundles are built for arm64 only (Awake supports Apple Silicon
+  # Release bundles are built for arm64 only (Ember supports Apple Silicon
   # only; the release workflow is phase 2). hw.optional.arm64 describes the hardware, so a shell
   # running under Rosetta on an Apple Silicon Mac still reads 1; an Intel
   # Mac reads 0 or has no such key.
   arm64="$("$SYSCTL" -n hw.optional.arm64 2>/dev/null || true)"
   if [[ "$arm64" != 1 ]]; then
-    echo "Release bundles of Awake run on Apple Silicon Macs only, and this Mac is not one ('sysctl -n hw.optional.arm64' gave ${arm64:-no value}). Build and install from a source checkout instead (README, Build from source). Nothing was changed." >&2
+    echo "Release bundles of Ember run on Apple Silicon Macs only, and this Mac is not one ('sysctl -n hw.optional.arm64' gave ${arm64:-no value}). Build and install from a source checkout instead (README, Build from source). Nothing was changed." >&2
     exit 1
   fi
   if [[ ! -d "$PREBUILT" || ! -f "$PREBUILT/Contents/Info.plist" ]]; then
@@ -333,7 +333,7 @@ if [[ -n "$PREBUILT" ]]; then
   # shared folder, /tmp); a bundle swapped there while the password prompt
   # waits is never copied in. BUILD_DIR is removed at exit, as for a build.
   BUILD_DIR="$("$MKTEMP" -d)"
-  CHECKED_APP="$BUILD_DIR/Awake.app"
+  CHECKED_APP="$BUILD_DIR/Ember.app"
   if ! "$DITTO" "$PREBUILT" "$CHECKED_APP"; then
     echo "could not copy $PREBUILT to check it. Nothing was changed." >&2
     exit 1
@@ -370,13 +370,13 @@ if [[ -n "$PREBUILT" ]]; then
   # check, so every prebuilt bundle needs --allow-unverified-origin, the flag
   # that says they did.
   if (( ALLOW_UNVERIFIED_ORIGIN )); then
-    echo "WARNING: the origin of Awake $PREBUILT_VERSION is not verified. Its signature shows the bundle is intact, not who made it."
+    echo "WARNING: the origin of Ember $PREBUILT_VERSION is not verified. Its signature shows the bundle is intact, not who made it."
     echo "--allow-unverified-origin: installing it anyway. Its backstop.sh will run as you at login and every 60 s."
     echo "Continue only if you checked the zip yourself with SHA256SUMS and 'gh attestation verify' (README, Install)."
     echo "Releases are not notarized, so macOS blocks the first launch of a downloaded one until you allow it in System Settings > Privacy & Security."
   else
     cat >&2 <<REFUSE
-The origin of Awake $PREBUILT_VERSION at $PREBUILT is not verified. Its signature shows the bundle is
+The origin of Ember $PREBUILT_VERSION at $PREBUILT is not verified. Its signature shows the bundle is
 intact, not who made it: anyone can sign a bundle with this identifier, and this install.sh cannot tell
 where it came from. Installing it would run its backstop.sh as you at login and every 60 s. Nothing was changed.
 Verify the zip yourself first ('shasum -a 256 -c SHA256SUMS' and 'gh attestation verify' with --signer-workflow,
@@ -396,7 +396,7 @@ else
   fi
   BUILD_DIR="$("$MKTEMP" -d)"
   "$SCRIPT_DIR/build-app.sh" --output "$BUILD_DIR"
-  SOURCE_APP="$BUILD_DIR/Awake.app"
+  SOURCE_APP="$BUILD_DIR/Ember.app"
 fi
 
 # 2. sudoers -----------------------------------------------------------------
@@ -406,7 +406,7 @@ fi
 step "Writing $SUDOERS (requires your password once)"
 TMP_SUDOERS="$("$MKTEMP")"
 cat > "$TMP_SUDOERS" <<SUDO
-# Installed by Awake install.sh. Three commands, none of which can keep the
+# Installed by Ember install.sh. Three commands, none of which can keep the
 # Mac awake: turning sleep off asks for the administrator password each time.
 $USER ALL=(root) NOPASSWD: /usr/bin/pmset -a disablesleep 0
 $USER ALL=(root) NOPASSWD: /usr/bin/pmset -b lowpowermode 1
@@ -440,26 +440,26 @@ fi
 #    replaced in step 6, in the same locked step as the LaunchAgent: the
 #    agent pins one build's requirement, so the bundle at $APP and the loaded
 #    agent must be a matching pair before, during and after a failed run.
-step "Staging Awake.app"
+step "Staging Ember.app"
 # Ask the app to quit and wait until it has actually exited. It refuses to
 # quit while it has unresolved recovery work; that refusal stands (no pkill),
 # and nothing of the old install is overwritten while it is still running.
-if "$PGREP" -x -U "$UID" Awake >/dev/null 2>&1; then
-  echo "Awake is running; quitting it first (this ends any session)."
-  "$OSASCRIPT" -e 'tell application id "app.chargingpixels.awake" to quit' >/dev/null 2>&1 || true
+if "$PGREP" -x -U "$UID" Ember >/dev/null 2>&1; then
+  echo "Ember is running; quitting it first (this ends any session)."
+  "$OSASCRIPT" -e 'tell application id "app.chargingpixels.ember" to quit' >/dev/null 2>&1 || true
   for (( i = 0; i < QUIT_WAIT_SECONDS; i++ )); do
-    "$PGREP" -x -U "$UID" Awake >/dev/null 2>&1 || break
+    "$PGREP" -x -U "$UID" Ember >/dev/null 2>&1 || break
     sleep 1
   done
-  if "$PGREP" -x -U "$UID" Awake >/dev/null 2>&1; then
-    echo "Awake is still running after ${QUIT_WAIT_SECONDS}s (it may be refusing to quit until its own recovery finishes)." >&2
+  if "$PGREP" -x -U "$UID" Ember >/dev/null 2>&1; then
+    echo "Ember is still running after ${QUIT_WAIT_SECONDS}s (it may be refusing to quit until its own recovery finishes)." >&2
     echo "Let it finish or quit it from its menu, then rerun. $SUDOERS is installed; the app (with backstop.sh) and the LaunchAgent were not touched." >&2
     exit 1
   fi
 fi
 "$MKDIR" -p "$APP_DIR"
-STAGE="$("$MKTEMP" -d "$APP_DIR/.Awake.app.staging.$$.XXXXXX")"
-NEW_APP="$STAGE/Awake.app"
+STAGE="$("$MKTEMP" -d "$APP_DIR/.Ember.app.staging.$$.XXXXXX")"
+NEW_APP="$STAGE/Ember.app"
 # The bundle is copied here whole and reaches $APP in one rename under the
 # recovery lock (step 5), so backstop.sh never sees this binary beside an
 # older Info.plist or the reverse (it runs the binary's --resume-frozen mode
@@ -533,12 +533,12 @@ fi
 # session. A sudo that does not stop on SIGTERM keeps the lock until it ends.
 # A pgrep that cannot answer does not say the app is gone, so the run stops.
 pgrep_rc=0
-bounded "$PGREP" -x -U "$UID" Awake || pgrep_rc=$?
+bounded "$PGREP" -x -U "$UID" Ember || pgrep_rc=$?
 if (( pgrep_rc == 0 )); then
-  echo "Awake started again; quit it and rerun. The app at $APP and the LaunchAgent were not touched." >&2
+  echo "Ember started again; quit it and rerun. The app at $APP and the LaunchAgent were not touched." >&2
   exit 1
 elif (( pgrep_rc != 1 )); then
-  echo "pgrep $(call_result "$pgrep_rc"), so whether Awake started again is unknown. The app at $APP and the LaunchAgent were not touched; rerun." >&2
+  echo "pgrep $(call_result "$pgrep_rc"), so whether Ember started again is unknown. The app at $APP and the LaunchAgent were not touched; rerun." >&2
   exit 1
 fi
 # The rule was verified in step 2, before this run waited for the lock. An
@@ -617,8 +617,8 @@ fi
 # alive belongs to an install that is still assembling its bundle and has
 # not reached this lock yet, so it stays. kill -0 only asks whether the
 # process exists; it sends no signal.
-staging_re='^\.Awake\.app\.staging\.([0-9]+)\.[A-Za-z0-9]{6}$'
-for dir in "$APP_DIR"/.Awake.app.staging.*; do
+staging_re='^\.Ember\.app\.staging\.([0-9]+)\.[A-Za-z0-9]{6}$'
+for dir in "$APP_DIR"/.Ember.app.staging.*; do
   [[ -d "$dir" && ! -L "$dir" && "$dir" != "$STAGE" ]] || continue
   [[ "${dir##*/}" =~ $staging_re ]] || continue
   if "$KILL" -0 "${BASH_REMATCH[1]}" 2>/dev/null; then
@@ -698,7 +698,7 @@ Install stopped: the backstop could not fully undo a previous session
 (exit status $recovery_rc). $pair_note
 Installed so far: $SUDOERS.
 $agent_note
-Check $LOG_DIR/awake.log and resolve what it reports. Saved audio, display
+Check $LOG_DIR/ember.log and resolve what it reports. Saved audio, display
 brightness or keyboard backlight needs the app; if one is installed, open it:
   $(command_line open "$APP")
 $manual_step
@@ -843,7 +843,7 @@ fi
 #    are `/bin/sh -c "$AGENT_PROGRAM" sh "$REQUIREMENT" "$APP"`: the program
 #    runs `codesign --verify --strict -R=<requirement>` on the bundle and
 #    execs Contents/Resources/backstop.sh only when that passes; otherwise it
-#    logs one line to $LOG_DIR/awake.log and exits 1 without running
+#    logs one line to $LOG_DIR/ember.log and exits 1 without running
 #    anything. AGENT_PROGRAM must stay byte for byte what LaunchdBackstop.swift
 #    writes (LaunchdBackstopTests compares them), or the app reloads the agent
 #    at every session start. Same pattern as the app for the file itself: the
@@ -868,7 +868,7 @@ CANDIDATE="$CANDIDATE_DIR/$LABEL.candidate-$$.plist"
 before="$(loaded_state)"
 
 # shellcheck disable=SC2016  # the $1/$2/$HOME/$r below are for the agent's shell, not this one
-AGENT_PROGRAM='r="$(/usr/bin/codesign --verify --strict "-R=$1" "$2" 2>&1)" && exec /bin/bash "$2/Contents/Resources/backstop.sh"; mkdir -p "$HOME/Library/Logs/Awake"; printf "%s [error] backstop agent: %s does not satisfy the pinned code requirement; backstop.sh not run. Reinstall Awake (scripts/install.sh). codesign: %s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$2" "$(printf %s "$r" | tr "\n" " ")" >> "$HOME/Library/Logs/Awake/awake.log"; exit 1'
+AGENT_PROGRAM='r="$(/usr/bin/codesign --verify --strict "-R=$1" "$2" 2>&1)" && exec /bin/bash "$2/Contents/Resources/backstop.sh"; mkdir -p "$HOME/Library/Logs/Ember"; printf "%s [error] backstop agent: %s does not satisfy the pinned code requirement; backstop.sh not run. Reinstall Ember (scripts/install.sh). codesign: %s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$2" "$(printf %s "$r" | tr "\n" " ")" >> "$HOME/Library/Logs/Ember/ember.log"; exit 1'
 xml_escape() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
 cat > "$CANDIDATE" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -1143,6 +1143,6 @@ Next steps:
   1. Launch:            $(command_line open "$APP")
   2. Optional:          System Settings > Wi-Fi > Ask to join hotspots: Automatically
   3. Config lives at:   $APP_SUPPORT/config.json
-  4. Logs:              $LOG_DIR/awake.log
+  4. Logs:              $LOG_DIR/ember.log
   5. Uninstall:         $(command_line "$UNINSTALL")
 NEXT

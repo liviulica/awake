@@ -1,24 +1,24 @@
 import Foundation
 
-/// Every on-disk location Awake uses. The whole tree can be relocated with
-/// the `AWAKE_HOME` environment variable (tests, and `backstop.sh` honours
+/// Every on-disk location Ember uses. The whole tree can be relocated with
+/// the `EMBER_HOME` environment variable (tests, and `backstop.sh` honours
 /// the same variable with the same layout).
 ///
 /// Default layout:
-///   ~/Applications/Awake.app/Contents/Resources/backstop.sh
-///   ~/Library/Application Support/Awake/{session.json,state.json,config.json,unfinished-command.json}
-///   ~/Library/Logs/Awake/{awake.log,handoffs.log}
-///   ~/Library/LaunchAgents/app.chargingpixels.awake.recovery.plist
+///   ~/Applications/Ember.app/Contents/Resources/backstop.sh
+///   ~/Library/Application Support/Ember/{session.json,state.json,config.json,unfinished-command.json}
+///   ~/Library/Logs/Ember/{ember.log,handoffs.log}
+///   ~/Library/LaunchAgents/app.chargingpixels.ember.recovery.plist
 ///
-/// With AWAKE_HOME=/x:
-///   /x/Awake.app/Contents/Resources/backstop.sh
+/// With EMBER_HOME=/x:
+///   /x/Ember.app/Contents/Resources/backstop.sh
 ///   /x/{session.json,state.json,config.json,unfinished-command.json}
-///   /x/Logs/{awake.log,handoffs.log}
-///   /x/LaunchAgents/app.chargingpixels.awake.recovery.plist
+///   /x/Logs/{ember.log,handoffs.log}
+///   /x/LaunchAgents/app.chargingpixels.ember.recovery.plist
 struct Paths: Sendable, Equatable {
-    static let environmentKey = "AWAKE_HOME"
-    static let backstopLabel = "app.chargingpixels.awake.recovery"
-    static let bundleIdentifier = "app.chargingpixels.awake"
+    static let environmentKey = "EMBER_HOME"
+    static let backstopLabel = "app.chargingpixels.ember.recovery"
+    static let bundleIdentifier = "app.chargingpixels.ember"
 
     let appSupport: URL
     let logs: URL
@@ -36,13 +36,13 @@ struct Paths: Sendable, Equatable {
     /// Epoch seconds of the first backstop run that found the app gone.
     var appAbsentMarker: URL { appSupport.appendingPathComponent("app-absent-since") }
 
-    /// Relocated layout rooted at one directory (used for AWAKE_HOME).
+    /// Relocated layout rooted at one directory (used for EMBER_HOME).
     init(root: URL) {
         self.init(
             appSupport: root,
             logs: root.appendingPathComponent("Logs", isDirectory: true),
             launchAgents: root.appendingPathComponent("LaunchAgents", isDirectory: true),
-            appBundle: root.appendingPathComponent("Awake.app", isDirectory: true)
+            appBundle: root.appendingPathComponent("Ember.app", isDirectory: true)
         )
     }
 
@@ -51,14 +51,14 @@ struct Paths: Sendable, Equatable {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let library = home.appendingPathComponent("Library", isDirectory: true)
         return Paths(
-            appSupport: library.appendingPathComponent("Application Support/Awake", isDirectory: true),
-            logs: library.appendingPathComponent("Logs/Awake", isDirectory: true),
+            appSupport: library.appendingPathComponent("Application Support/Ember", isDirectory: true),
+            logs: library.appendingPathComponent("Logs/Ember", isDirectory: true),
             launchAgents: library.appendingPathComponent("LaunchAgents", isDirectory: true),
-            appBundle: home.appendingPathComponent("Applications/Awake.app", isDirectory: true)
+            appBundle: home.appendingPathComponent("Applications/Ember.app", isDirectory: true)
         )
     }
 
-    /// `AWAKE_HOME` if set, else `standard`.
+    /// `EMBER_HOME` if set, else `standard`.
     static func fromEnvironment(_ env: [String: String] = ProcessInfo.processInfo.environment) -> Paths {
         if let root = env[environmentKey], !root.isEmpty {
             return Paths(root: URL(fileURLWithPath: root, isDirectory: true))
@@ -94,12 +94,12 @@ struct Paths: Sendable, Equatable {
 
     /// Both logs are owner-only and rotate to `<name>.1` past
     /// `OwnerOnly.maxLogBytes`; uninstall.sh --purge removes the `.1` too.
-    var logFile: URL { logs.appendingPathComponent("awake.log") }
+    var logFile: URL { logs.appendingPathComponent("ember.log") }
     var handoffsLog: URL { logs.appendingPathComponent("handoffs.log") }
 
     var backstopPlist: URL { launchAgents.appendingPathComponent("\(Paths.backstopLabel).plist") }
 
-    /// Create every directory Awake writes into. Its own two are made
+    /// Create every directory Ember writes into. Its own two are made
     /// 0700 (an existing one is tightened); the LaunchAgents directory is
     /// shared with every other login agent, so it is only created.
     func createDirectories() throws {

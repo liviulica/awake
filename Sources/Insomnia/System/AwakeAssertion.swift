@@ -1,7 +1,7 @@
 import Foundation
 import IOKit.pwr_mgt
 
-/// Awake mode's hold on sleep (spec "Awake mode"): one IOPM assertion of
+/// Screen mode's hold on sleep (spec "Ember keep awake"): one IOPM assertion of
 /// type PreventUserIdleDisplaySleep, which keeps the display and with it
 /// the Mac awake while the lid is open. macOS releases an assertion when
 /// its process exits, so a crash cleans up by itself: nothing is journaled.
@@ -27,7 +27,7 @@ final class IOPMAwakeAssertion: AwakeAsserting, @unchecked Sendable {
     /// CFSTR macro Swift does not import.
     static let type = "PreventUserIdleDisplaySleep"
     /// What `pmset -g assertions` shows for it.
-    static let name = "Awake mode"
+    static let name = "Ember keep awake"
 
     private let lock = NSLock()
     private var id: IOPMAssertionID?

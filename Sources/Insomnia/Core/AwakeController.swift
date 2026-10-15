@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-/// Awake mode: the Caffeine-style hold, toggled by a left click (spec
+/// Screen mode: the Caffeine-style hold, toggled by a left click (spec
 /// "Interaction"). Independent of `SessionManager`: no journal, no root,
 /// no recovery agent. Lid mode includes it (`lidSessionChanged`): during a
 /// lid session the same assertion is held while the lid is open and
@@ -21,7 +21,7 @@ final class AwakeController {
     private(set) var lastError: String?
     /// True while lid mode holds the screen on (lid session, lid open).
     private(set) var lidHoldActive = false
-    /// True while a lid session runs; Awake mode cannot start then (screen
+    /// True while a lid session runs; screen mode cannot start then (screen
     /// mode is part of lid mode).
     private(set) var lidSessionActive = false
     /// The lid as the session reports it (a paused session has it open).
@@ -92,7 +92,7 @@ final class AwakeController {
     }
 
     /// Screen mode inside a lid session (spec "Interaction"): a running
-    /// Awake mode folds in when the session starts; the assertion is held
+    /// Screen mode folds in when the session starts; the assertion is held
     /// while the lid is open and released while it is closed or once the
     /// session ends. Called on every session change; idempotent.
     func lidSessionChanged(active: Bool, lidOpen: Bool) {
@@ -128,7 +128,7 @@ final class AwakeController {
                 Log.error("lid-mode screen hold: \(error.localizedDescription)")
             }
         } else {
-            // Awake mode may still own the shared assertion; release only when it does not.
+            // Screen mode may still own the shared assertion; release only when it does not.
             if state == .off { assertion.release() }
             lidHoldActive = false
         }
