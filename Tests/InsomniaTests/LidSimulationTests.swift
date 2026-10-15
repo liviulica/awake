@@ -114,12 +114,12 @@ final class LidSimulationGateTests: XCTestCase {
     /// Such a build says so in the status menu, as a warning line, so it is
     /// never mistaken for a normal release.
     func testTheStatusMenuMarksALidSimulationBuild() {
-        let marked = StatusMenu.items(sessionActive: false, sleepHeld: false, machine: nil, actions: nil, throttledBrowsers: [], error: nil, lidSimulationBuild: true)
+        let marked = StatusMenu.items(sessionActive: false, sleepHeld: false, throttledBrowsers: [], error: nil, lidSimulationBuild: true)
         XCTAssertEqual(marked.map(\.kind), [.warning, .separator, .settings, .quit])
         XCTAssertEqual(marked.first?.title, LidSimulationBuild.marker)
         XCTAssertTrue(LidSimulationBuild.marker.contains("simulate-lid.sh"))
 
-        let plain = StatusMenu.items(sessionActive: false, sleepHeld: false, machine: nil, actions: nil, throttledBrowsers: [], error: nil, lidSimulationBuild: false)
+        let plain = StatusMenu.items(sessionActive: false, sleepHeld: false, throttledBrowsers: [], error: nil, lidSimulationBuild: false)
         XCTAssertEqual(plain.map(\.kind), [.settings, .quit])
     }
 }

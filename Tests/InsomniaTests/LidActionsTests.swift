@@ -1116,7 +1116,7 @@ final class LidActionsTests: XCTestCase {
         XCTAssertFalse(h.audio.muted)
         XCTAssertEqual(try h.store.loadState()?.savedAudioOutputs.map(\.withoutSaveID), [Self.headsetSaved])
         let lines = StatusItemController.menuItems(manager: m, status: PlaceholderStatus(), awake: AwakeController(assertion: FakeAwakeAssertion()), now: h.clock.now).map(\.title)
-        XCTAssertTrue(lines.contains("\u{26A0} USB Headset is still muted from a lid close; Ember restores it when it reconnects"), "\(lines)")
+        XCTAssertTrue(lines.contains("USB Headset is still muted from a lid close; Ember restores it when it reconnects"), "\(lines)")
         XCTAssertTrue(lines.contains("Stop waiting for USB Headset"), "\(lines)")
 
         // macOS keeps a device's mute, so the headset comes back muted.
@@ -2047,7 +2047,7 @@ final class LidActionsTests: XCTestCase {
         ], "the disk refused every write, so the provisional entries are still there")
         XCTAssertEqual(m.state, after)
         XCTAssertEqual(m.effectiveState.frozenProcesses, [], "the status still counts the undone freeze")
-        XCTAssertNil(StatusLines.actions(frozenCount: m.effectiveState.frozenPids.count, lastGap: nil))
+        XCTAssertNil(StatusLines.whileClosed(frozenCount: m.effectiveState.frozenPids.count, muted: false, lowPower: false))
         let warning = try XCTUnwrap(m.lastError, "the failure is only in the log")
         XCTAssertTrue(warning.contains("could not confirm the freeze of Slack (com.tinyspeck.slackmacgap) in the journal"), warning)
         XCTAssertTrue(warning.contains("resumed 2 of the 2 pid(s) it had just stopped, so this freeze of Slack is undone"), warning)

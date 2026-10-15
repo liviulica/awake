@@ -12,39 +12,35 @@ final class StatusMenuWarningTests: XCTestCase {
         let items = StatusMenu.items(
             sessionActive: false,
             sleepHeld: false,
-            machine: nil,
-            actions: nil,
             throttledBrowsers: [],
             error: "could not clear low power mode: sudo: a password is required",
             foreignSleep: SessionManager.foreignSleepLine
         )
         XCTAssertEqual(items.map(\.kind), [.warning, .warning, .separator, .settings, .quit])
-        XCTAssertEqual(items[0].title, "\u{26A0} could not clear low power mode: sudo: a password is required")
-        XCTAssertEqual(items[1].title, "\u{26A0} \(SessionManager.foreignSleepLine)")
+        XCTAssertEqual(items[0].title, "could not clear low power mode: sudo: a password is required")
+        XCTAssertEqual(items[1].title, SessionManager.foreignSleepLine)
+        XCTAssertEqual(items[0].symbol, MenuSymbol.warning)
     }
 
     func testForeignSleepLineAloneIsAWarning() {
         let items = StatusMenu.items(
             sessionActive: false,
             sleepHeld: false,
-            machine: nil,
-            actions: nil,
             throttledBrowsers: [],
             error: nil,
             foreignSleep: SessionManager.foreignSleepLine
         )
         XCTAssertEqual(items.map(\.kind), [.warning, .separator, .settings, .quit])
-        XCTAssertEqual(items[0].title, "\u{26A0} \(SessionManager.foreignSleepLine)")
+        XCTAssertEqual(items[0].title, SessionManager.foreignSleepLine)
     }
 
     /// The hotspot password line, the session error and the foreign-sleep
     /// line can all be up at once. Each keeps its own line, in that order.
+    /// The "⚠" the hotspot line carries is dropped: the symbol says it.
     func testHotspotErrorAndForeignSleepLinesKeepTheirOrder() {
         let items = StatusMenu.items(
             sessionActive: false,
             sleepHeld: false,
-            machine: nil,
-            actions: nil,
             throttledBrowsers: [],
             hotspotWarning: HotspotPasswordProblem.unreadable.menuLine,
             error: "sudo: a password is required",
@@ -52,9 +48,9 @@ final class StatusMenuWarningTests: XCTestCase {
         )
         XCTAssertEqual(items.map(\.kind), [.warning, .warning, .warning, .separator, .settings, .quit])
         XCTAssertEqual(items.prefix(3).map(\.title), [
-            HotspotPasswordProblem.unreadable.menuLine,
-            "\u{26A0} sudo: a password is required",
-            "\u{26A0} \(SessionManager.foreignSleepLine)",
+            "Hotspot password unreadable by this build: enter it again in Settings",
+            "sudo: a password is required",
+            SessionManager.foreignSleepLine,
         ])
     }
 
@@ -62,8 +58,6 @@ final class StatusMenuWarningTests: XCTestCase {
         let items = StatusMenu.items(
             sessionActive: false,
             sleepHeld: false,
-            machine: nil,
-            actions: nil,
             throttledBrowsers: [],
             error: nil,
             foreignSleep: " "
@@ -78,27 +72,23 @@ final class StatusMenuWarningTests: XCTestCase {
         let items = StatusMenu.items(
             sessionActive: false,
             sleepHeld: false,
-            machine: nil,
-            actions: nil,
             throttledBrowsers: [],
             error: "could not remove session.json: permission denied",
             commandRunning: command
         )
         XCTAssertEqual(items.map(\.kind), [.warning, .warning, .separator, .settings, .quit])
-        XCTAssertEqual(items[0].title, "\u{26A0} \(command)")
-        XCTAssertEqual(items[1].title, "\u{26A0} could not remove session.json: permission denied")
+        XCTAssertEqual(items[0].title, command)
+        XCTAssertEqual(items[1].title, "could not remove session.json: permission denied")
 
         let afterExit = StatusMenu.items(
             sessionActive: false,
             sleepHeld: false,
-            machine: nil,
-            actions: nil,
             throttledBrowsers: [],
             error: "could not remove session.json: permission denied",
             commandRunning: nil
         )
         XCTAssertEqual(afterExit.map(\.kind), [.warning, .separator, .settings, .quit])
-        XCTAssertEqual(afterExit[0].title, "\u{26A0} could not remove session.json: permission denied")
+        XCTAssertEqual(afterExit[0].title, "could not remove session.json: permission denied")
     }
 
     /// The relaunch entry holds the browser itself, not just its name, so
@@ -106,7 +96,7 @@ final class StatusMenuWarningTests: XCTestCase {
     /// NSMenu only; nothing is shown.
     func testTheRelaunchEntryCarriesTheBundleIDAndName() {
         let arc = ThrottledBrowser(bundleId: "company.thebrowser.Browser", name: "Arc")
-        let items = StatusMenu.items(sessionActive: true, sleepHeld: true, machine: nil, actions: nil, throttledBrowsers: [arc], error: nil)
+        let items = StatusMenu.items(sessionActive: true, sleepHeld: true, throttledBrowsers: [arc], error: nil)
         let menu = StatusMenu.menu(
             items,
             target: nil,
@@ -115,7 +105,7 @@ final class StatusMenuWarningTests: XCTestCase {
             relaunchBrowser: #selector(NSObject.description),
             stopWaitingForOutput: #selector(NSObject.description)
         )
-        let entry = menu.items.first { $0.title == "Relaunch Arc unthrottled" }
+        let entry = menu.items.first { $0.title == "Relaunch Arc without throttling\u{2026}" }
         XCTAssertEqual(entry?.representedObject as? ThrottledBrowser, arc)
     }
 
@@ -126,12 +116,12 @@ final class StatusMenuWarningTests: XCTestCase {
     func testEachWaitingOutputHasALineAndAStopWaitingItem() {
         let headset = SavedAudioOutput(deviceUID: "usb-headset", name: "USB Headset", volume: 0.3, muted: false, saveID: "save-2")
         let unnamed = SavedAudioOutput(deviceUID: "70-8C-F2:output", name: nil, volume: 0.5, muted: false, saveID: nil)
-        let items = StatusMenu.items(sessionActive: false, sleepHeld: false, machine: nil, actions: nil, throttledBrowsers: [], error: nil, outputsWaiting: [headset, unnamed])
+        let items = StatusMenu.items(sessionActive: false, sleepHeld: false, throttledBrowsers: [], error: nil, outputsWaiting: [headset, unnamed])
         XCTAssertEqual(Array(items.prefix(4)), [
-            StatusMenu.Item(title: "\u{26A0} USB Headset is still muted from a lid close; Ember restores it when it reconnects", kind: .warning),
-            StatusMenu.Item(title: "Stop waiting for USB Headset", kind: .stopWaitingForOutput(headset)),
-            StatusMenu.Item(title: "\u{26A0} 70-8C-F2:output is still muted from a lid close; Ember restores it when it reconnects", kind: .warning),
-            StatusMenu.Item(title: "Stop waiting for 70-8C-F2:output", kind: .stopWaitingForOutput(unnamed)),
+            StatusMenu.Item(title: "USB Headset is still muted from a lid close; Ember restores it when it reconnects", kind: .warning, symbol: MenuSymbol.warning),
+            StatusMenu.Item(title: "Stop waiting for USB Headset", kind: .stopWaitingForOutput(headset), symbol: MenuSymbol.stopWaiting),
+            StatusMenu.Item(title: "70-8C-F2:output is still muted from a lid close; Ember restores it when it reconnects", kind: .warning, symbol: MenuSymbol.warning),
+            StatusMenu.Item(title: "Stop waiting for 70-8C-F2:output", kind: .stopWaitingForOutput(unnamed), symbol: MenuSymbol.stopWaiting),
         ])
         let menu = StatusMenu.menu(
             items,
@@ -154,17 +144,16 @@ final class StatusMenuWarningTests: XCTestCase {
         let arc = ThrottledBrowser(bundleId: "company.thebrowser.Browser", name: "Arc")
         let problem = "Arc did not quit within 10 s, so nothing was relaunched."
         let other = "Chrome quit but could not be relaunched: boom. Open it yourself."
-        let items = StatusMenu.items(sessionActive: true, sleepHeld: true, machine: nil, actions: nil, throttledBrowsers: [arc], relaunchProblems: [problem, other], error: "restore failed")
-        let throttle = try XCTUnwrap(StatusLines.throttleWarning(["Arc"]))
+        let items = StatusMenu.items(sessionActive: true, sleepHeld: true, throttledBrowsers: [arc], relaunchProblems: [problem, other], error: "restore failed")
         XCTAssertEqual(items.map(\.title).filter { $0.contains("Arc") || $0.contains("Chrome") || $0.contains("restore") }, [
-            throttle,
-            "Relaunch Arc unthrottled",
-            "\u{26A0} \(problem)",
-            "\u{26A0} \(other)",
-            "\u{26A0} restore failed",
+            StatusLines.throttleWarning("Arc"),
+            "Relaunch Arc without throttling\u{2026}",
+            problem,
+            other,
+            "restore failed",
         ])
 
-        let closed = StatusMenu.items(sessionActive: false, sleepHeld: false, machine: nil, actions: nil, throttledBrowsers: [], relaunchProblems: [problem], error: nil)
-        XCTAssertEqual(closed.filter { $0.kind == .warning }.map(\.title), ["\u{26A0} \(problem)"])
+        let closed = StatusMenu.items(sessionActive: false, sleepHeld: false, throttledBrowsers: [], relaunchProblems: [problem], error: nil)
+        XCTAssertEqual(closed.filter { $0.kind == .warning }.map(\.title), [problem])
     }
 }
