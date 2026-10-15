@@ -1154,6 +1154,14 @@ final class NetworkFailover {
         guard self.epoch == epoch, !Task.isCancelled else { return }
         if online {
             Log.info("switched back to the previous Wi-Fi")
+            // The leave cut the Wi-Fi path, and the probe at the path's
+            // return may have run before home was ready, leaving that outage
+            // open. It ends here, with its retry, or the retry deferred
+            // during this tick would move the Mac back to the hotspot.
+            if machine.inOutage {
+                await process(satisfied: true, internetReachable: true)
+                guard self.epoch == epoch, !Task.isCancelled else { return }
+            }
             cancelSwitchBack()
         } else {
             Log.info("previous Wi-Fi has no internet; back to the hotspot")

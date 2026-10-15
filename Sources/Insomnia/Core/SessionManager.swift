@@ -3052,9 +3052,10 @@ final class SessionManager {
     /// write) is caught within a minute and the session always ends; a
     /// session still paused gets its lease moved ahead of now.
     ///
-    /// A lease that cannot be renewed (the agent cannot be confirmed: the
-    /// app was moved or re-signed, the agent was booted out) runs out with
-    /// the session still paused. The backstop may never act on it, and a
+    /// A lease that cannot be renewed (the agent cannot be confirmed because
+    /// the app was moved or re-signed or the agent booted out, the lock
+    /// stays busy, session.json cannot be saved) runs out with the session
+    /// still paused. The backstop may never act on it, and a
     /// lid close cannot resume it either, since that write needs the same
     /// agent, so the session is ended here once the lease has run out.
     func renewLeaseIfPaused() async {
@@ -3063,7 +3064,7 @@ final class SessionManager {
             SessionMath.leaseRenewed(SessionMath.followingLid($0, lidClosed: clamshell(), now: $1), now: $1)
         }
         guard let s = session, s.isPaused, s.isExpired(at: clock()) else { return }
-        fail("Lid closed mode ended: the recovery agent could not be confirmed, so the session could not be kept. Start it again from the menu.")
+        fail("Lid closed mode ended: the lid timer could not be kept up to date. Start it again from the menu.")
         await end(reason: .recoveryUnavailable)
     }
 

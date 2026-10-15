@@ -646,6 +646,33 @@ final class NetworkFailoverDriverTests: XCTestCase {
         n.stop()
     }
 
+    /// The leave cuts the Wi-Fi path (an outage), and the probe when the
+    /// path returns on home fails (DHCP or DNS not ready yet). The tick's
+    /// own probe then passes: the outage ends with it, so no retry is left
+    /// to move the Mac from a working home network back to the hotspot.
+    func testASuccessfulSwitchBackEndsTheOutageItsLeaveStarted() async throws {
+        let joiner = RecordingHotspotJoiner()
+        joiner.visible = ["Home"]
+        let keychain = FakeKeychainStore()
+        try keychain.set(service: KeychainStore.service, account: "Phone", value: "pw")
+        // The path-return probe fails, the tick's own probe passes.
+        let (n, ssid) = await onTheHotspot(joiner: joiner, keychain: keychain, probe: FakeProbe([false, true]))
+        joiner.onLeave = {
+            await n.simulate(satisfied: false)
+            await n.simulate(satisfied: true)
+        }
+        await n.switchBackTick()
+        XCTAssertEqual(ssid.value, "Home")
+        XCTAssertFalse(n.machine.inOutage, "the outage the leave started is still open")
+        XCTAssertNil(n.retryTimer, "a retry is still pending on a working home network")
+        XCTAssertNil(n.switchBackTimer)
+        testClock.advance(FailoverMachine.initialDelay + 1)
+        await n.fireTimer().value
+        XCTAssertEqual(joiner.calls, [], "moved back to the hotspot from a working home network")
+        XCTAssertEqual(ssid.value, "Home")
+        n.stop()
+    }
+
     /// While a switch-back tick tests home, an outage retry (the leave
     /// itself starts an outage) must not move the Mac back to the hotspot:
     /// the probe would then test the hotspot and call home online. The
