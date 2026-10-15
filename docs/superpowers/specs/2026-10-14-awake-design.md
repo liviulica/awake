@@ -41,7 +41,7 @@ Template images drawn in code (like Insomnia's eye today), so macOS tints them f
 | Awake mode (screen) | The flame, filled | remaining time, only when timed |
 | Lid mode | A small low flame on a thick line (the closed lid): turned down, never out | remaining time, always |
 
-The "Pilot light" family (decided 2026-10-14; it replaced an earlier laptop-and-robot set). The working name may become **Ember**; the icons fit either name. Mockups: (private mockup) (family "Pilot light").
+The "Pilot light" family (decided 2026-10-14; it replaced an earlier laptop-and-robot set). The working name may become **Ember**; the icons fit either name. Mockups: (private mockup), family "Pilot light".
 
 ### Interaction
 

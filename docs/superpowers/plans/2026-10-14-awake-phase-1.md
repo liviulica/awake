@@ -1186,7 +1186,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 **Interfaces:**
 - Produces: `enum MenuBarIcon: Equatable, CaseIterable { case off, awake, lid }`, `static let size: NSSize` (18×18), `@MainActor static func image(_ icon: MenuBarIcon) -> NSImage` (template), `static func draw(_ icon: MenuBarIcon)` (draws in a 24-unit, y-down space).
 
-Shapes (24×24 viewBox, y down, from the approved mockup (private mockup)):
+Shapes (24×24 viewBox, y down), from the approved mockup (private mockup):
 - off: rounded rect x 4.2 y 4.8 w 15.6 h 11.2 r 1.6, stroke 1.7; base line 2.5→21.5 at y 19.2, stroke 1.7, round caps.
 - awake: the same rect filled and stroked; same base line.
 - lid (robot): head rounded rect x 6 y 7 w 12 h 8.6 r 2.6 stroke 1.7; antenna line (12, 7)→(12, 4.6) stroke 1.7; antenna dot circle (12, 3.9) r 1 fill; eyes circles (9.6, 11.3) and (14.4, 11.3) r 1.3 fill; closed lid line 2.5→21.5 at y 19.4, stroke 2.2, round caps.
@@ -2423,7 +2423,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ### Task 12b: Pilot light icons (user decision 2026-10-14)
 
-The person picked the "Pilot light" family from the icon sketches ((private mockup)): no laptop, one flame. Off = the flame's outline (unlit), screen on = the flame filled, lid closed = a small low flame on the closed lid ("turned down, never out"). This replaces the shapes Task 8 drew; the `MenuBarIcon` API (`.off/.awake/.lid`, `image(_:)`, `draw(_:)`, 18 pt template) does not change, so nothing else moves.
+The person picked the "Pilot light" family from the icon sketches (private mockup): no laptop, one flame. Off = the flame's outline (unlit), screen on = the flame filled, lid closed = a small low flame on the closed lid ("turned down, never out"). This replaces the shapes Task 8 drew; the `MenuBarIcon` API (`.off/.awake/.lid`, `image(_:)`, `draw(_:)`, 18 pt template) does not change, so nothing else moves.
 
 **Files:**
 - Modify: `Sources/Insomnia/UI/MenuBarIcon.swift` (the three `draw` cases, the type's doc comment)
@@ -3391,8 +3391,8 @@ Enable Actions for the repo first only if the user wants CI on the PR (`gh api -
 
 **Requirements (an audit with a written result, then fixes):**
 1. **Secrets:** install `gitleaks` (brew) and run `gitleaks git --redact` over the full history and `gitleaks dir` over the working tree. Any finding stops the task and is reported.
-2. **Personal data in history:** list commit author/committer emails (`git log --all --format='%ae %ce' | sort -u`). Commits authored by `826835+liviulica@users.noreply.github.com` are rewritten to `826835+liviulica@users.noreply.github.com` **only if the person approved it** (ledger); then set this repo's `user.email` to the no-reply address. Insomnia's upstream commits are never rewritten.
-3. **Personal data in files:** grep the tree for `~`, `liviulica`, `employer`, `private-artifact-links`, `.superpowers`; replace local paths with `~/…`, keep design docs (`docs/superpowers/`) but replace private artifact links with "(private mockup)".
+2. **Personal data in history:** list commit author/committer emails (`git log --all --format='%ae %ce' | sort -u`). Commits authored by the personal Gmail address are rewritten to `826835+liviulica@users.noreply.github.com` **only if the person approved it** (ledger); then set this repo's `user.email` to the no-reply address. Insomnia's upstream commits are never rewritten.
+3. **Personal data in files:** grep the tree for the home folder path, the personal address, work-related names, private artifact links and `.superpowers`; replace local paths with `~/…`, keep design docs (`docs/superpowers/`) but replace private artifact links with "(private mockup)".
 4. **Insomnia-only leftovers:** `SECURITY.md` (contact becomes GitHub private vulnerability reporting), `CONTRIBUTING.md`, `.github/ISSUE_TEMPLATE/*`, `.github/pull_request_template.md`, `docs/releasing.md`, `docs/release-validation.md`, `docs/install.md` (still describes the four-command rule and Insomnia releases): rewrite for Awake or delete where they only describe Insomnia's release process.
 5. **README for strangers:** what it is, screenshots placeholder list, "build from source" install (no signed release yet), what the installer changes (three-line sudoers, LaunchAgent), the one network request, uninstall, credits, license.
 6. **Repo metadata (applied in Task 21):** description, topics (`macos`, `menu-bar`, `caffeinate`, `sleep`, `ai-agents`), homepage none.

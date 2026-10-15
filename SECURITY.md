@@ -1,15 +1,18 @@
 # Security
 
-Awake is experimental software. There is no security-response SLA. Report
-suspected vulnerabilities against the current main branch,
-including the affected revision and a minimal,
-non-destructive reproduction.
+Awake is experimental software. There is no security-response SLA.
 
-Do not publish passwords, Keychain data, personal logs, or weaponized exploit
-details in a public issue. If GitHub shows a **Report a vulnerability** action
-on this repository's Security page, use that private channel. Otherwise open a
-public issue containing only a request for a private security contact, without
-the sensitive details, and wait for the maintainer to arrange one.
+## Reporting a vulnerability
+
+Report it privately through GitHub: on this repository's **Security** tab,
+choose **Report a vulnerability** (GitHub's private vulnerability reporting).
+Only you and the maintainer see the report. Test against the current `main`
+branch and include the affected revision and a minimal, non-destructive
+reproduction. Do not open a public issue for a vulnerability, and do not
+publish passwords, Keychain data, personal logs, or weaponized exploit details
+anywhere public.
+
+## What the app can and cannot protect
 
 The installer grants the user account passwordless access to three exact pmset
 commands listed in the README. This grant is not exclusive to the Awake app:

@@ -17,6 +17,16 @@ Both are MIT licensed.
 > experimental. Recovery can fail, and a running timer is not a safety
 > guarantee. [Apple's ventilation guidance](https://support.apple.com/en-us/102336)
 
+## Screenshots
+
+To come. The planned set:
+
+- The menu bar icon in its three states: off, Awake mode, lid mode.
+- The right-click menu, without and with a lid session running (time left,
+  Add 1 hour, End now).
+- The administrator prompt that starts lid mode.
+- Settings: battery and heat rules, lid-close actions, hotspot failover.
+
 ## Install
 
 Requires macOS 26 or later on an Apple Silicon Mac. There is no signed release
@@ -28,7 +38,7 @@ is present and tells you to run `scripts/uninstall.sh` from your Insomnia
 checkout.
 
 ```bash
-git clone <this repository>
+git clone https://github.com/liviulica/awake.git
 cd awake
 ./scripts/install.sh
 open "$HOME/Applications/Awake.app"
@@ -222,7 +232,15 @@ settings. See [Contributing](CONTRIBUTING.md), [Security reporting](SECURITY.md)
 and the [design](docs/superpowers/specs/2026-10-14-awake-design.md). Insomnia's
 original notes are in [docs/spec.md](docs/spec.md).
 
+## Credits
+
+- [Insomnia](https://github.com/krishhgg/Insomnia) by Krish Garg and its
+  contributors. Awake is a fork of Insomnia: lid mode, recovery and hotspot
+  failover all started there.
+- [Caffeine](https://github.com/domzilla/Caffeine), by Tomas Franzén, Michael
+  Jones and Dominic Rodemer: the idea behind the one-click Awake mode.
+
 ## License
 
 MIT. Awake is a fork of Insomnia (MIT, Krish Garg) and borrows its one-click
-idea from Caffeine (MIT).
+idea from Caffeine (MIT). See [LICENSE](LICENSE).
