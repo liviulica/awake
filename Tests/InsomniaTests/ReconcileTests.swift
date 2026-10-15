@@ -388,6 +388,18 @@ final class ReconcileTests: XCTestCase {
         XCTAssertEqual(m.scheduledDeadline, s.endsAt)
     }
 
+    func testSetRemainingRewritesJournalAndReschedules() async throws {
+        let m = h.makeManager()
+        await m.start(duration: 3600)
+        h.clock.advance(600)
+        await m.setRemaining(1800)
+        let s = try XCTUnwrap(m.session)
+        XCTAssertEqual(s.endsAt, h.clock.now.addingTimeInterval(1800))
+        XCTAssertEqual(try h.store.loadSession(), s)
+        XCTAssertEqual(h.backstop.arms, 2)
+        XCTAssertEqual(m.scheduledDeadline, s.endsAt)
+    }
+
     func testEndRestoresFromDiskAndLeavesAgentLoaded() async throws {
         let m = h.makeManager()
         await m.start(duration: 3600)

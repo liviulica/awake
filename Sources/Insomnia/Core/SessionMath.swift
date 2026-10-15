@@ -89,6 +89,25 @@ enum SessionMath {
         return s
     }
 
+    /// The time left set to `remaining` (a lid chip), shorter or longer,
+    /// within [`minimumDuration`, `maxDuration`]. A paused session's
+    /// closed-lid time is set and its lease left alone; a running session's
+    /// end moves to `now + remaining`. The change is recorded in
+    /// `extensions` as a signed delta.
+    static func withRemaining(_ session: Session, remaining: TimeInterval, now: Date, maxDuration: TimeInterval) -> Session {
+        let target = clamp(remaining, maxDuration: maxDuration)
+        var s = session
+        if let left = session.pausedRemaining {
+            s.extensions.append(target - left)
+            s.pausedRemaining = target
+            return s
+        }
+        let newEnd = now.addingTimeInterval(target)
+        s.extensions.append(newEnd.timeIntervalSince(session.endsAt))
+        s.endsAt = newEnd
+        return s
+    }
+
     /// Seconds from `now` to `endsAt`, floored at zero.
     static func remaining(until endsAt: Date, at now: Date) -> TimeInterval {
         max(endsAt.timeIntervalSince(now), 0)

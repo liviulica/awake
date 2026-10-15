@@ -1362,6 +1362,15 @@ final class SessionManager {
         _ = await exclusive("extend") { await self.performExtend(by: extra, ticket: ticket) }
     }
 
+    /// Sets the closed-lid time left (a lid chip in the menu). Same
+    /// sequence and guards as `extend`: a shorter deadline only brings
+    /// recovery forward.
+    func setRemaining(_ seconds: TimeInterval) async {
+        guard session != nil else { return }
+        let ticket = endTicket
+        _ = await exclusive("set remaining") { await self.performSetRemaining(seconds, ticket: ticket) }
+    }
+
     private func performExtend(by extra: TimeInterval, ticket: Int) async {
         guard let current = session, endTicket == ticket else { return }
         let updated = SessionMath.extended(current, by: extra, now: clock(), maxDuration: config.maxDuration)
@@ -1388,6 +1397,36 @@ final class SessionManager {
         Log.info(updated.isPaused
             ? "session extended by \(Int(extra))s to \(Int(updated.closedLidRemaining(at: clock())))s of closed-lid time (paused)"
             : "session extended by \(Int(extra))s until \(iso(updated.endsAt))")
+        await armDeadline(updated.endsAt)
+        syncLeaseTimer()
+    }
+
+    /// `performExtend` with the time left set rather than added to.
+    private func performSetRemaining(_ seconds: TimeInterval, ticket: Int) async {
+        guard let current = session, endTicket == ticket else { return }
+        let updated = SessionMath.withRemaining(current, remaining: seconds, now: clock(), maxDuration: config.maxDuration)
+        // The agent enforces whatever deadline is on disk; confirm it is
+        // still loaded before moving that deadline.
+        do {
+            try await backstop.arm()
+        } catch {
+            fail("could not confirm backstop: \(error.localizedDescription)")
+            return
+        }
+        guard endTicket == ticket, session == current else {
+            Log.info("set remaining abandoned: end requested meanwhile")
+            return
+        }
+        do {
+            try store.saveSession(updated)
+        } catch {
+            fail("could not write session: \(error.localizedDescription)")
+            return
+        }
+        session = updated
+        lastError = nil
+        Log.info("session time left set to \(Int(updated.closedLidRemaining(at: clock())))s"
+            + (updated.isPaused ? " of closed-lid time (paused)" : " until \(iso(updated.endsAt))"))
         await armDeadline(updated.endsAt)
         syncLeaseTimer()
     }
