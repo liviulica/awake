@@ -38,7 +38,7 @@ final class SleepGuardReadBackTests: XCTestCase {
         try handle.write(contentsOf: Data(text.utf8))
     }
 
-    /// A sudo that exits 0, an administrator prompt that runs the fake
+    /// A sudo that runs what it is given, an administrator prompt that runs the fake
     /// pmset directly, and a pmset whose `-g` reads SleepDisabled 1
     /// until the settle wait has run, as on 25G83, then prints `afterSettle`
     /// and exits `status` (to stderr when `status` is not 0). The wait does
@@ -48,7 +48,11 @@ final class SleepGuardReadBackTests: XCTestCase {
         let calls = file("calls")
         let settled = file("settled")
         try output.write(toFile: file("after"), atomically: true, encoding: .utf8)
-        let sudo = try script("sudo", "printf 'sudo %s\\n' \"$*\" >> '\(calls)'")
+        let sudo = try script("sudo", """
+        printf 'sudo %s\\n' "$*" >> '\(calls)'
+        [ "$1" = "-n" ] && shift
+        exec "$@"
+        """)
         let pmset = try script("pmset", """
         printf 'pmset %s\\n' "$*" >> '\(calls)'
         if [ -e '\(settled)' ]; then
@@ -75,7 +79,7 @@ final class SleepGuardReadBackTests: XCTestCase {
     /// The disable, the wait, then the read: a read before the wait would
     /// see the 1 that macOS has not put back yet.
     private var expectedCalls: [String] {
-        ["pmset -a disablesleep 1", "wait 5.0", "pmset -g"]
+        ["sudo -n \(file("pmset")) -a disablesleep 1", "pmset -a disablesleep 1", "wait 5.0", "pmset -g"]
     }
 
     private func disableSleep(_ sleepGuard: PmsetSleepGuard) async throws {
@@ -120,6 +124,34 @@ final class SleepGuardReadBackTests: XCTestCase {
             }
             XCTAssertEqual(try calls(), expectedCalls)
         }
+    }
+
+    /// An install made before the fourth rule line: sudo wants a password,
+    /// so the disable falls back to the administrator prompt (here the fake
+    /// admin runner running pmset), and the read-back follows as before.
+    func testAThreeLineRuleFallsBackToThePrompt() async throws {
+        let calls = file("calls")
+        let settled = file("settled")
+        let sudo = try script("sudo", """
+        printf 'sudo %s\\n' "$*" >> '\(calls)'
+        echo 'sudo: a password is required' >&2
+        exit 1
+        """)
+        let pmset = try script("pmset", """
+        printf 'pmset %s\\n' "$*" >> '\(calls)'
+        printf 'System-wide power settings:\\n SleepDisabled\\t\\t1\\n'
+        """)
+        let sleepGuard = PmsetSleepGuard(sudo: sudo, pmset: pmset, timeout: 5, stopGrace: 1, settleWait: { seconds in
+            try Self.append("wait \(seconds)\n", to: calls)
+            FileManager.default.createFile(atPath: settled, contents: nil)
+        }, admin: FakeAdminRunner(pmset: pmset))
+        try await disableSleep(sleepGuard)
+        XCTAssertEqual(try self.calls(), ["sudo -n \(pmset) -a disablesleep 1", "pmset -a disablesleep 1", "wait 5.0", "pmset -g"])
+    }
+
+    func testOnlyAPasswordRefusalCountsAsAThreeLineRule() {
+        XCTAssertTrue(PmsetSleepGuard.passwordRequired(SleepGuardError(command: "sudo -n pmset", status: 1, stderr: "sudo: a password is required\n")))
+        XCTAssertFalse(PmsetSleepGuard.passwordRequired(SleepGuardError(command: "sudo -n pmset", status: 1, stderr: "pmset: something else")))
     }
 
     func testFailedReadBackThrowsPmsetsError() async throws {

@@ -1,8 +1,9 @@
 import Foundation
 
-/// The only two things Ember ever does as root: through the three
-/// sudoers-allowed pmset commands written by install.sh, plus
-/// `disablesleep 1` through the administrator prompt (`AdminCommandRunning`).
+/// The only things Ember ever does as root: the four sudoers-allowed pmset
+/// commands written by install.sh, with `disablesleep 1` falling back to the
+/// administrator prompt (`AdminCommandRunning`) on an install made before
+/// that line existed.
 protocol SleepGuarding: Sendable {
     func setSleepDisabled(_ disabled: Bool) async throws
     func isSleepDisabled() async throws -> Bool
@@ -40,8 +41,9 @@ struct SleepDisableRevertedError: Error, LocalizedError, Sendable {
     }
 }
 
-/// `sudo -n pmset …` for everything but `disablesleep 1`, which raises the
-/// administrator prompt (`admin`). The sudo path never prompts; if the
+/// `sudo -n pmset …` for every command; `disablesleep 1` falls back to the
+/// administrator prompt (`admin`) when sudo wants a password. The sudo path
+/// never prompts; if the
 /// sudoers rule is missing the call fails fast with a readable error
 /// instead of hanging on a password prompt.
 struct PmsetSleepGuard: SleepGuarding {
@@ -59,8 +61,9 @@ struct PmsetSleepGuard: SleepGuarding {
     /// 1 for about 2 s, then powerd reloads the Energy Saver preferences and
     /// it reads 0 for good, so a closed lid sleeps the Mac mid-session.
     static let settle: TimeInterval = 5
-    /// The one command that goes through the administrator prompt. A
-    /// constant: nothing user-provided reaches it.
+    /// The command the administrator prompt runs when the rule has no
+    /// passwordless `disablesleep 1` line. A constant: nothing
+    /// user-provided reaches it.
     static let disableSleepCommand = "/usr/bin/pmset -a disablesleep 1"
     static let adminPrompt = "Ember needs your password to keep this Mac running with the lid closed."
 
@@ -100,9 +103,9 @@ struct PmsetSleepGuard: SleepGuarding {
     /// A disable that reads SleepDisabled 0 after `settle` throws
     /// `SleepDisableRevertedError`, and one that cannot be read back throws
     /// `SleepGuardError`; callers handle both like a failed pmset. Restoring
-    /// sleep is not read back. Disabling goes through the administrator
-    /// prompt (sudoers never grants it) and throws `AdminPromptCancelledError`
-    /// when the person cancels it; restoring stays passwordless.
+    /// sleep is not read back. Disabling goes through `sudo -n`, or through
+    /// the administrator prompt on a rule without the `disablesleep 1` line,
+    /// which throws `AdminPromptCancelledError` when the person cancels it.
     func setSleepDisabled(_ disabled: Bool) async throws {
         guard disabled else {
             try await sudoPmset(["-a", "disablesleep", "0"])
@@ -113,7 +116,12 @@ struct PmsetSleepGuard: SleepGuarding {
         guard RecoveryLock.held != nil else {
             throw SleepGuardError(command: "pmset -a disablesleep 1", status: -1, stderr: "not run: no recovery transaction holds the lock")
         }
-        try await admin.runAsAdministrator(Self.disableSleepCommand, prompt: Self.adminPrompt)
+        do {
+            try await sudoPmset(["-a", "disablesleep", "1"])
+        } catch let error as SleepGuardError where Self.passwordRequired(error) {
+            Log.info("sudoers has no passwordless disablesleep 1 line; asking for the password (run scripts/install.sh once to stop this)")
+            try await admin.runAsAdministrator(Self.disableSleepCommand, prompt: Self.adminPrompt)
+        }
         try await settleWait(settleDelay)
         switch Self.readSleepDisabled(try await pmsetG()) {
         case true?:
@@ -123,6 +131,12 @@ struct PmsetSleepGuard: SleepGuarding {
         case nil:
             throw SleepGuardError(command: "pmset -g", status: 0, stderr: "no SleepDisabled line reading 0 or 1, so `pmset -a disablesleep 1` could not be read back")
         }
+    }
+
+    /// sudo refused for want of a password: the rule predates its fourth
+    /// line. Any other failure is pmset's own and is not retried.
+    static func passwordRequired(_ error: SleepGuardError) -> Bool {
+        error.stderr.contains("a password is required")
     }
 
     func setLowPowerMode(_ on: Bool) async throws {

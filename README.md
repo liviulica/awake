@@ -54,11 +54,14 @@ rule is a system file. It installs:
   changes (see [How recovery works](#how-recovery-works)).
 - A **sudoers rule** at `/etc/sudoers.d/ember`. A sudoers rule decides who can
   run what with `sudo`. This one lets your user account, not just Ember, run
-  these three commands without a password. None of them can keep your Mac
-  awake: starting lid mode (`disablesleep 1`) asks for your administrator
-  password each time.
+  these four commands without a password, so lid mode starts without asking.
+  Any program running as you can use it too, including to keep the Mac awake;
+  that is a stopgap until a signed helper replaces the rule. If you installed
+  before October 2026, run `scripts/install.sh` once more to get the fourth
+  line; until then lid mode asks for your password.
 
 ```text
+/usr/bin/pmset -a disablesleep 1
 /usr/bin/pmset -a disablesleep 0
 /usr/bin/pmset -b lowpowermode 1
 /usr/bin/pmset -b lowpowermode 0

@@ -60,17 +60,20 @@ edited by any program running as that user. With ad-hoc signatures these
 checks are integrity against accidents and against the app relaying a
 tampered bundle; they are not a boundary against a process running as the
 same user, which can edit the plist, load its own agent, replace and relaunch
-the app, and invoke the three pmset commands directly.
+the app, and invoke the four pmset commands directly.
 
 There is no signed release yet. Ember is built from source and ad-hoc signed
 on the machine that installs it; `scripts/install.sh` runs the build itself.
 Ember makes one network request: while hotspot failover runs with a hotspot
 configured, a `GET` of `http://captive.apple.com/hotspot-detect.html` with a
-neutral user agent (see the README). Starting a lid session raises the
-standard macOS administrator prompt for `pmset -a disablesleep 1`; the
-command string is a constant, and nothing a user can type reaches it.
+neutral user agent (see the README). Starting a lid session runs
+`sudo -n pmset -a disablesleep 1`; on an install made before that rule line
+it raises the standard macOS administrator prompt instead. Either way the
+command string is a constant, and nothing a user can type reaches it. The
+passwordless line lets any program running as you keep the Mac awake; it is
+a stopgap until a signed helper replaces the sudoers rule.
 
-One known window remains in that start. A prompt left open until its 300 s
+One known window remains in the prompt fallback. A prompt left open until its 300 s
 limit is stopped with SIGTERM (never SIGKILL) to osascript, and the start is
 undone from the journal. If the password was accepted in the last moment
 before that, osascript can exit while the root shell it started is still

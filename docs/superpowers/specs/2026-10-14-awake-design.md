@@ -85,6 +85,8 @@ Insomnia's session machinery, unchanged in shape: the recovery journal is writte
 
 ### Phase 1: password to start
 
+> Superseded on 2026-10-16: the rule has a fourth line, `disablesleep 1`, and the prompt is a fallback (`2026-10-16-ember-menu-v2-design.md`).
+
 - **Install** (administrator password once) writes `/etc/sudoers.d/awake` with three lines only:
   `pmset -a disablesleep 0`, `pmset -b lowpowermode 1`, `pmset -b lowpowermode 0`.
   None of them can keep the Mac awake. Insomnia's fourth line, `disablesleep 1`, is not granted.
