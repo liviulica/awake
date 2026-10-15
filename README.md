@@ -224,5 +224,5 @@ original notes are in [docs/spec.md](docs/spec.md).
 
 ## License
 
-[MIT](LICENSE). Awake builds on Insomnia and follows the idea of Caffeine; both
-notices are in the license file.
+MIT. Awake is a fork of Insomnia (MIT, Krish Garg) and borrows its one-click
+idea from Caffeine (MIT).
