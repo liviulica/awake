@@ -12,16 +12,18 @@ fail. Awake then joins the saved hotspot, retrying after 5, 10 and 20 seconds
 and then every 30 seconds.
 
 While it is on the hotspot, Awake looks every 60 seconds for the network it was
-on before the outage. When that network is visible it rejoins it and checks the
-internet again: if the check passes it stays there, and if not it goes back to
-the hotspot and waits longer before the next try (60 seconds, doubling up to 10
-minutes).
+on before the outage. When that network is visible it leaves the hotspot so
+macOS rejoins its known network with the password macOS saved. If macOS joins
+that network and the internet check passes there, Awake stays. Otherwise (no
+internet there, macOS picked the hotspot or another network, or nothing joined)
+it waits longer before the next try (60 seconds, doubling up to 10 minutes),
+and goes back to the hotspot itself when there is no internet or no network.
 
 The internet check is Awake's only network request: a plain `GET` of
 `http://captive.apple.com/hotspot-detect.html`, the address macOS itself uses
 to test the connection, with Apple's own neutral user agent
 (`CaptiveNetworkSupport/1.0 wispr`) and no cookies. It runs only while failover
-is running, and it reaches Apple's server only.
+is running with a hotspot configured, and it reaches Apple's server only.
 
 Set **System Settings → Wi-Fi → Ask to join hotspots → Automatically**, then
 enter the hotspot SSID and password in Awake Settings. The password is

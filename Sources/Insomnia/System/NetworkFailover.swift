@@ -856,8 +856,41 @@ final class NetworkFailover {
         m.start(queue: .main)
         monitor = m
         Log.info("network failover started (wifi \(wifiInterface ?? "unresolved"))")
+        // The probe, the SSID reads and the switch-back serve the hotspot
+        // only: with none configured the driver follows the Wi-Fi path
+        // alone, as Insomnia's did, and makes no network request.
+        guard hotspotConfigured else {
+            Log.info("network failover: no hotspot configured, so no internet check")
+            return
+        }
         scheduleProbe(after: Self.probeInterval)
         await recordHomeNetwork()
+    }
+
+    /// Whether a hotspot SSID is configured now. Read again at every probe,
+    /// path update and switch-back, so a hotspot set or cleared in Settings
+    /// during a session takes effect (see `syncProbe`).
+    private var hotspotConfigured: Bool {
+        !HotspotSSID.normalized(configProvider().hotspotSSID).isEmpty
+    }
+
+    /// Settings changed: start the internet check if a hotspot is now
+    /// configured and none is scheduled, or stop it if none is.
+    func syncProbe() {
+        guard monitor != nil else { return }
+        if hotspotConfigured {
+            guard probeTimer == nil, !probeRunning else { return }
+            scheduleProbe(after: Self.probeInterval)
+            track { [weak self] in await self?.recordHomeNetwork() }
+        } else {
+            probeTimer?.invalidate()
+            probeTimer = nil
+            tracker = ReachabilityTracker()
+            // An outage only the probe saw has no path change to end it.
+            if machine.inOutage, monitor?.currentPath.status == .satisfied {
+                handlePath(satisfied: true)
+            }
+        }
     }
 
     func stop() {
@@ -947,7 +980,9 @@ final class NetworkFailover {
     /// so a recovery does not probe a second time.
     private func process(satisfied: Bool, internetReachable: Bool? = nil) async {
         guard !Task.isCancelled else { return }
-        if satisfied, machine.inOutage {
+        // No hotspot: nothing to fail over to, so a path back is a recovery
+        // without asking the internet.
+        if satisfied, machine.inOutage, internetReachable != nil || hotspotConfigured {
             let reachable: Bool
             if let internetReachable { reachable = internetReachable } else { reachable = await probe.isInternetReachable() }
             if !reachable {
@@ -971,6 +1006,18 @@ final class NetworkFailover {
     /// even while Wi-Fi stays associated. Internal so tests drive it.
     func probeTick() async {
         let epoch = self.epoch
+        // This tick reschedules itself at the end; a timer still pending
+        // (a tick driven directly) would start a second chain.
+        probeTimer?.invalidate()
+        probeTimer = nil
+        // The hotspot was cleared in Settings: the check stops until
+        // `syncProbe` starts it again.
+        guard hotspotConfigured else {
+            tracker = ReachabilityTracker()
+            return
+        }
+        probeRunning = true
+        defer { probeRunning = false }
         let ok = await probe.isInternetReachable()
         guard self.epoch == epoch, !Task.isCancelled else { return }
         if tracker.record(success: ok) {
@@ -983,9 +1030,15 @@ final class NetworkFailover {
         // stop() may have run while the outage was being started or ended.
         guard self.epoch == epoch, !Task.isCancelled else { return }
         if ok, !machine.inOutage { await recordHomeNetwork() }
-        guard self.epoch == epoch, !Task.isCancelled else { return }
+        guard self.epoch == epoch, !Task.isCancelled, hotspotConfigured else { return }
         scheduleProbe(after: ok ? Self.probeInterval : Self.probeRetryInterval)
     }
+
+    /// A probe tick is between its start and its rescheduling.
+    private var probeRunning = false
+
+    /// How soon an outage retry deferred by a running switch-back looks again.
+    static let deferredJoinDelay: TimeInterval = FailoverMachine.initialDelay
 
     /// The first wait before a switch-back attempt, and the longest one.
     static let switchBackInterval: TimeInterval = 60
@@ -1001,8 +1054,8 @@ final class NetworkFailover {
     private(set) var switchBackDelay: TimeInterval = 60
     private var switchBackFailures = 0
     private var switchBackRunning = false
-    /// When a switch-back last changed networks itself (rejoining home, or
-    /// going back to the hotspot).
+    /// When a switch-back last changed networks itself (leaving the hotspot
+    /// for home, or going back to the hotspot).
     private var lastSwitchBackActionAt: Date?
     /// Whether the outage in progress was started by a switch-back's own
     /// network change, so its recovery keeps the backoff.
@@ -1018,6 +1071,8 @@ final class NetworkFailover {
 
     /// Remember the current network as home unless it is the hotspot.
     func recordHomeNetwork() async {
+        // No hotspot, no switch-back: no reason to spawn networksetup.
+        guard hotspotConfigured else { return }
         let epoch = self.epoch
         let ssid = await readSSID()
         guard self.epoch == epoch, !Task.isCancelled, let ssid, !ssid.isEmpty else { return }
@@ -1026,21 +1081,34 @@ final class NetworkFailover {
         homeSSID = ssid
     }
 
-    /// While on the hotspot: rejoin home when it is visible, and go back
-    /// to the hotspot if home has no internet, then try again later with a
-    /// growing wait. Internal so tests drive it.
+    /// While on the hotspot and home is visible: leave the hotspot so macOS
+    /// auto-joins its preferred known network (CoreWLAN cannot join a
+    /// WPA network without its passphrase, which only macOS holds). After
+    /// the settle wait, home with internet ends the attempts. Anything
+    /// else counts as a failed attempt and the next waits longer: home
+    /// without internet and no network at all go back to the hotspot;
+    /// the hotspot itself (macOS chose it again) or another network the
+    /// Mac joined stay as they are. Internal so tests drive it.
+    ///
+    /// While a tick runs it owns the network: the outage retry does not
+    /// join the hotspot under it (`fireTimer`).
     func switchBackTick() async {
         let epoch = self.epoch
         // A previous tick may still be waiting (a keychain dialog, a scan).
         guard !switchBackRunning else { return }
+        guard hotspotConfigured else {
+            cancelSwitchBack()
+            return
+        }
         switchBackRunning = true
         defer { switchBackRunning = false }
         guard let home = homeSSID, let iface = wifiInterface else { return }
+        let hotspot = HotspotSSID.normalized(configProvider().hotspotSSID)
         // Only from the hotspot: elsewhere the Mac is already back home, or
         // on a network the person chose.
         let current = await readSSID()
         guard self.epoch == epoch, !Task.isCancelled else { return }
-        guard current == HotspotSSID.normalized(configProvider().hotspotSSID) else {
+        guard current == hotspot else {
             cancelSwitchBack()
             return
         }
@@ -1051,10 +1119,7 @@ final class NetworkFailover {
             }
             guard self.epoch == epoch, !Task.isCancelled else { return }
             lastSwitchBackActionAt = clock()
-            guard try await hotspotJoiner.rejoinKnownNetwork(ssid: home, interfaceName: iface) else {
-                rescheduleSwitchBack(epoch: epoch)
-                return
-            }
+            try await hotspotJoiner.leaveForKnownNetwork(interfaceName: iface)
         } catch {
             Log.error("switch back to the previous Wi-Fi failed: \(error.localizedDescription)")
             rescheduleSwitchBack(epoch: epoch)
@@ -1062,6 +1127,22 @@ final class NetworkFailover {
         }
         try? await Task.sleep(for: settle)
         guard self.epoch == epoch, !Task.isCancelled else { return }
+        let joined = await readSSID()
+        guard self.epoch == epoch, !Task.isCancelled else { return }
+        guard joined == home else {
+            switchBackFailures += 1
+            if let joined {
+                Log.info(joined == hotspot
+                    ? "switch back: macOS rejoined the hotspot, not the previous Wi-Fi; trying again later"
+                    : "switch back: macOS joined another network, not the previous Wi-Fi")
+            } else {
+                Log.info("switch back: no network joined after leaving the hotspot; back to the hotspot")
+                lastSwitchBackActionAt = clock()
+                await joinHotspot()
+            }
+            rescheduleSwitchBack(epoch: epoch)
+            return
+        }
         var online = await probe.isInternetReachable()
         if !online {
             // One more look before calling home offline.
@@ -1154,6 +1235,14 @@ final class NetworkFailover {
     @discardableResult
     func fireTimer() -> Task<Void, Never> {
         retryTimer = nil
+        // A switch-back tick is testing home: a hotspot join now would move
+        // the Mac under it, and its probe would test the hotspot instead.
+        // The attempt waits, untouched, until the tick is done.
+        if switchBackRunning, machine.inOutage {
+            Log.info("hotspot join deferred: a switch-back is testing the previous Wi-Fi")
+            schedule(after: Self.deferredJoinDelay)
+            return Task {}
+        }
         let outputs = machine.timerFired(at: clock())
         return track { [weak self] in await self?.apply(outputs) }
     }
@@ -1301,7 +1390,7 @@ final class NetworkFailover {
             )
         }
         onRecovered?(gap)
-        if homeSSID != nil, await readSSID() == HotspotSSID.normalized(configProvider().hotspotSSID) {
+        if homeSSID != nil, hotspotConfigured, await readSSID() == HotspotSSID.normalized(configProvider().hotspotSSID) {
             guard self.epoch == epoch else { return }
             scheduleSwitchBack()
         }

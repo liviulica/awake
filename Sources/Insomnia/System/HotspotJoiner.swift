@@ -6,9 +6,12 @@ protocol HotspotJoining: Sendable {
     func join(ssid: String, password: String, interfaceName: String) async throws -> Bool
     /// Whether an SSID-filtered scan sees the network now.
     func isVisible(ssid: String, interfaceName: String) async throws -> Bool
-    /// Joins a network macOS already knows, with the password macOS stored
-    /// for it. False when it is not in range.
-    func rejoinKnownNetwork(ssid: String, interfaceName: String) async throws -> Bool
+    /// Leaves the current network (the hotspot) so macOS auto-joins its
+    /// preferred known network with the credentials it stored. CoreWLAN
+    /// cannot join a WEP/WPA/WPA2 Personal network itself without the
+    /// passphrase (CWInterface.h), and only macOS holds it; which network
+    /// macOS picks is read back afterwards.
+    func leaveForKnownNetwork(interfaceName: String) async throws
 }
 
 enum HotspotJoinError: Error, LocalizedError {
@@ -40,12 +43,11 @@ struct CoreWLANHotspotJoiner: HotspotJoining {
         try !scan(ssid: ssid, interfaceName: interfaceName).isEmpty
     }
 
-    func rejoinKnownNetwork(ssid: String, interfaceName: String) async throws -> Bool {
-        guard let network = try scan(ssid: ssid, interfaceName: interfaceName).first,
-              let interface = CWWiFiClient.shared().interface(withName: interfaceName) else { return false }
-        // nil: CoreWLAN uses the credentials macOS stored for a known network.
-        try interface.associate(to: network, password: nil)
-        return true
+    func leaveForKnownNetwork(interfaceName: String) async throws {
+        guard let interface = CWWiFiClient.shared().interface(withName: interfaceName) else {
+            throw HotspotJoinError.missingInterface(interfaceName)
+        }
+        interface.disassociate()
     }
 
     private func scan(ssid: String, interfaceName: String) throws -> Set<CWNetwork> {

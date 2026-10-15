@@ -153,15 +153,17 @@ Settings. The password stays in your login Keychain. Awake asks for Location
 Services access, because macOS requires it to read Wi-Fi network names. It
 never reads your location. After you reinstall Awake, enter the password again.
 
-While on the hotspot, Awake looks every minute for the network it left. It
-rejoins that network only if the internet works there, and otherwise goes back
-to the hotspot and waits longer before it tries again. "Use hotspot failover in
+While on the hotspot, Awake looks every minute for the network it left. When
+it is in range, Awake leaves the hotspot so macOS rejoins that network with
+the password it saved, and stays only if the internet works there; otherwise
+it goes back to the hotspot and waits longer before it tries again. "Use hotspot failover in
 Awake mode too" in Settings (off by default) runs the same failover in Awake
 mode.
 
 **Network.** Awake makes one kind of network request: while hotspot failover
-runs, it checks `http://captive.apple.com/hotspot-detect.html`, the address
-macOS itself uses to test the connection. The request carries a neutral user
+runs with a hotspot configured, it checks
+`http://captive.apple.com/hotspot-detect.html`, the address macOS itself uses
+to test the connection. The request carries a neutral user
 agent and no cookies. Nothing else leaves your Mac.
 
 [docs/extras.md](docs/extras.md) has the details.

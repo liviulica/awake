@@ -224,6 +224,14 @@ final class AppServices {
         awakeNetwork = nil
     }
 
+    /// The config changed: the lid session's failover starts or stops its
+    /// internet check as a hotspot is configured or cleared
+    /// (`NetworkFailover.syncProbe`). Awake mode's failover runs only with a
+    /// hotspot configured, so the app starts and stops it instead.
+    func configChanged() {
+        network?.syncProbe()
+    }
+
     func stop() {
         guard running else { return }
         running = false

@@ -49,7 +49,7 @@ private final class GatedJoiner: HotspotJoining, @unchecked Sendable {
         return true
     }
     func isVisible(ssid: String, interfaceName: String) async throws -> Bool { false }
-    func rejoinKnownNetwork(ssid: String, interfaceName: String) async throws -> Bool { false }
+    func leaveForKnownNetwork(interfaceName: String) async throws {}
 }
 
 // MARK: - NetworkFailover: ending a session must end its work

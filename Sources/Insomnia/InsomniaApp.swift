@@ -140,7 +140,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Re-reconciles when the setting, the hotspot, a lid session or Awake
-    /// mode changes (Settings edits `manager.config` directly).
+    /// mode changes (Settings edits `manager.config` directly), and lets a
+    /// lid session's failover start or stop its internet check.
     private func observeAwakeFailoverInputs() {
         withObservationTracking {
             _ = manager.config
@@ -150,6 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in
                 guard let self else { return }
                 self.reconcileAwakeFailover()
+                self.manager.services?.configChanged()
                 self.observeAwakeFailoverInputs()
             }
         }
