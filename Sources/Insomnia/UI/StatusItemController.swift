@@ -22,6 +22,15 @@ final class StatusItemController: NSObject {
         case off, screen, lid
     }
 
+    /// Runs `body` once the menu's tracking has ended: a run-loop block in
+    /// the default mode, which an open menu's tracking mode does not run.
+    /// Not a main-queue block: a modal alert started inside one holds every
+    /// other main-queue job (the lease renewal, the deadline, the timers)
+    /// until it closes, because the main queue does not nest.
+    static func presentOutsideTracking(_ body: @escaping @MainActor () -> Void) {
+        RunLoop.main.perform(inModes: [.default]) { MainActor.assumeIsolated(body) }
+    }
+
     /// Which Custom… prompt to show.
     enum DurationPrompt: Equatable {
         case screen, lid
@@ -231,12 +240,18 @@ final class StatusItemController: NSObject {
             lidRemaining: manager.session?.closedLidRemaining(at: now),
             lidPaused: manager.session?.isPaused ?? false,
             lidChosen: lidChosen,
+            lidStarting: lidStartInFlight,
             now: now
         )
     }
 
     /// A tab click (spec 2026-10-16 "Tabs").
     func applyTab(_ tab: ModeHeader.Tab) async {
+        // A newer choice than a Lid start still waiting wins: ending through
+        // the manager bumps its end ticket, so the pending start rolls back.
+        if lidStartInFlight, tab != .lid {
+            _ = await manager.end(reason: .user)
+        }
         switch ModeHeader.transition(from: Self.mode(lidActive: manager.isActive, awake: awake.state), to: tab) {
         case .none:
             break
@@ -277,9 +292,8 @@ final class StatusItemController: NSObject {
             lidChosen = length
         case .screenCustom, .lidCustom:
             let kind: DurationPrompt = action == .screenCustom ? .screen : .lid
-            // The next main-queue turn, so the alert never runs inside the
-            // menu's tracking loop.
-            DispatchQueue.main.async { [weak self] in
+            // Once the menu has closed, and outside any main-queue job.
+            Self.presentOutsideTracking { [weak self] in
                 guard let self, let length = self.customDuration(kind) else { return }
                 Task { @MainActor in
                     await self.applyChip(kind == .screen ? .screenFor(length) : .lidRemaining(min(length, Config.lidMaxDuration)))
@@ -333,8 +347,9 @@ final class StatusItemController: NSObject {
             return
         }
         lidStartInFlight = true
-        defer { lidStartInFlight = false }
+        refresh()
         await manager.start(duration: min(duration, Config.lidMaxDuration))
+        lidStartInFlight = false
         refresh()
     }
 

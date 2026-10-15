@@ -240,9 +240,10 @@ echo
 before=$(count_starts)
 cat <<STEP
 Step 1. In the menu bar, right-click the Ember icon, then:
-          Keep awake with lid closed -> Custom... -> type ${SESSION_MINUTES}m -> Start
-        and enter your password when macOS asks.
-        Keep the lid OPEN until this script says the session started.
+          Lid tab, then the Custom... chip -> type ${SESSION_MINUTES}m -> Set
+        (an install from before the fourth sudoers line also asks for your
+        password at the Lid tab). Keep the lid OPEN until you have set the
+        ${SESSION_MINUTES} minutes and this script says the session started.
 STEP
 waited=0
 while [[ $(count_starts) -le $before ]]; do

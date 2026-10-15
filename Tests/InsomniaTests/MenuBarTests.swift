@@ -316,6 +316,98 @@ final class ModeHeaderControllerTests: XCTestCase {
         XCTAssertEqual(c.headerModel(now: h.clock.now).selected, .screen)
     }
 
+    /// Codex review: Lid clicked, then Off while the start still waits
+    /// (settle delay, backstop). The newer choice wins: the pending start
+    /// is ended through the manager's end ticket, and no session remains.
+    func testLeavingLidWhileItsStartIsPendingCancelsIt() async {
+        let h = Harness()
+        defer { h.home.destroy() }
+        h.clamshell.closed = false
+        let gate = AsyncGate()
+        h.guardFake.sleepGate = gate
+        let m = h.makeManager(closedLidClock: true)
+        let awake = AwakeController(assertion: FakeAwakeAssertion(), clock: { h.clock.now })
+        let c = StatusItemController(manager: m, status: PlaceholderStatus(), awake: awake, showSettings: {})
+        defer { c.stop() }
+
+        let lid = Task { await c.applyTab(.lid) }
+        await gate.waitUntilStarted()
+        XCTAssertTrue(c.lidStartInFlight)
+        let off = Task { await c.applyTab(.off) }
+        await gate.open()
+        await lid.value
+        await off.value
+
+        XCTAssertFalse(m.isActive, "the pending lid start was overridden by Off")
+        XCTAssertFalse(h.guardFake.sleepDisabled, "sleep is back to normal")
+        XCTAssertEqual(awake.state, .off)
+    }
+
+    /// The same, with Screen as the newer choice: no lid session, screen on.
+    func testScreenWhileALidStartIsPendingCancelsItAndTurnsScreenOn() async {
+        let h = Harness()
+        defer { h.home.destroy() }
+        h.clamshell.closed = false
+        let gate = AsyncGate()
+        h.guardFake.sleepGate = gate
+        let m = h.makeManager(closedLidClock: true)
+        let awake = AwakeController(assertion: FakeAwakeAssertion(), clock: { h.clock.now })
+        let c = StatusItemController(manager: m, status: PlaceholderStatus(), awake: awake, showSettings: {})
+        defer { c.stop() }
+
+        let lid = Task { await c.applyTab(.lid) }
+        await gate.waitUntilStarted()
+        let screen = Task { await c.applyTab(.screen) }
+        await gate.open()
+        await lid.value
+        await screen.value
+
+        XCTAssertFalse(m.isActive)
+        XCTAssertFalse(h.guardFake.sleepDisabled)
+        XCTAssertEqual(awake.state, .on(until: nil))
+    }
+
+    /// Final review #2: while a Lid start waits, the header says so.
+    func testThePendingLidStartShowsInTheHeader() async {
+        let h = Harness()
+        defer { h.home.destroy() }
+        let gate = AsyncGate()
+        h.guardFake.sleepGate = gate
+        let m = h.makeManager()
+        let awake = AwakeController(assertion: FakeAwakeAssertion(), clock: { h.clock.now })
+        let c = StatusItemController(manager: m, status: PlaceholderStatus(), awake: awake, showSettings: {})
+        defer { c.stop() }
+        let lid = Task { await c.applyTab(.lid) }
+        await gate.waitUntilStarted()
+        XCTAssertEqual(c.headerModel(now: h.clock.now).caption, "Starting lid mode\u{2026}")
+        await gate.open()
+        await lid.value
+        XCTAssertEqual(c.headerModel(now: h.clock.now).selected, .lid)
+    }
+
+    /// Final review #1: the Custom… alert is presented by a run-loop block,
+    /// not a main-queue block. Started from inside a main-queue callout (as
+    /// a chip's Task is), a main-queue block would wait for that callout to
+    /// end; the run-loop block runs as soon as the run loop turns, so the
+    /// alert's modal loop never holds main-actor work (lease, deadline,
+    /// timers) hostage.
+    func testDeferredPresentationRunsInsideAMainQueueCallout() {
+        let done = expectation(description: "callout finished")
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                var ran = false
+                StatusItemController.presentOutsideTracking { ran = true }
+                let deadline = Date().addingTimeInterval(1)
+                while !ran, Date() < deadline {
+                    RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.05))
+                }
+                XCTAssertTrue(ran, "the presentation waited for the main-queue callout to end")
+                done.fulfill()
+            }
+        }
+        wait(for: [done], timeout: 3)
+    }
+
     /// Leaving a mode forgets the length picked for it, so the next session
     /// does not highlight a stale chip.
     func testLeavingAModeForgetsItsChosenLength() async {

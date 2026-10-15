@@ -14,9 +14,12 @@ anywhere public.
 
 ## What the app can and cannot protect
 
-The installer grants the user account passwordless access to three exact pmset
-commands listed in the README. This grant is not exclusive to the Ember app:
-other processes running as that user can invoke them too. The app is not
+The installer grants the user account passwordless access to four exact pmset
+commands listed in the README, including `pmset -a disablesleep 1`, which turns
+sleep off. This grant is not exclusive to the Ember app: other processes
+running as that user can invoke them too, and so can keep the Mac awake
+without asking. That line is a stopgap until a signed helper replaces the
+sudoers rule. The app is not
 sandboxed; local logs can contain SSIDs, process metadata.
 The lines the app writes to `ember.log` also reach the unified log with the
 body marked private, so programs reading `log show` see `<private>` instead of

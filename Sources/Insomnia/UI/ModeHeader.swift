@@ -67,12 +67,15 @@ enum ModeHeader {
 
     /// `screenChosen` and `lidChosen` are the lengths last picked for the
     /// running mode (nil when none was picked); a length that is no chip
-    /// highlights Custom.
+    /// highlights Custom. `lidStarting` is a Lid tab start still waiting
+    /// (settle delay, backstop): the tab stays on the real mode and the
+    /// caption says the start is under way.
     static func model(mode: StatusItemController.Mode, awakeEndsAt: Date?, screenChosen: TimeInterval?,
-                      lidRemaining: TimeInterval?, lidPaused: Bool, lidChosen: TimeInterval?, now: Date) -> Model {
+                      lidRemaining: TimeInterval?, lidPaused: Bool, lidChosen: TimeInterval?,
+                      lidStarting: Bool = false, now: Date) -> Model {
         switch mode {
         case .off:
-            return Model(selected: .off, chips: [], caption: "The Mac sleeps as usual.")
+            return Model(selected: .off, chips: [], caption: lidStarting ? startingCaption : "The Mac sleeps as usual.")
         case .screen:
             let timed = awakeEndsAt != nil
             let custom = timed && screenChosen != nil && !screenChips.contains(screenChosen)
@@ -83,7 +86,8 @@ enum ModeHeader {
                      isSelected: timed ? (length != nil && length == screenChosen) : length == nil)
             }
             chips.append(Chip(title: "Custom\u{2026}", accessibilityLabel: "Custom duration", action: .screenCustom, isSelected: custom))
-            let caption = awakeEndsAt.map { "\(Countdown.short($0.timeIntervalSince(now))) left" } ?? "Until you turn it off"
+            let caption = lidStarting ? startingCaption
+                : awakeEndsAt.map { "\(Countdown.short($0.timeIntervalSince(now))) left" } ?? "Until you turn it off"
             return Model(selected: .screen, chips: chips, caption: caption)
         case .lid:
             let custom = lidChosen.map { !lidChips.contains($0) } ?? false
@@ -97,6 +101,8 @@ enum ModeHeader {
             return Model(selected: .lid, chips: chips, caption: caption)
         }
     }
+
+    static let startingCaption = "Starting lid mode\u{2026}"
 
     private static func hoursTitle(_ seconds: TimeInterval) -> String {
         "\(Int(seconds / 3600)) h"

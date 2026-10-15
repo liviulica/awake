@@ -26,6 +26,17 @@ final class ModeHeaderTests: XCTestCase {
         XCTAssertEqual(ModeHeader.transition(from: .lid, to: .lid), .none)
     }
 
+    /// A Lid start waits on the settle delay and the backstop: the tab
+    /// stays on the real mode, and the caption says the start is under way.
+    func testAPendingLidStartSaysSo() {
+        let off = ModeHeader.model(mode: .off, awakeEndsAt: nil, screenChosen: nil, lidRemaining: nil, lidPaused: false, lidChosen: nil, lidStarting: true, now: now)
+        XCTAssertEqual(off.selected, .off)
+        XCTAssertEqual(off.caption, "Starting lid mode\u{2026}")
+        let screen = ModeHeader.model(mode: .screen, awakeEndsAt: nil, screenChosen: nil, lidRemaining: nil, lidPaused: false, lidChosen: nil, lidStarting: true, now: now)
+        XCTAssertEqual(screen.selected, .screen)
+        XCTAssertEqual(screen.caption, "Starting lid mode\u{2026}")
+    }
+
     func testOffHasNoChips() {
         let m = ModeHeader.model(mode: .off, awakeEndsAt: nil, screenChosen: nil, lidRemaining: nil, lidPaused: false, lidChosen: nil, now: now)
         XCTAssertEqual(m.selected, .off)
