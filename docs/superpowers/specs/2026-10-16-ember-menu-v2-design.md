@@ -87,9 +87,11 @@ redraws on the existing 30 s tick, which runs in the menu's tracking mode
 (`.common`).
 
 **Accessibility:** the segmented control's segments carry their labels; each
-chip is a button with its full label ("1 hour", "Until I turn it off").
-Keyboard: Tab moves between the control and the chips, arrows move within the
-segmented control, Space/Return activates.
+chip is a button with its full accessibility label ("1 hour", "Until I turn
+it off"), so VoiceOver can operate both. Keyboard: an open menu does not pass
+key events to a custom view, so the header is mouse- and VoiceOver-operated;
+arrow keys move through the standard items below it, and ⌘, and ⌘Q work as
+before. Left-click stays the keyboard-free way to toggle screen mode.
 
 **Removed from the menu:** "Keep screen awake", "Keep screen awake for ›",
 "Lid closed for <default>", "Lid closed for ›", "Lid mode · time left",
