@@ -27,8 +27,8 @@ final class ConfigTests: XCTestCase {
 
     func testDefaults() {
         let c = Config()
-        XCTAssertEqual(c.presets, [1800, 3600, 7200, 14400, 28800, 43200, 86400])
-        XCTAssertTrue(c.presets.allSatisfy { $0 <= Config.lidMaxDuration }, "no deprecated preset past the 24 h cap")
+        XCTAssertEqual(c.lidClickDuration, 8 * 3600)
+        XCTAssertEqual(Config.lidClickChoices, [3600, 7200, 14400, 28800, 43200, 86400])
         XCTAssertEqual(c.lowPowerFloor, 40)
         XCTAssertEqual(c.endFloor, 10)
         XCTAssertEqual(c.maxDuration, 24 * 3600)
@@ -307,9 +307,21 @@ final class ConfigTests: XCTestCase {
     func testRoundTrip() throws {
         var c = Config()
         c.hotspotSSID = "iPhone"
-        c.presets = [60]
+        c.lidClickDuration = 2 * 3600
         let data = try Store.makeEncoder().encode(c)
         XCTAssertEqual(try Store.makeDecoder().decode(Config.self, from: data), c)
+    }
+
+    /// The click duration loads clamped: a config.json edited by hand to a
+    /// 30-day click never starts a 30-day session, and a value under a
+    /// minute never starts a session that ends at once.
+    func testLidClickDurationIsClampedOnLoad() throws {
+        let big = try Store.makeDecoder().decode(Config.self, from: Data(#"{"lidClickDuration": 2592000}"#.utf8))
+        XCTAssertEqual(big.lidClickDuration, Config.lidMaxDuration)
+        let tiny = try Store.makeDecoder().decode(Config.self, from: Data(#"{"lidClickDuration": 5}"#.utf8))
+        XCTAssertEqual(tiny.lidClickDuration, SessionMath.minimumDuration)
+        let missing = try Store.makeDecoder().decode(Config.self, from: Data("{}".utf8))
+        XCTAssertEqual(missing.lidClickDuration, 8 * 3600)
     }
 
     /// A config.json written by Insomnia carries keys Ember dropped (the
@@ -339,9 +351,10 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(c.agentList, Config.defaultAgentList)
         XCTAssertFalse(c.awakeHotspotFailover)
         let saved = try XCTUnwrap(String(data: try Store.makeEncoder().encode(c), encoding: .utf8))
-        for dropped in ["dockerRule", "nudgeThreshold", "tmuxTargets", "tmuxNudgePressesEnter"] {
+        for dropped in ["dockerRule", "nudgeThreshold", "tmuxTargets", "tmuxNudgePressesEnter", "\"presets\"", "defaultPreset"] {
             XCTAssertFalse(saved.contains(dropped), "\(dropped) written back: \(saved)")
         }
+        XCTAssertEqual(c.lidClickDuration, 8 * 3600, "an Insomnia-era config gets the 8 h click")
     }
 
     /// The install on file for the login item is absent in configs written
