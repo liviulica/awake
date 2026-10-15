@@ -39,6 +39,24 @@ final class ReconcileTests: XCTestCase {
         await m.reconcile()
         XCTAssertNil(m.session)
         XCTAssertFalse(h.guardFake.calls.contains("disablesleep 1"), "never prompt at launch: \(h.guardFake.calls)")
+        XCTAssertEqual(m.lastError, "Lid closed mode ended: sleep was turned back on while Awake was not running. Start it again from the menu.")
+    }
+
+    /// The sleep setting cannot be read at launch: the session ends too (it
+    /// is not known to be held), and the menu says the read failed rather
+    /// than that sleep was turned back on.
+    func testReconcileEndsSessionWithItsOwnLineWhenTheSleepSettingCannotBeRead() async throws {
+        try h.store.saveSession(Session(startedAt: h.clock.now, endsAt: h.clock.now.addingTimeInterval(3600)))
+        var state = RuntimeState.clean
+        state.sleepDisabledByUs = true
+        try h.store.saveState(state)
+        h.guardFake.sleepDisabled = true
+        h.guardFake.throwOn = ["pmset -g"]
+        let m = h.makeManager()
+        await m.reconcile()
+        XCTAssertNil(m.session)
+        XCTAssertFalse(h.guardFake.calls.contains("disablesleep 1"), "never prompt at launch: \(h.guardFake.calls)")
+        XCTAssertEqual(m.lastError, "Lid closed mode ended: Awake could not read the sleep setting at launch. Start it again from the menu.")
     }
 
     // (a) expired session on disk -> sleep restored, pids resumed, low power cleared, files cleared
@@ -384,6 +402,28 @@ final class ReconcileTests: XCTestCase {
         XCTAssertEqual(h.backstop.arms, 1)
         XCTAssertEqual(m.remainingText, "")
         XCTAssertNil(m.scheduledDeadline)
+    }
+
+    /// Quitting with no lid session and nothing journaled restores nothing,
+    /// so it says nothing.
+    func testQuitWithNoSessionAndNothingToUndoPostsNothing() async throws {
+        let m = h.makeManager()
+        let outcome = await m.end(reason: .quit)
+        XCTAssertEqual(outcome, .restored)
+        XCTAssertEqual(h.notifier.posts.map(\.title), [])
+    }
+
+    /// A quit that does undo something left in the journal still says so.
+    func testQuitWithNoSessionThatUndoesTheJournalPostsSessionRestored() async throws {
+        var state = RuntimeState.clean
+        state.sleepDisabledByUs = true
+        try h.store.saveState(state)
+        h.guardFake.sleepDisabled = true
+        let m = h.makeManager()
+        let outcome = await m.end(reason: .quit)
+        XCTAssertEqual(outcome, .restored)
+        XCTAssertFalse(h.guardFake.sleepDisabled)
+        XCTAssertEqual(h.notifier.posts.last?.title, "Session restored")
     }
 
     func testEndKeepsFlagWhenRestoreFailsSoBackstopRetries() async throws {

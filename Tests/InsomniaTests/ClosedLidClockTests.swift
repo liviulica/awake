@@ -47,6 +47,31 @@ final class ClosedLidClockTests: XCTestCase {
         XCTAssertEqual(m.session?.endsAt, h.clock.now.addingTimeInterval(SessionMath.pauseLease))
     }
 
+    /// A lease the agent can no longer be confirmed for (the app moved or
+    /// re-signed, the agent booted out) is not renewed; once it runs out the
+    /// session ends in the app, rather than staying paused with nothing on
+    /// disk that a lid close or the backstop can rely on.
+    func testALeaseThatCannotBeRenewedEndsTheSessionOnceItRunsOut() async throws {
+        h.clamshell.closed = false
+        let m = h.makeManager(closedLidClock: true)
+        await m.start(duration: 3600)
+        XCTAssertTrue(h.guardFake.sleepDisabled)
+        h.backstop.failArm = true
+        let ticks = Int(SessionMath.pauseLease / 60) - 1
+        for _ in 0..<ticks {
+            h.clock.advance(60)
+            await m.renewLeaseIfPaused()
+            XCTAssertTrue(m.isActive, "the lease has not run out yet")
+        }
+        h.clock.advance(61)
+        await m.renewLeaseIfPaused()
+        XCTAssertNil(m.session, "a paused session whose lease ran out unrenewed ends")
+        XCTAssertNil(try h.store.loadSession())
+        XCTAssertFalse(h.guardFake.sleepDisabled, "sleep is back to normal")
+        XCTAssertTrue(h.notifier.posts.contains { $0.title == "Session ended" })
+        XCTAssertEqual(m.lastError?.hasPrefix("Lid closed mode ended"), true)
+    }
+
     func testExtendWhilePausedAddsClosedTimeUpTo24Hours() async throws {
         h.clamshell.closed = false
         let m = h.makeManager(closedLidClock: true)

@@ -14,7 +14,9 @@ enum EndReason: String, Sendable {
     /// Reconcile found a session on disk but could not arm the recovery
     /// agent or journal for it, so it ended the session instead of holding
     /// sleep with nothing to release it; or sleep no longer read disabled,
-    /// and turning it off again would raise the administrator prompt.
+    /// and turning it off again would raise the administrator prompt; or a
+    /// paused session's lease ran out because the agent could not be
+    /// confirmed to renew it.
     case recoveryUnavailable
     /// `pmset disablesleep 1` failed or timed out during start. The setting
     /// may still have been applied, so the start is undone from the journal
@@ -1500,6 +1502,8 @@ final class SessionManager {
 
     private func performEnd(reason: EndReason) async -> EndOutcome {
         let had = session != nil
+        // Whether this end has anything to undo, read before the undo runs.
+        let hadChanges = state.isDirty
         Log.info("session end (\(reason.rawValue))")
         stopTimers()
         countdownPaused = false
@@ -1631,7 +1635,10 @@ final class SessionManager {
             return .incomplete(agentArmed: agentCanFinish)
         }
         // A cancelled prompt was the person's own choice: nothing to tell.
-        if reason != .startCancelled {
+        // Nor is a quit with no session and nothing to undo: no sleep was
+        // restored, so "Session restored" would be news of nothing.
+        let quitWithNothing = reason == .quit && !had && !hadChanges
+        if reason != .startCancelled, !quitWithNothing {
             notifier.post(title: Self.endTitle(reason, had: had), body: endBody(reason, waiting: waiting))
         }
         return .restored
@@ -2785,15 +2792,21 @@ final class SessionManager {
             // Turning sleep off needs the administrator prompt, which a
             // launch must never raise (spec "Privileges"). Keep the session
             // only while sleep is still off from before.
+            // A setting that cannot be read is not known to be off, so it
+            // ends the session too, with its own line.
             let stillHeld: Bool
+            var unreadable = false
             do {
                 stillHeld = try await sleepGuard.isSleepDisabled()
             } catch {
                 Log.error("reconcile: could not read SleepDisabled: \(error.localizedDescription)")
                 stillHeld = false
+                unreadable = true
             }
             guard stillHeld else {
-                fail("Lid closed mode ended: sleep was turned back on while Awake was not running. Start it again from the menu.")
+                fail(unreadable
+                    ? "Lid closed mode ended: Awake could not read the sleep setting at launch. Start it again from the menu."
+                    : "Lid closed mode ended: sleep was turned back on while Awake was not running. Start it again from the menu.")
                 _ = await performEnd(reason: .recoveryUnavailable)
                 return
             }
@@ -3085,11 +3098,20 @@ final class SessionManager {
     /// reached the clock (no event during a start, a refused or failed
     /// write) is caught within a minute and the session always ends; a
     /// session still paused gets its lease moved ahead of now.
+    ///
+    /// A lease that cannot be renewed (the agent cannot be confirmed: the
+    /// app was moved or re-signed, the agent was booted out) runs out with
+    /// the session still paused. The backstop may never act on it, and a
+    /// lid close cannot resume it either, since that write needs the same
+    /// agent, so the session is ended here once the lease has run out.
     func renewLeaseIfPaused() async {
         guard session?.isPaused == true else { return }
         await moveClock("lease") { [clamshell] in
             SessionMath.leaseRenewed(SessionMath.followingLid($0, lidClosed: clamshell(), now: $1), now: $1)
         }
+        guard let s = session, s.isPaused, s.isExpired(at: clock()) else { return }
+        fail("Lid closed mode ended: the recovery agent could not be confirmed, so the session could not be kept. Start it again from the menu.")
+        await end(reason: .recoveryUnavailable)
     }
 
     /// One session.json write under the recovery lock, like an extend: the
@@ -3177,7 +3199,8 @@ final class SessionManager {
             Task { @MainActor in
                 guard let self, let s = self.session, s.isExpired(at: self.clock()) else { return }
                 // A paused session is never ended by the clock: its endsAt
-                // is a lease, which is renewed instead.
+                // is a lease, which is renewed instead (or, if it cannot
+                // be, the session ends as unrecoverable).
                 if s.isPaused {
                     await self.renewLeaseIfPaused()
                 } else {
@@ -3445,7 +3468,7 @@ final class SessionManager {
         case .backstop: outputsWaiting
             ? "A previous session left changes behind. Sleep is back to normal."
             : "A previous session left changes behind; everything has been undone."
-        case .recoveryUnavailable: "Awake could not resume the session found on disk, so it ended the session. Sleep is back to normal."
+        case .recoveryUnavailable: "Awake could not keep the session's recovery in place, so it ended the session. Sleep is back to normal."
         case .startFailed: "Awake could not disable sleep, so no session was started. Sleep is back to normal."
         case .startCancelled: "The administrator prompt was cancelled, so no session was started. Sleep is back to normal."
         }
