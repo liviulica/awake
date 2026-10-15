@@ -23,18 +23,30 @@ final class MenuBarIconTests: XCTestCase {
     }
 
     /// The flame's round bottom is drawn below its centre (the arc goes
-    /// through y 18.8), and the lid icon's flame is small: ink near the
-    /// top only for the full flame.
+    /// through y 18.8). The lid icon's flame is lower and smaller, but of
+    /// the same family: it keeps most of the full flame's height.
     func testPilotLightShapes() {
         let awake = Self.bitmap(MenuBarIcon.image(.awake))
         // 36 px render = 1.5 px per unit; bitmap y 0 is the top.
         XCTAssertGreaterThan(awake.colorAt(x: 18, y: 25)?.alphaComponent ?? 0, 0.5, "inside the flame's round bottom")
         XCTAssertGreaterThan(awake.colorAt(x: 18, y: 6)?.alphaComponent ?? 0, 0.3, "the full flame reaches near the top")
         let lid = Self.bitmap(MenuBarIcon.image(.lid))
-        XCTAssertLessThan(lid.colorAt(x: 18, y: 6)?.alphaComponent ?? 1, 0.1, "the pilot flame is low")
+        XCTAssertLessThan(lid.colorAt(x: 18, y: 4)?.alphaComponent ?? 1, 0.1, "the pilot flame sits lower than the full flame")
+        XCTAssertGreaterThan(lid.colorAt(x: 18, y: 20)?.alphaComponent ?? 0, 0.5, "inside the pilot flame's body")
         XCTAssertGreaterThan(lid.colorAt(x: 18, y: 29)?.alphaComponent ?? 0, 0.5, "the closed lid line")
         let off = Self.bitmap(MenuBarIcon.image(.off))
         XCTAssertLessThan(off.colorAt(x: 18, y: 19)?.alphaComponent ?? 1, 0.2, "off is an outline: its middle is empty")
+    }
+
+    /// Spec 2026-10-15 "Menu bar icon": the lid flame keeps at least 75% of
+    /// the full flame's height and the lid line is at least as thick as the
+    /// outline, so the three states read as one family.
+    func testLidIconHasTheMassOfItsSiblings() {
+        let full = MenuBarIcon.flame().bounds
+        let lid = MenuBarIcon.lidFlame().bounds
+        XCTAssertGreaterThanOrEqual(lid.height, 0.75 * full.height, "lid flame \(lid.height) vs full \(full.height)")
+        XCTAssertGreaterThanOrEqual(MenuBarIcon.lidLineWidth, MenuBarIcon.outlineWidth)
+        XCTAssertLessThan(lid.maxY, 24 - MenuBarIcon.lidLineWidth, "the flame stays above the lid line")
     }
 
     /// Pixels with any alpha in a 36×36 render (2x).

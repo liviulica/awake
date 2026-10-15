@@ -2,8 +2,8 @@ import AppKit
 
 /// The three menu bar states, drawn in code as template images so macOS
 /// tints them for light and dark bars: a pilot light. Off is the flame's
-/// outline (unlit); screen on is the flame filled; lid closed is a small low
-/// flame on the closed lid: turned down, never out.
+/// outline (unlit); screen on is the flame filled; lid closed is the flame,
+/// lower and a little smaller, on the closed lid: turned down, never out.
 enum MenuBarIcon: Equatable, CaseIterable {
     case off
     case awake
@@ -33,30 +33,43 @@ enum MenuBarIcon: Equatable, CaseIterable {
         return image
     }
 
+    static let outlineWidth: CGFloat = 1.7
+    static let lidLineWidth: CGFloat = 2.6
+    /// Where the pilot flame sits: its bottom point, just above the lid line.
+    private static let lidFlameBottom = NSPoint(x: 12, y: 17.2)
+    /// Lower and a little smaller than the full flame, never slight: the
+    /// three states read as one family (spec 2026-10-15 "Menu bar icon").
+    private static let lidFlameScale: CGFloat = 0.78
+    private static let lidLineY: CGFloat = 19.9
+
     /// Draws into the current context in 24-unit, y-down coordinates.
     static func draw(_ icon: MenuBarIcon) {
         NSColor.black.set()
         switch icon {
         case .off:
-            stroke(flame(), width: 1.7)
+            stroke(flame(), width: outlineWidth)
         case .awake:
             flame().fill()
         case .lid:
-            let small = flame()
-            // Move the flame's bottom point to the origin, scale, then put
-            // that point at (12, 17.4) just above the lid.
-            var m = AffineTransform(translationByX: -12, byY: -18.8)
-            m.append(AffineTransform(scale: 0.6))
-            m.append(AffineTransform(translationByX: 12, byY: 17.4))
-            small.transform(using: m)
-            small.fill()
-            line(from: NSPoint(x: 2.5, y: 19.4), to: NSPoint(x: 21.5, y: 19.4), width: 2.2)
+            lidFlame().fill()
+            line(from: NSPoint(x: 3.5, y: lidLineY), to: NSPoint(x: 20.5, y: lidLineY), width: lidLineWidth)
         }
     }
 
+    /// The pilot flame: the flame scaled down around its bottom point and
+    /// set just above the lid line. Internal so the test can measure it.
+    static func lidFlame() -> NSBezierPath {
+        let small = flame()
+        var m = AffineTransform(translationByX: -12, byY: -18.8)
+        m.append(AffineTransform(scale: lidFlameScale))
+        m.append(AffineTransform(translationByX: lidFlameBottom.x, byY: lidFlameBottom.y))
+        small.transform(using: m)
+        return small
+    }
+
     /// The flame, in 24-unit y-down coordinates: pointed top, round bottom
-    /// through (12, 18.8).
-    private static func flame() -> NSBezierPath {
+    /// through (12, 18.8). Internal so the test can measure it.
+    static func flame() -> NSBezierPath {
         let p = NSBezierPath()
         p.move(to: NSPoint(x: 12, y: 2.6))
         p.curve(to: NSPoint(x: 17.4, y: 13.4), controlPoint1: NSPoint(x: 13.8, y: 6), controlPoint2: NSPoint(x: 17.4, y: 8.6))
