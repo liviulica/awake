@@ -185,8 +185,8 @@ final class ClosedLidSleepTests: XCTestCase {
         let quit = await m.end(reason: .quit)
 
         XCTAssertEqual(quit, .incomplete(agentArmed: true))
-        XCTAssertTrue(m.closedLidSleepOwed, "the quit would drop the owed sleep")
-        XCTAssertFalse(m.quitRequested, "starts stay refused while the app stays")
+        XCTAssertTrue(m.closedLidSleepOwed, "the quit dropped the owed sleep")
+        XCTAssertFalse(m.quitRequested, "the app stays to ask for the sleep, so starts are no longer refused for the quit")
         h.guardFake.sleepDisabled = false
         await pollUntil("not asked once sleep was restored") { h.lidSleep.requests.last == Self.asked }
         XCTAssertFalse(m.closedLidSleepOwed)
