@@ -68,6 +68,43 @@ final class AwakeControllerTests: XCTestCase {
         XCTAssertEqual(c.state, .off)
     }
 
+    /// Decision 3: a lid close releases the hold at the event itself, before
+    /// the session stops reading as paused (which happens only after the
+    /// close actions, whose display sleep request a held assertion would
+    /// make macOS ignore). An open lets the paused session hold again.
+    func testALidCloseEventReleasesTheHoldBeforeTheSessionCatchesUp() {
+        let a = FakeAwakeAssertion()
+        let c = AwakeController(assertion: a, clock: { [t0] in t0 })
+        c.lidSessionChanged(active: true, lidOpen: true)
+        XCTAssertTrue(a.isHeld)
+        c.lidEvent(closed: true)
+        XCTAssertFalse(a.isHeld, "released at the close event")
+        c.lidSessionChanged(active: true, lidOpen: true)
+        XCTAssertFalse(a.isHeld, "the session still reading as paused does not take it back")
+        c.lidSessionChanged(active: true, lidOpen: false)
+        c.lidEvent(closed: false)
+        XCTAssertFalse(a.isHeld, "the clock still runs: the session is not paused yet")
+        c.lidSessionChanged(active: true, lidOpen: true)
+        XCTAssertTrue(a.isHeld)
+    }
+
+    /// A close the lid overtook (closed, then opened before the clock
+    /// moved) takes the hold back at the open; and a session ending with
+    /// the lid shut leaves nothing behind for the next one.
+    func testAnOpenAfterACloseTheClockNeverSawHoldsAgain() {
+        let a = FakeAwakeAssertion()
+        let c = AwakeController(assertion: a, clock: { [t0] in t0 })
+        c.lidSessionChanged(active: true, lidOpen: true)
+        c.lidEvent(closed: true)
+        c.lidEvent(closed: false)
+        XCTAssertTrue(a.isHeld)
+        c.lidEvent(closed: true)
+        c.lidSessionChanged(active: false, lidOpen: false)
+        XCTAssertFalse(a.isHeld)
+        c.lidSessionChanged(active: true, lidOpen: true)
+        XCTAssertTrue(a.isHeld, "the last session's close does not carry over")
+    }
+
     func testTurningOnAgainReplacesTheDeadline() {
         let a = FakeAwakeAssertion()
         let c = AwakeController(assertion: a, clock: { [t0] in t0 })

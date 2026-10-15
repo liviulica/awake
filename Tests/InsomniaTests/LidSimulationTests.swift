@@ -79,6 +79,25 @@ final class LidSimulationGateTests: XCTestCase {
         XCTAssertNil(watcher.onEvent)
     }
 
+    /// Every lid event reaches `onLidEvent` first (the lid-mode screen
+    /// hold is dropped there, before a close's display sleep request).
+    func testEveryLidEventReachesOnLidEvent() {
+        let home = TempHome()
+        defer { home.destroy() }
+        let watcher = FakeLidSimulation()
+        let services = makeServices(home: home, watcher: watcher, enabled: true)
+        var seen: [Bool] = []
+        services.onLidEvent = { closed in
+            XCTAssertNotEqual(services.status.lidClosed, closed, "the hook runs before the event is handled")
+            seen.append(closed)
+        }
+        services.startLidSimulation()
+        watcher.onEvent?(true)
+        watcher.onEvent?(false)
+        XCTAssertEqual(seen, [true, false])
+        services.stopLidSimulation()
+    }
+
     /// Without a watcher (a release build) stop has nothing to do and the
     /// start never touches the directory.
     func testNoWatcherMeansNothingIsStartedOrStopped() {

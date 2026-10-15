@@ -24,6 +24,13 @@ final class AwakeController {
     /// True while a lid session runs; Awake mode cannot start then (screen
     /// mode is part of lid mode).
     private(set) var lidSessionActive = false
+    /// The lid as the session reports it (a paused session has it open).
+    @ObservationIgnored private var sessionLidOpen = false
+    /// The last lid event during this lid session was a close. It drops
+    /// the hold at the event itself, before the lid actions run, so the
+    /// display sleep `LidActions` asks for is not refused for it; the
+    /// session only stops reading as paused after those actions.
+    @ObservationIgnored private var lidClosedByEvent = false
 
     var isOn: Bool { state != .off }
     var endsAt: Date? {
@@ -90,10 +97,26 @@ final class AwakeController {
     /// session ends. Called on every session change; idempotent.
     func lidSessionChanged(active: Bool, lidOpen: Bool) {
         lidSessionActive = active
+        sessionLidOpen = lidOpen
+        // The next session starts from the lid as it reads then.
+        if !active { lidClosedByEvent = false }
         if active, state != .off {
             turnOff(reason: "folded into lid mode")
         }
-        let want = active && lidOpen
+        syncLidHold()
+    }
+
+    /// A lid event during a lid session, delivered as it arrives
+    /// (`AppServices.onLidEvent`), before the close or open actions run.
+    /// A close releases the screen hold at once; an open lets the session
+    /// take it again once it reads as paused.
+    func lidEvent(closed: Bool) {
+        lidClosedByEvent = closed
+        syncLidHold()
+    }
+
+    private func syncLidHold() {
+        let want = lidSessionActive && sessionLidOpen && !lidClosedByEvent
         guard want != lidHoldActive else { return }
         if want {
             do {

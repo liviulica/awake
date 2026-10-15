@@ -69,6 +69,9 @@ final class StatusItemController: NSObject {
             button.font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         }
         observe()
+        // A lid close drops the screen hold before the close actions ask
+        // the display to sleep (AwakeController.lidEvent).
+        manager.services?.onLidEvent = { [weak awake] closed in awake?.lidEvent(closed: closed) }
         // A session already on file at launch gets its lid hold and its
         // reminder now, not at its next change.
         stateChanged()
@@ -113,6 +116,7 @@ final class StatusItemController: NSObject {
     func stop() {
         tick?.invalidate()
         tick = nil
+        manager.services?.onLidEvent = nil
         NSStatusBar.system.removeStatusItem(statusItem)
     }
 

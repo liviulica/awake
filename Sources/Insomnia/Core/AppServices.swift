@@ -98,6 +98,10 @@ final class AppServices {
     /// can hold a change the observer then drops as a flap.
     private var lastLidEvent: Bool?
     private(set) var running = false
+    /// Told of every lid event as it arrives, before its actions are
+    /// queued: the lid-mode screen hold (`AwakeController.lidEvent`) must
+    /// be gone before a close's display sleep request.
+    var onLidEvent: (@MainActor (Bool) -> Void)?
 
     init(
         paths: Paths,
@@ -420,6 +424,7 @@ final class AppServices {
     }
 
     private func lidChanged(_ closed: Bool) {
+        onLidEvent?(closed)
         lastLidEvent = closed
         status.lidClosed = closed
         guard let actions = lidActions else { return }

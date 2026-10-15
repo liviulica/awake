@@ -320,6 +320,34 @@ final class ClosedLidClockTests: XCTestCase {
 /// pauses it, each in its own transaction after the lid actions.
 @MainActor
 final class ClosedLidClockLidActionsTests: XCTestCase {
+    /// Decision 3: the close actions' display sleep request comes after the
+    /// lid-mode screen hold is gone, in the order AppServices delivers a
+    /// close (the `onLidEvent` hook, then the actions). Before the fix the
+    /// hold went only once the clock ran, after the request.
+    func testTheDisplaySleepRequestComesAfterTheScreenHoldIsReleased() async throws {
+        let h = Harness()
+        defer { h.home.destroy() }
+        h.clamshell.closed = false
+        let m = h.makeManager(closedLidClock: true)
+        let a = FakeAwakeAssertion()
+        let awake = AwakeController(assertion: a, clock: { h.clock.now })
+        let heldAtRequest = Locked<[Bool]>([])
+        h.display.onSleepRequest = { heldAtRequest.value.append(a.isHeld) }
+        let actions = LidActions(manager: m, freezer: FakeFreezer(apps: [], processes: [], control: h.procs),
+                                 audio: h.audio, display: h.display, keyboard: h.keyboard, sampler: nil)
+        await m.start(duration: 3600)
+        awake.lidSessionChanged(active: m.isActive, lidOpen: m.session?.isPaused ?? false)
+        XCTAssertTrue(a.isHeld, "lid open: the screen is held")
+
+        h.clamshell.closed = true
+        awake.lidEvent(closed: true)
+        await actions.onClose()
+        awake.lidSessionChanged(active: m.isActive, lidOpen: m.session?.isPaused ?? false)
+
+        XCTAssertEqual(heldAtRequest.value, [false], "the display sleep was requested while the screen hold was held")
+        XCTAssertFalse(a.isHeld)
+    }
+
     func testLidActionsMoveTheClock() async throws {
         let h = Harness()
         defer { h.home.destroy() }

@@ -566,9 +566,13 @@ final class FakeDisplayDimmer: DisplayDimming, @unchecked Sendable {
         onSet?(value)
     }
 
+    /// Called inside `requestSleep`, so a test can check what was held then.
+    var onSleepRequest: (@Sendable () -> Void)?
+
     func requestSleep() throws {
         if throwOnSleep { throw DisplayPowerError(what: "IORequestIdle") }
         lock.withLock { _sleepRequests += 1 }
+        onSleepRequest?()
     }
 
     func wake() {
