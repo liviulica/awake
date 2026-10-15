@@ -130,20 +130,30 @@ today, and keeps its three cases:
 | yes | no | warning: "Sleep is not off: this session is not keeping the Mac awake" |
 | no | yes | warning: "Sleep is still off with no session running" |
 
-Other warnings keep their current sentences from `SessionManager`
-(`lastError`, `commandWarning`, `foreignSleepWarning`), the hotspot-password
-line and the test-build marker, now with the warning symbol instead of the
-"⚠" character. Every warning sits in the warning section, after the Mac
+The two sleep warnings are about the Mac, so they lead the Mac block (as in
+the mock-up above). Other warnings keep their current sentences from
+`SessionManager` (`lastError`, `commandWarning`, `foreignSleepWarning`), the
+hotspot-password line and the test-build marker, now with the warning symbol
+instead of the "⚠" character, and sit in the warning section after the Mac
 block.
 
 Dropped from the menu: the watts reading (and `instantWatts()` is no longer
-called when the menu opens), "N apps frozen · last gap" as a bare line, and
-the words "throttled", "journal", "verified live".
+called when the menu opens), the "Lid: open/closed" line (the icon and the
+"lid open, clock paused" wording already say it), "N apps frozen · last gap"
+as a bare line, and the words "throttled", "journal", "verified live".
 
 The "While closed" line needs what the journal holds: frozen count from the
 status source, muted from `savedAudioOutputs` being non-empty, Low Power Mode
-from `lowPowerSetByUs`. It is visible in practice only on a closed Mac with an
-external display, or in the seconds after a lid open before restore ends.
+from `lowPowerSetByUs`. It shows only while a session runs (outputs still
+waiting for a device outlive the session and have their own warning), so in
+practice on a closed Mac with an external display, or in the seconds after a
+lid open before restore ends.
+
+Clicks: the second mouse-up of a double-click is ignored (a double-click is
+one step), and a lid start waiting on the administrator prompt makes any
+further start, from a click or the menu, a no-op until it returns.
+
+A hand-edited `lidClickDuration` loads as the nearest of the six choices.
 
 ## Documentation
 

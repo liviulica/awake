@@ -7,7 +7,7 @@ struct Config: Codable, Equatable, Sendable {
     // Session
     /// Closed-lid time a left-click in screen mode starts a lid session
     /// with (spec 2026-10-15 "The click duration"). One of `lidClickChoices`;
-    /// loads clamped to [`SessionMath.minimumDuration`, `lidMaxDuration`].
+    /// any other value loads as the nearest choice.
     var lidClickDuration: TimeInterval = 8 * 3600
     /// Hard ceiling on a lid session: 24 hours (spec "Interaction"). An
     /// extension never pushes the end past `now + maxDuration`.
@@ -18,8 +18,11 @@ struct Config: Codable, Equatable, Sendable {
     /// What Settings offers for the click duration: 1, 2, 4, 8, 12 and 24 h.
     static let lidClickChoices: [TimeInterval] = [1, 2, 4, 8, 12, 24].map { $0 * 3600 }
 
+    /// A hand-edited value becomes the nearest of `lidClickChoices`, so the
+    /// menu title and the Settings picker always name what a click starts.
     static func clampedLidClickDuration(_ value: TimeInterval) -> TimeInterval {
-        min(max(value, SessionMath.minimumDuration), lidMaxDuration)
+        guard value.isFinite else { return 8 * 3600 }
+        return lidClickChoices.min { abs($0 - value) < abs($1 - value) } ?? 8 * 3600
     }
 
     // Lid-close actions

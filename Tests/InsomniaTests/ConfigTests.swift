@@ -312,14 +312,20 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(try Store.makeDecoder().decode(Config.self, from: data), c)
     }
 
-    /// The click duration loads clamped: a config.json edited by hand to a
-    /// 30-day click never starts a 30-day session, and a value under a
-    /// minute never starts a session that ends at once.
-    func testLidClickDurationIsClampedOnLoad() throws {
-        let big = try Store.makeDecoder().decode(Config.self, from: Data(#"{"lidClickDuration": 2592000}"#.utf8))
-        XCTAssertEqual(big.lidClickDuration, Config.lidMaxDuration)
-        let tiny = try Store.makeDecoder().decode(Config.self, from: Data(#"{"lidClickDuration": 5}"#.utf8))
-        XCTAssertEqual(tiny.lidClickDuration, SessionMath.minimumDuration)
+    /// The click duration loads as one of the choices: a config.json edited
+    /// by hand to a 30-day click never starts a 30-day session, a value
+    /// under a minute never starts one that ends at once, and an in-between
+    /// value never gives a menu title or picker that names another length.
+    func testLidClickDurationLoadsAsTheNearestChoice() throws {
+        func load(_ seconds: Double) throws -> TimeInterval {
+            try Store.makeDecoder().decode(Config.self, from: Data(#"{"lidClickDuration": \#(seconds)}"#.utf8)).lidClickDuration
+        }
+        XCTAssertEqual(try load(2_592_000), 24 * 3600)
+        XCTAssertEqual(try load(5), 3600)
+        XCTAssertEqual(try load(5400), 3600, "1.5 h is as near 1 h as 2 h; the first choice wins")
+        XCTAssertEqual(try load(6000), 7200)
+        XCTAssertEqual(try load(36000), 8 * 3600)
+        XCTAssertEqual(try load(4 * 3600), 4 * 3600, "a choice stays as it is")
         let missing = try Store.makeDecoder().decode(Config.self, from: Data("{}".utf8))
         XCTAssertEqual(missing.lidClickDuration, 8 * 3600)
     }

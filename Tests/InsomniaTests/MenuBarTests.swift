@@ -188,6 +188,43 @@ final class StatusItemControllerLogicTests: XCTestCase {
         XCTAssertFalse(a.isHeld)
     }
 
+    /// A double-click is one step of the cycle; right-click is never a
+    /// repeat.
+    func testTheSecondMouseUpOfADoubleClickIsIgnored() {
+        XCTAssertFalse(StatusItemController.isRepeatClick(clickCount: 1, isRightClick: false))
+        XCTAssertTrue(StatusItemController.isRepeatClick(clickCount: 2, isRightClick: false))
+        XCTAssertTrue(StatusItemController.isRepeatClick(clickCount: 3, isRightClick: false))
+        XCTAssertFalse(StatusItemController.isRepeatClick(clickCount: 2, isRightClick: true))
+    }
+
+    /// A second start while the first waits on the administrator prompt
+    /// returns at once instead of queuing behind it, so a cancel of the
+    /// first prompt can never bring up a second one. The gate holds the
+    /// first start inside `disablesleep 1`, where the prompt would be.
+    func testAStartDuringThePromptIsIgnored() async {
+        let h = Harness()
+        defer { h.home.destroy() }
+        h.clamshell.closed = false
+        let gate = AsyncGate()
+        h.guardFake.sleepGate = gate
+        let m = h.makeManager(closedLidClock: true)
+        let awake = AwakeController(assertion: FakeAwakeAssertion(), clock: { h.clock.now })
+        let c = StatusItemController(manager: m, status: PlaceholderStatus(), awake: awake, showSettings: {})
+        defer { c.stop() }
+
+        let first = Task { await c.startLidSession(8 * 3600) }
+        await gate.waitUntilStarted()
+        XCTAssertTrue(c.lidStartInFlight)
+        await c.startLidSession(8 * 3600)
+        XCTAssertFalse(m.isActive, "the second start returned while the first still waits on the prompt")
+        await gate.open()
+        await first.value
+
+        XCTAssertFalse(c.lidStartInFlight)
+        XCTAssertTrue(m.isActive)
+        XCTAssertEqual(h.guardFake.calls.filter { $0 == "disablesleep 1" }.count, 1, "one prompt: \(h.guardFake.calls)")
+    }
+
     /// Review focus 2: a start that does not take (the administrator prompt
     /// cancelled) leaves screen mode on and no session. A cancel is the
     /// person's own choice, so the manager logs it and shows no error.

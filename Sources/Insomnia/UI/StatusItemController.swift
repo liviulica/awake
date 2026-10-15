@@ -53,6 +53,11 @@ final class StatusItemController: NSObject {
     /// Redraws the countdown while one is shown. It reads whole minutes,
     /// so every 30 s keeps it at most half a minute behind.
     private var tick: Timer?
+    /// True while a lid start waits on the administrator prompt. The
+    /// session does not exist until the password is accepted, so without
+    /// this a second click (or the menu's start) would queue another start,
+    /// and a cancel would bring the prompt straight back.
+    private(set) var lidStartInFlight = false
 
     init(
         manager: SessionManager,
@@ -197,6 +202,9 @@ final class StatusItemController: NSObject {
 
     @objc private func buttonClicked(_ sender: NSStatusBarButton) {
         let event = NSApp.currentEvent
+        // A double-click is one step: the second mouse-up of a pair would
+        // otherwise move the cycle on again (off → screen → lid prompt).
+        if Self.isRepeatClick(clickCount: event?.clickCount ?? 1, isRightClick: event?.type == .rightMouseUp) { return }
         let action = Self.clickAction(
             isRightClick: event?.type == .rightMouseUp,
             controlHeld: event?.modifierFlags.contains(.control) ?? false,
@@ -227,10 +235,22 @@ final class StatusItemController: NSObject {
     }
 
     /// Starts a lid session, capped at 24 hours of closed-lid time
-    /// (`Config.lidMaxDuration`). Shared by the click and the menu.
+    /// (`Config.lidMaxDuration`). Shared by the click and the menu. A start
+    /// already waiting on the prompt makes this one a no-op.
     func startLidSession(_ duration: TimeInterval) async {
+        guard !lidStartInFlight else {
+            Log.info("lid mode start ignored: one is already waiting on the administrator prompt")
+            return
+        }
+        lidStartInFlight = true
+        defer { lidStartInFlight = false }
         await manager.start(duration: min(duration, Config.lidMaxDuration))
         refresh()
+    }
+
+    /// The second and later mouse-ups of a multi-click on the left button.
+    static func isRepeatClick(clickCount: Int, isRightClick: Bool) -> Bool {
+        !isRightClick && clickCount > 1
     }
 
     /// Not assigned to `statusItem.menu`, which would swallow the left click
@@ -283,11 +303,13 @@ final class StatusItemController: NSObject {
                 thermal: StatusLines.thermal(ProcessInfo.processInfo.thermalState),
                 wifi: StatusLines.wifi(ssid: status.wifiSSID, locationAuthorized: locationAuthorized, lastGap: status.lastGap),
                 hotspot: StatusLines.hotspot(ssid: manager.config.hotspotSSID),
-                whileClosed: StatusLines.whileClosed(
+                // Only during a session: outputs still waiting for a device
+                // outlive it and have their own warning and fix item.
+                whileClosed: manager.isActive ? StatusLines.whileClosed(
                     frozenCount: status.frozenCount,
                     muted: !manager.state.savedAudioOutputs.isEmpty,
                     lowPower: manager.state.lowPowerSetByUs
-                )
+                ) : nil
             ),
             sessionActive: manager.isActive,
             sleepHeld: manager.state.sleepDisabledByUs,
