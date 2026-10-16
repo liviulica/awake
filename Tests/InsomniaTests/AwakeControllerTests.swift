@@ -136,4 +136,32 @@ final class AwakeControllerTests: XCTestCase {
         XCTAssertFalse(a.isHeld)
         XCTAssertEqual(a.calls, [], "no hold is attempted while a lid session is active")
     }
+
+    /// Spec 2026-10-16 explanations, part 2: with the setting off a lid
+    /// session leaves the display to its own timer while the lid is open,
+    /// and a change applies at once.
+    func testWithTheScreenSettingOffALidSessionHoldsNoScreen() {
+        let a = FakeAwakeAssertion()
+        let c = AwakeController(assertion: a)
+        var keep = false
+        c.keepsScreenOnWhileLidOpen = { keep }
+        c.lidSessionChanged(active: true, lidOpen: true)
+        XCTAssertFalse(a.isHeld, "lid open, setting off: the display follows its own timer")
+        keep = true
+        c.settingsChanged()
+        XCTAssertTrue(a.isHeld, "back on: held at once")
+        keep = false
+        c.settingsChanged()
+        XCTAssertFalse(a.isHeld, "off again: released at once")
+    }
+
+    func testTheScreenSettingLeavesScreenModeAlone() {
+        let a = FakeAwakeAssertion()
+        let c = AwakeController(assertion: a)
+        c.keepsScreenOnWhileLidOpen = { false }
+        c.turnOn(for: nil)
+        XCTAssertTrue(a.isHeld)
+        c.settingsChanged()
+        XCTAssertTrue(a.isHeld, "screen mode is not a lid session")
+    }
 }

@@ -9,6 +9,10 @@ struct Config: Codable, Equatable, Sendable {
     /// with (spec 2026-10-15 "The click duration"). One of `lidClickChoices`;
     /// any other value loads as the nearest choice.
     var lidClickDuration: TimeInterval = 8 * 3600
+    /// Lid mode keeps the screen on while the lid is open (as screen mode
+    /// does). Off leaves the display to its own idle timer during a lid
+    /// session; the Mac still stays awake (spec 2026-10-16 explanations).
+    var lidKeepsScreenOn: Bool = true
     /// Hard ceiling on a lid session: 24 hours (spec "Interaction"). An
     /// extension never pushes the end past `now + maxDuration`.
     var maxDuration: TimeInterval = Config.lidMaxDuration
@@ -134,6 +138,7 @@ struct Config: Codable, Equatable, Sendable {
         let d = Config()
         lidClickDuration = Config.clampedLidClickDuration(
             try c.decodeIfPresent(TimeInterval.self, forKey: .lidClickDuration) ?? d.lidClickDuration)
+        lidKeepsScreenOn = try c.decodeIfPresent(Bool.self, forKey: .lidKeepsScreenOn) ?? d.lidKeepsScreenOn
         maxDuration = try c.decodeIfPresent(TimeInterval.self, forKey: .maxDuration) ?? d.maxDuration
         freezeList = try c.decodeIfPresent([String].self, forKey: .freezeList) ?? d.freezeList
         freezeAllApps = try c.decodeIfPresent(Bool.self, forKey: .freezeAllApps) ?? d.freezeAllApps

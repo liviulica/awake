@@ -56,6 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             locationPermission = LocationPermission()
         }
         super.init()
+        awake.keepsScreenOnWhileLidOpen = { [manager] in manager.config.lidKeepsScreenOn }
     }
 
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -84,13 +85,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Log.error("could not save config after the launch at login check: \(error.localizedDescription)")
             }
         }
-        let settings = SettingsWindow { [manager, secrets, locationPermission, loginItem] in
+        let settings = SettingsWindow { [manager, secrets, locationPermission, loginItem, awake] in
             AnyView(
                 SettingsView(
                     manager: manager,
                     secrets: secrets,
                     locationPermission: locationPermission,
-                    loginItem: loginItem
+                    loginItem: loginItem,
+                    lidScreenSettingChanged: { awake.settingsChanged() }
                 )
             )
         }

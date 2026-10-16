@@ -28,6 +28,7 @@ final class ConfigTests: XCTestCase {
     func testDefaults() {
         let c = Config()
         XCTAssertEqual(c.lidClickDuration, 8 * 3600)
+        XCTAssertTrue(c.lidKeepsScreenOn, "lid mode keeps the screen on by default")
         XCTAssertEqual(Config.lidClickChoices, [3600, 7200, 14400, 28800, 43200, 86400])
         XCTAssertEqual(c.lowPowerFloor, 40)
         XCTAssertEqual(c.endFloor, 10)
@@ -310,6 +311,14 @@ final class ConfigTests: XCTestCase {
         c.lidClickDuration = 2 * 3600
         let data = try Store.makeEncoder().encode(c)
         XCTAssertEqual(try Store.makeDecoder().decode(Config.self, from: data), c)
+    }
+
+    func testLidKeepsScreenOnDecodesMissingAsOnAndRoundTrips() throws {
+        XCTAssertTrue(try Store.makeDecoder().decode(Config.self, from: Data("{}".utf8)).lidKeepsScreenOn)
+        XCTAssertFalse(try Store.makeDecoder().decode(Config.self, from: Data(#"{"lidKeepsScreenOn": false}"#.utf8)).lidKeepsScreenOn)
+        var c = Config()
+        c.lidKeepsScreenOn = false
+        XCTAssertEqual(try Store.makeDecoder().decode(Config.self, from: try Store.makeEncoder().encode(c)), c)
     }
 
     /// The click duration loads as one of the choices: a config.json edited
