@@ -84,11 +84,14 @@ enum StatusLines {
     }
 
     /// "Wi-Fi: Home", with " · last outage 12 s" after an outage this
-    /// session. macOS hides the name until Location is allowed: say so.
-    /// Nothing known and Location allowed: no line.
-    static func wifi(ssid: String?, locationAuthorized: Bool, lastGap: TimeInterval?) -> String? {
+    /// session. macOS hides the name until Location is allowed; once a
+    /// hotspot is set up (the name matters to failover) the line says so,
+    /// before that it reads just "Wi-Fi on". Nothing known and Location
+    /// allowed: no line.
+    static func wifi(ssid: String?, locationAuthorized: Bool, lastGap: TimeInterval?, hotspotConfigured: Bool) -> String? {
         guard let shown = WiFiStatusName.display(ssid: ssid, locationAuthorized: locationAuthorized) else { return nil }
-        var line = shown == WiFiStatusName.redacted ? "Wi-Fi on \u{00B7} name needs Location access" : "Wi-Fi: \(shown)"
+        let hidden = hotspotConfigured ? "Wi-Fi on \u{00B7} name needs Location access" : "Wi-Fi on"
+        var line = shown == WiFiStatusName.redacted ? hidden : "Wi-Fi: \(shown)"
         if let gap = lastGap, gap > 0 {
             line += " \u{00B7} last outage \(Int(gap.rounded())) s"
         }

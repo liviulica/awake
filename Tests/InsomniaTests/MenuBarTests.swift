@@ -514,11 +514,18 @@ final class StatusMenuTests: XCTestCase {
     }
 
     func testWiFiLine() {
-        XCTAssertEqual(StatusLines.wifi(ssid: "Home", locationAuthorized: true, lastGap: nil), "Wi-Fi: Home")
-        XCTAssertEqual(StatusLines.wifi(ssid: "Home", locationAuthorized: true, lastGap: 12.4), "Wi-Fi: Home \u{00B7} last outage 12 s")
-        XCTAssertEqual(StatusLines.wifi(ssid: nil, locationAuthorized: false, lastGap: nil), "Wi-Fi on \u{00B7} name needs Location access")
-        XCTAssertNil(StatusLines.wifi(ssid: nil, locationAuthorized: true, lastGap: 30), "nothing known: no line, even after an outage")
-        XCTAssertEqual(StatusLines.wifi(ssid: "", locationAuthorized: false, lastGap: 0), "Wi-Fi on \u{00B7} name needs Location access")
+        XCTAssertEqual(StatusLines.wifi(ssid: "Home", locationAuthorized: true, lastGap: nil, hotspotConfigured: true), "Wi-Fi: Home")
+        XCTAssertEqual(StatusLines.wifi(ssid: "Home", locationAuthorized: true, lastGap: 12.4, hotspotConfigured: true), "Wi-Fi: Home \u{00B7} last outage 12 s")
+        XCTAssertNil(StatusLines.wifi(ssid: nil, locationAuthorized: true, lastGap: 30, hotspotConfigured: true), "nothing known: no line, even after an outage")
+        XCTAssertEqual(StatusLines.wifi(ssid: "", locationAuthorized: false, lastGap: 0, hotspotConfigured: true), "Wi-Fi on \u{00B7} name needs Location access")
+    }
+
+    /// The Location hint only matters once a hotspot is set up (owner,
+    /// 2026-10-16): before that the line just says Wi-Fi is on.
+    func testTheLocationHintOnlyWithAHotspot() {
+        XCTAssertEqual(StatusLines.wifi(ssid: nil, locationAuthorized: false, lastGap: nil, hotspotConfigured: false), "Wi-Fi on")
+        XCTAssertEqual(StatusLines.wifi(ssid: nil, locationAuthorized: false, lastGap: nil, hotspotConfigured: true), "Wi-Fi on \u{00B7} name needs Location access")
+        XCTAssertEqual(StatusLines.wifi(ssid: "Home", locationAuthorized: true, lastGap: nil, hotspotConfigured: false), "Wi-Fi: Home")
     }
 
     func testHotspotAndWhileClosedLines() {

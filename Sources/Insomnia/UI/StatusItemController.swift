@@ -408,7 +408,8 @@ final class StatusItemController: NSObject {
                 battery: StatusLines.battery(percent: status.batteryPercent, isCharging: status.isCharging),
                 batterySymbol: StatusLines.batterySymbol(percent: status.batteryPercent, isCharging: status.isCharging),
                 thermal: StatusLines.thermal(ProcessInfo.processInfo.thermalState),
-                wifi: StatusLines.wifi(ssid: status.wifiSSID, locationAuthorized: locationAuthorized, lastGap: status.lastGap),
+                wifi: StatusLines.wifi(ssid: status.wifiSSID, locationAuthorized: locationAuthorized, lastGap: status.lastGap,
+                                       hotspotConfigured: !HotspotSSID.normalized(manager.config.hotspotSSID).isEmpty),
                 hotspot: StatusLines.hotspot(ssid: manager.config.hotspotSSID),
                 // Only during a session: outputs still waiting for a device
                 // outlive it and have their own warning and fix item.
