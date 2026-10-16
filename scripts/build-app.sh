@@ -59,7 +59,7 @@ fi
 # ${arr[@]+"${arr[@]}"}: an empty array expands to nothing under set -u on
 # the bash 3.2 that ships with macOS.
 "$SWIFT" build -c release ${BUILD_FLAGS[@]+"${BUILD_FLAGS[@]}"}
-BIN="$("$SWIFT" build -c release ${BUILD_FLAGS[@]+"${BUILD_FLAGS[@]}"} --show-bin-path)/Insomnia"
+BIN="$("$SWIFT" build -c release ${BUILD_FLAGS[@]+"${BUILD_FLAGS[@]}"} --show-bin-path)/Ember"
 [[ -x "$BIN" ]] || { echo "binary not found at $BIN" >&2; exit 1; }
 
 # 2. Bundle ------------------------------------------------------------------

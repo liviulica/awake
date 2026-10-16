@@ -6525,7 +6525,7 @@ private final class ScriptFixture {
         try "icns".write(to: resources.appendingPathComponent("AppIcon.icns"), atomically: true, encoding: .utf8)
         let binroot = root.appendingPathComponent("binroot", isDirectory: true)
         try fm.createDirectory(at: binroot, withIntermediateDirectories: true)
-        let binary = binroot.appendingPathComponent("Insomnia")
+        let binary = binroot.appendingPathComponent("Ember")
         try TestScripts.write("#!/bin/bash\nexit 0\n", to: binary)
         try fm.createDirectory(at: plist.deletingLastPathComponent(), withIntermediateDirectories: true)
     }

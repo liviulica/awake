@@ -255,7 +255,7 @@ final class ResumeFrozenCommandTests: XCTestCase {
 
     /// The executable SwiftPM built next to this test bundle.
     private var builtBinary: URL {
-        Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("Insomnia")
+        Bundle(for: Self.self).bundleURL.deletingLastPathComponent().appendingPathComponent("Ember")
     }
 
     /// Runs the real binary in the mode with `input` as standard input, and

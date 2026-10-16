@@ -28,9 +28,9 @@ TEXTS=("lid SIMULATED" "Lid simulation build:" "test-control")
 RELEASE_FLAGS=(-c release -Xswiftc -warnings-as-errors)
 
 "$SWIFT" build "${RELEASE_FLAGS[@]}"
-plain="$("$SWIFT" build "${RELEASE_FLAGS[@]}" --show-bin-path)/Insomnia"
+plain="$("$SWIFT" build "${RELEASE_FLAGS[@]}" --show-bin-path)/Ember"
 "$SWIFT" build "${RELEASE_FLAGS[@]}" --scratch-path "$SIM_SCRATCH" -Xswiftc -DINSOMNIA_LID_SIMULATION
-sim="$("$SWIFT" build "${RELEASE_FLAGS[@]}" --scratch-path "$SIM_SCRATCH" -Xswiftc -DINSOMNIA_LID_SIMULATION --show-bin-path)/Insomnia"
+sim="$("$SWIFT" build "${RELEASE_FLAGS[@]}" --scratch-path "$SIM_SCRATCH" -Xswiftc -DINSOMNIA_LID_SIMULATION --show-bin-path)/Ember"
 
 failed=0
 # Prints how many lines of $2 contain $1, as a fixed string when $3 is
