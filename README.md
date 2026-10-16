@@ -87,6 +87,9 @@ The menu bar icon is a flame, like a pilot light:
 - **Right-click** (or ctrl-click) opens the menu:
   - At the top, **Off | Screen | Lid**: click one to switch. Lid starts for
     8 hours by default (a setting); Off ends whatever runs.
+  - Under the tabs, one line says what the mode does; hover a tab to read
+    it before you switch. Lid mode keeps the screen on while the lid is open
+    unless you turn that off in Settings → Modes.
   - Under it, quick times for the running mode. Screen: until I turn it
     off, 1, 2 or 4 hours, or Custom. Lid: 1, 2, 4, 8 or 12 hours, or
     Custom, which set the closed-lid time left. A line shows the time left.
@@ -166,9 +169,14 @@ alone. [docs/recovery.md](docs/recovery.md) explains each case.
 <summary><strong>iPhone hotspot failover</strong></summary>
 
 During a lid session, if Wi-Fi drops, or Wi-Fi is up but the internet is not,
-Ember joins your iPhone's hotspot. Set System Settings > Wi-Fi > Ask to join
-hotspots to Automatically, then enter the hotspot's name and password in
-Settings. The password stays in your login Keychain. Ember asks for Location
+Ember joins your iPhone's hotspot.
+
+To set it up, right-click the menu bar icon, choose **Lid**, then **Set up
+hotspot failover…** (or Settings → Network failover → **Set up…**). A small
+window walks you through it: Location access, your iPhone's Personal Hotspot
+screen (keep it open while you pick it from the list), the Mac's Ask to join
+hotspots setting, and the password. The password stays in your login
+Keychain. Ember asks for Location
 Services access, because macOS requires it to read Wi-Fi network names. It
 never reads your location. After you reinstall Ember, enter the password again.
 
