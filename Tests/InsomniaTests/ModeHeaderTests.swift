@@ -56,9 +56,22 @@ final class ModeHeaderTests: XCTestCase {
         XCTAssertEqual(screen.explanation, ModeHeader.explanation(for: .screen, lidKeepsScreenOn: true))
     }
 
+    /// Once a hotspot is set up, Lid says so (owner, 2026-10-16), with the
+    /// name, and offers to change it.
+    func testLidConfirmsAConfiguredHotspot() {
+        let lid = ModeHeader.model(mode: .lid, awakeEndsAt: nil, screenChosen: nil, lidRemaining: 60, lidPaused: false, lidChosen: nil, hotspotName: "Liviu's iPhone", now: now)
+        XCTAssertEqual(lid.hotspotLine, "Hotspot failover is set up: Liviu's iPhone")
+        XCTAssertFalse(lid.showsHotspotSetup)
+        let none = ModeHeader.model(mode: .lid, awakeEndsAt: nil, screenChosen: nil, lidRemaining: 60, lidPaused: false, lidChosen: nil, hotspotName: nil, now: now)
+        XCTAssertNil(none.hotspotLine)
+        XCTAssertTrue(none.showsHotspotSetup)
+        let screen = ModeHeader.model(mode: .screen, awakeEndsAt: nil, screenChosen: nil, lidRemaining: nil, lidPaused: false, lidChosen: nil, hotspotName: "Liviu's iPhone", now: now)
+        XCTAssertNil(screen.hotspotLine, "only under Lid")
+    }
+
     func testTheSetupButtonShowsOnlyForLidWithoutAHotspot() {
         func shows(_ mode: StatusItemController.Mode, _ configured: Bool) -> Bool {
-            ModeHeader.model(mode: mode, awakeEndsAt: nil, screenChosen: nil, lidRemaining: 60, lidPaused: false, lidChosen: nil, hotspotConfigured: configured, now: now).showsHotspotSetup
+            ModeHeader.model(mode: mode, awakeEndsAt: nil, screenChosen: nil, lidRemaining: 60, lidPaused: false, lidChosen: nil, hotspotName: configured ? "iPhone" : nil, now: now).showsHotspotSetup
         }
         XCTAssertTrue(shows(.lid, false))
         XCTAssertFalse(shows(.lid, true))
