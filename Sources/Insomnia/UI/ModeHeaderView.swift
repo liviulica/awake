@@ -19,8 +19,11 @@ final class ModeHeaderView: NSView {
     let explanationLabel: NSTextField
     /// The status line; hidden when empty.
     let captionLabel: NSTextField
-    /// "Set up hotspot failover…", shown for Lid without a hotspot.
+    /// "Set up hotspot failover…" for Lid without a hotspot, "Change…"
+    /// beside the confirmation line once one is set up.
     let setupButton: NSButton
+    /// "Hotspot failover is set up: <name>".
+    let hotspotLabel: NSTextField
 
     private var model: ModeHeader.Model
     private let onTab: @MainActor (ModeHeader.Tab) -> Void
@@ -41,6 +44,7 @@ final class ModeHeaderView: NSView {
         explanationLabel = NSTextField(wrappingLabelWithString: "")
         captionLabel = NSTextField(labelWithString: "")
         setupButton = NSButton(title: "Set up hotspot failover\u{2026}", target: nil, action: nil)
+        hotspotLabel = NSTextField(labelWithString: "")
         super.init(frame: NSRect(x: 0, y: 0, width: Self.minimumWidth, height: 80))
 
         segments.target = self
@@ -56,8 +60,11 @@ final class ModeHeaderView: NSView {
 
         setupButton.target = self
         setupButton.action = #selector(setupClicked(_:))
-        setupButton.bezelStyle = .inline
+        // A real button: as borderless text it read as disabled.
+        setupButton.bezelStyle = .rounded
         setupButton.controlSize = .small
+        hotspotLabel.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        hotspotLabel.textColor = .labelColor
 
         captionLabel.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
         captionLabel.textColor = .secondaryLabelColor
@@ -74,7 +81,11 @@ final class ModeHeaderView: NSView {
         stack.addArrangedSubview(explanationLabel)
         stack.addArrangedSubview(chipRow)
         stack.addArrangedSubview(captionLabel)
-        stack.addArrangedSubview(setupButton)
+        let hotspotRow = NSStackView(views: [hotspotLabel, setupButton])
+        hotspotRow.orientation = .horizontal
+        hotspotRow.spacing = 8
+        hotspotRow.alignment = .centerY
+        stack.addArrangedSubview(hotspotRow)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
@@ -102,7 +113,10 @@ final class ModeHeaderView: NSView {
             segments.setToolTip(ModeHeader.explanation(for: tab, lidKeepsScreenOn: model.lidKeepsScreenOn), forSegment: tab.rawValue)
         }
         explanationLabel.stringValue = model.explanation
-        setupButton.isHidden = !model.showsHotspotSetup
+        setupButton.isHidden = !model.showsHotspotSetup && model.hotspotLine == nil
+        setupButton.title = model.hotspotLine == nil ? "Set up hotspot failover\u{2026}" : "Change\u{2026}"
+        hotspotLabel.stringValue = model.hotspotLine ?? ""
+        hotspotLabel.isHidden = model.hotspotLine == nil
         if chipButtons.map(\.title) != model.chips.map(\.title) {
             for button in chipButtons { chipRow.removeArrangedSubview(button); button.removeFromSuperview() }
             chipButtons = model.chips.enumerated().map { index, chip in

@@ -246,7 +246,7 @@ final class StatusItemController: NSObject {
             lidChosen: lidChosen,
             lidStarting: lidStartInFlight,
             lidKeepsScreenOn: manager.config.lidKeepsScreenOn,
-            hotspotConfigured: !HotspotSSID.normalized(manager.config.hotspotSSID).isEmpty,
+            hotspotName: HotspotSSID.normalized(manager.config.hotspotSSID),
             now: now
         )
     }

@@ -442,6 +442,7 @@ final class ModeHeaderControllerTests: XCTestCase {
         XCTAssertTrue(c.headerModel(now: h.clock.now).showsHotspotSetup)
         m.config.hotspotSSID = "iPhone"
         XCTAssertFalse(c.headerModel(now: h.clock.now).showsHotspotSetup)
+        XCTAssertEqual(c.headerModel(now: h.clock.now).hotspotLine, "Hotspot failover is set up: iPhone")
     }
 
     /// Leaving a mode forgets the length picked for it, so the next session

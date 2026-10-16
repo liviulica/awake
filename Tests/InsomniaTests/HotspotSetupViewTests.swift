@@ -28,4 +28,23 @@ final class HotspotSetupViewTests: XCTestCase {
         }
         XCTAssertEqual(seen, [.wifiNames, .hotspot, .password, .done])
     }
+
+    /// The window is sized once and not resizable, so every step must have
+    /// the same height; a taller step had its Back/Continue row cut off
+    /// below the window (owner, 2026-10-16: "I can't select continue").
+    func testEveryStepHasTheSameHeight() async {
+        let setup = HotspotSetup(config: Config(), scanner: Scanner(), secrets: InMemoryHotspotSecretStore(),
+                                 saveHotspot: { _, _ in }, passwordStored: { _ in })
+        let permission = LocationPermission(authorizationStatus: .notDetermined)
+        var heights: [HotspotSetup.Step: CGFloat] = [:]
+        for _ in 0..<4 {
+            let host = NSHostingController(rootView: HotspotSetupView(setup: setup, locationPermission: permission, onDone: {}))
+            host.view.layoutSubtreeIfNeeded()
+            heights[setup.step] = host.view.fittingSize.height
+            if setup.step == .hotspot { setup.pick("iPhone") }
+            if setup.step == .password { setup.password = "secret" }
+            await setup.next()
+        }
+        XCTAssertEqual(Set(heights.values).count, 1, "step heights differ: \(heights)")
+    }
 }

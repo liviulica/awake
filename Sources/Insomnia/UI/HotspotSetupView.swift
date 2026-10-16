@@ -31,8 +31,10 @@ struct HotspotSetupView: View {
             footer
         }
         .padding(20)
-        .frame(width: 440)
-        .frame(minHeight: 300)
+        // One fixed size for every step: the window is sized once and is
+        // not resizable, so a taller step would push Back/Continue out of
+        // it. Step 2 needs about 400 points.
+        .frame(width: 440, height: 440)
     }
 
     // MARK: Steps

@@ -49,15 +49,25 @@ final class ModeHeaderViewTests: XCTestCase {
 
     func testTheSetupButtonAndTheTooltips() {
         var setups = 0
-        let lid = ModeHeader.model(mode: .lid, awakeEndsAt: nil, screenChosen: nil, lidRemaining: 3600, lidPaused: false, lidChosen: nil, hotspotConfigured: false, now: now)
+        let lid = ModeHeader.model(mode: .lid, awakeEndsAt: nil, screenChosen: nil, lidRemaining: 3600, lidPaused: false, lidChosen: nil, hotspotName: nil, now: now)
         let v = ModeHeaderView(model: lid, onTab: { _ in }, onChip: { _ in }, onSetupHotspot: { setups += 1 })
         XCTAssertFalse(v.setupButton.isHidden)
         XCTAssertEqual(v.setupButton.title, "Set up hotspot failover\u{2026}")
         v.setupButton.performClick(nil)
         XCTAssertEqual(setups, 1)
-        let configured = ModeHeader.model(mode: .lid, awakeEndsAt: nil, screenChosen: nil, lidRemaining: 3600, lidPaused: false, lidChosen: nil, hotspotConfigured: true, now: now)
+        let configured = ModeHeader.model(mode: .lid, awakeEndsAt: nil, screenChosen: nil, lidRemaining: 3600, lidPaused: false, lidChosen: nil, hotspotName: "Liviu's iPhone", now: now)
+        XCTAssertNotEqual(v.setupButton.bezelStyle, .inline, "a real button, not muted text")
+        XCTAssertTrue(v.hotspotLabel.isHidden)
         v.update(configured)
-        XCTAssertTrue(v.setupButton.isHidden)
+        XCTAssertFalse(v.setupButton.isHidden, "still there, to change the hotspot")
+        XCTAssertEqual(v.setupButton.title, "Change\u{2026}")
+        XCTAssertFalse(v.hotspotLabel.isHidden)
+        XCTAssertEqual(v.hotspotLabel.stringValue, "Hotspot failover is set up: Liviu's iPhone")
+        v.setupButton.performClick(nil)
+        XCTAssertEqual(setups, 2)
+        v.update(ModeHeader.model(mode: .screen, awakeEndsAt: nil, screenChosen: nil, lidRemaining: nil, lidPaused: false, lidChosen: nil, hotspotName: nil, now: now))
+        XCTAssertTrue(v.setupButton.isHidden, "only under Lid")
+        XCTAssertTrue(v.hotspotLabel.isHidden)
         for tab in ModeHeader.Tab.allCases {
             XCTAssertEqual(v.segments.toolTip(forSegment: tab.rawValue), ModeHeader.explanation(for: tab, lidKeepsScreenOn: true))
         }

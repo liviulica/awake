@@ -34,6 +34,9 @@ enum ModeHeader {
         let explanation: String
         /// The Lid tab offers "Set up hotspot failover…".
         let showsHotspotSetup: Bool
+        /// Under Lid with a hotspot configured: "Hotspot failover is set
+        /// up: <name>", with a "Change…" button.
+        let hotspotLine: String?
         /// For the segments' tooltips, which explain every tab.
         let lidKeepsScreenOn: Bool
     }
@@ -90,13 +93,14 @@ enum ModeHeader {
     /// says the start is under way.
     static func model(mode: StatusItemController.Mode, awakeEndsAt: Date?, screenChosen: TimeInterval?,
                       lidRemaining: TimeInterval?, lidPaused: Bool, lidChosen: TimeInterval?,
-                      lidStarting: Bool = false, lidKeepsScreenOn: Bool = true, hotspotConfigured: Bool = true,
+                      lidStarting: Bool = false, lidKeepsScreenOn: Bool = true, hotspotName: String? = "",
                       now: Date) -> Model {
         let base = coreModel(mode: mode, awakeEndsAt: awakeEndsAt, screenChosen: screenChosen, lidRemaining: lidRemaining,
                              lidPaused: lidPaused, lidChosen: lidChosen, lidStarting: lidStarting, now: now)
         return Model(selected: base.selected, chips: base.chips, caption: base.caption,
                      explanation: explanation(for: base.selected, lidKeepsScreenOn: lidKeepsScreenOn),
-                     showsHotspotSetup: mode == .lid && !hotspotConfigured,
+                     showsHotspotSetup: mode == .lid && (hotspotName ?? "").isEmpty,
+                     hotspotLine: mode == .lid && !(hotspotName ?? "").isEmpty ? "Hotspot failover is set up: \(hotspotName ?? "")" : nil,
                      lidKeepsScreenOn: lidKeepsScreenOn)
     }
 
