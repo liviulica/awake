@@ -9,6 +9,11 @@ struct SettingsView: View {
     let locationPermission: LocationPermission
     /// Launch at login as macOS reports it, not as config.json remembers it.
     let loginItem: LoginItem
+    /// Applies a change of "Lid mode keeps the screen on" to a running
+    /// session at once (`AwakeController.settingsChanged`).
+    var lidScreenSettingChanged: @MainActor () -> Void = {}
+    /// Opens the guided hotspot setup (`HotspotSetupWindow`).
+    var showHotspotSetup: @MainActor () -> Void = {}
 
     @State private var newFreezeBundle = ""
     @State private var newAgentBundle = ""
@@ -110,6 +115,15 @@ struct SettingsView: View {
                     Text(StatusMenu.durationTitle(choice)).tag(choice)
                 }
             }
+            Toggle("Lid mode keeps the screen on while the lid is open", isOn: Binding(
+                get: { manager.config.lidKeepsScreenOn },
+                set: { value in
+                    guard manager.config.lidKeepsScreenOn != value else { return }
+                    manager.config.lidKeepsScreenOn = value
+                    save()
+                    lidScreenSettingChanged()
+                }
+            ))
         }
     }
 
@@ -204,6 +218,12 @@ struct SettingsView: View {
 
     private var networkSection: some View {
         Section {
+            HStack {
+                Text("A guided setup: Location, your iPhone's hotspot, its password.")
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("Set up\u{2026}") { showHotspotSetup() }
+            }
             TextField("Hotspot SSID", text: bind(\.hotspotSSID))
             Toggle("Use hotspot failover in screen mode too", isOn: bind(\.awakeHotspotFailover))
             HStack {

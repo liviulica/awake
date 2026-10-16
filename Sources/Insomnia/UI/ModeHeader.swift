@@ -28,7 +28,25 @@ enum ModeHeader {
     struct Model: Equatable {
         let selected: Tab
         let chips: [Chip]
+        /// The status line ("2:00 left"); empty when there is none.
         let caption: String
+        /// What the selected mode does (spec 2026-10-16 explanations).
+        let explanation: String
+        /// The Lid tab offers "Set up hotspot failover…".
+        let showsHotspotSetup: Bool
+        /// For the segments' tooltips, which explain every tab.
+        let lidKeepsScreenOn: Bool
+    }
+
+    /// What each mode does, under the tabs and as each segment's tooltip.
+    static func explanation(for tab: Tab, lidKeepsScreenOn: Bool) -> String {
+        switch tab {
+        case .off: "The Mac sleeps as usual."
+        case .screen: "Keeps the Mac and its screen awake. Closing the lid still puts it to sleep."
+        case .lid: lidKeepsScreenOn
+            ? "Keeps the Mac running with the lid closed. While the lid is open, the screen stays on too."
+            : "Keeps the Mac running with the lid closed. While the lid is open, the screen sleeps as usual."
+        }
     }
 
     /// What a tab click does from the mode the Mac is in.
@@ -72,14 +90,32 @@ enum ModeHeader {
     /// says the start is under way.
     static func model(mode: StatusItemController.Mode, awakeEndsAt: Date?, screenChosen: TimeInterval?,
                       lidRemaining: TimeInterval?, lidPaused: Bool, lidChosen: TimeInterval?,
-                      lidStarting: Bool = false, now: Date) -> Model {
+                      lidStarting: Bool = false, lidKeepsScreenOn: Bool = true, hotspotConfigured: Bool = true,
+                      now: Date) -> Model {
+        let base = coreModel(mode: mode, awakeEndsAt: awakeEndsAt, screenChosen: screenChosen, lidRemaining: lidRemaining,
+                             lidPaused: lidPaused, lidChosen: lidChosen, lidStarting: lidStarting, now: now)
+        return Model(selected: base.selected, chips: base.chips, caption: base.caption,
+                     explanation: explanation(for: base.selected, lidKeepsScreenOn: lidKeepsScreenOn),
+                     showsHotspotSetup: mode == .lid && !hotspotConfigured,
+                     lidKeepsScreenOn: lidKeepsScreenOn)
+    }
+
+    private struct Core {
+        let selected: Tab
+        let chips: [Chip]
+        let caption: String
+    }
+
+    private static func coreModel(mode: StatusItemController.Mode, awakeEndsAt: Date?, screenChosen: TimeInterval?,
+                                  lidRemaining: TimeInterval?, lidPaused: Bool, lidChosen: TimeInterval?,
+                                  lidStarting: Bool, now: Date) -> Core {
         // The Lid tab answers the click at once; a failed start snaps back.
         if lidStarting, mode != .lid {
-            return Model(selected: .lid, chips: [], caption: startingCaption)
+            return Core(selected: .lid, chips: [], caption: startingCaption)
         }
         switch mode {
         case .off:
-            return Model(selected: .off, chips: [], caption: "The Mac sleeps as usual.")
+            return Core(selected: .off, chips: [], caption: "")
         case .screen:
             let timed = awakeEndsAt != nil
             let custom = timed && screenChosen != nil && !screenChips.contains(screenChosen)
@@ -91,7 +127,7 @@ enum ModeHeader {
             }
             chips.append(Chip(title: "Custom\u{2026}", accessibilityLabel: "Custom duration", action: .screenCustom, isSelected: custom))
             let caption = awakeEndsAt.map { "\(Countdown.short($0.timeIntervalSince(now))) left" } ?? "Until you turn it off"
-            return Model(selected: .screen, chips: chips, caption: caption)
+            return Core(selected: .screen, chips: chips, caption: caption)
         case .lid:
             let custom = lidChosen.map { !lidChips.contains($0) } ?? false
             var chips = lidChips.map { length in
@@ -101,7 +137,7 @@ enum ModeHeader {
             chips.append(Chip(title: "Custom\u{2026}", accessibilityLabel: "Custom duration", action: .lidCustom, isSelected: custom))
             var caption = "\(Countdown.short(lidRemaining ?? 0)) of closed-lid time left"
             if lidPaused { caption += " \u{00B7} lid open, clock paused" }
-            return Model(selected: .lid, chips: chips, caption: caption)
+            return Core(selected: .lid, chips: chips, caption: caption)
         }
     }
 

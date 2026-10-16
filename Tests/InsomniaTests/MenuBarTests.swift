@@ -429,6 +429,21 @@ final class ModeHeaderControllerTests: XCTestCase {
         XCTAssertEqual(relaunchItems(), 1, "lid session: the warning and its relaunch")
     }
 
+    /// With no hotspot configured the Lid header offers the setup.
+    func testTheLidHeaderOffersHotspotSetupWhenNoneIsConfigured() async {
+        let h = Harness()
+        defer { h.home.destroy() }
+        let m = h.makeManager()
+        m.config.hotspotSSID = ""
+        let awake = AwakeController(assertion: FakeAwakeAssertion(), clock: { h.clock.now })
+        let c = StatusItemController(manager: m, status: PlaceholderStatus(), awake: awake, showSettings: {})
+        defer { c.stop() }
+        await m.start(duration: 3600)
+        XCTAssertTrue(c.headerModel(now: h.clock.now).showsHotspotSetup)
+        m.config.hotspotSSID = "iPhone"
+        XCTAssertFalse(c.headerModel(now: h.clock.now).showsHotspotSetup)
+    }
+
     /// Leaving a mode forgets the length picked for it, so the next session
     /// does not highlight a stale chip.
     func testLeavingAModeForgetsItsChosenLength() async {
@@ -499,11 +514,18 @@ final class StatusMenuTests: XCTestCase {
     }
 
     func testWiFiLine() {
-        XCTAssertEqual(StatusLines.wifi(ssid: "Home", locationAuthorized: true, lastGap: nil), "Wi-Fi: Home")
-        XCTAssertEqual(StatusLines.wifi(ssid: "Home", locationAuthorized: true, lastGap: 12.4), "Wi-Fi: Home \u{00B7} last outage 12 s")
-        XCTAssertEqual(StatusLines.wifi(ssid: nil, locationAuthorized: false, lastGap: nil), "Wi-Fi on \u{00B7} name needs Location access")
-        XCTAssertNil(StatusLines.wifi(ssid: nil, locationAuthorized: true, lastGap: 30), "nothing known: no line, even after an outage")
-        XCTAssertEqual(StatusLines.wifi(ssid: "", locationAuthorized: false, lastGap: 0), "Wi-Fi on \u{00B7} name needs Location access")
+        XCTAssertEqual(StatusLines.wifi(ssid: "Home", locationAuthorized: true, lastGap: nil, hotspotConfigured: true), "Wi-Fi: Home")
+        XCTAssertEqual(StatusLines.wifi(ssid: "Home", locationAuthorized: true, lastGap: 12.4, hotspotConfigured: true), "Wi-Fi: Home \u{00B7} last outage 12 s")
+        XCTAssertNil(StatusLines.wifi(ssid: nil, locationAuthorized: true, lastGap: 30, hotspotConfigured: true), "nothing known: no line, even after an outage")
+        XCTAssertEqual(StatusLines.wifi(ssid: "", locationAuthorized: false, lastGap: 0, hotspotConfigured: true), "Wi-Fi on \u{00B7} name needs Location access")
+    }
+
+    /// The Location hint only matters once a hotspot is set up (owner,
+    /// 2026-10-16): before that the line just says Wi-Fi is on.
+    func testTheLocationHintOnlyWithAHotspot() {
+        XCTAssertEqual(StatusLines.wifi(ssid: nil, locationAuthorized: false, lastGap: nil, hotspotConfigured: false), "Wi-Fi on")
+        XCTAssertEqual(StatusLines.wifi(ssid: nil, locationAuthorized: false, lastGap: nil, hotspotConfigured: true), "Wi-Fi on \u{00B7} name needs Location access")
+        XCTAssertEqual(StatusLines.wifi(ssid: "Home", locationAuthorized: true, lastGap: nil, hotspotConfigured: false), "Wi-Fi: Home")
     }
 
     func testHotspotAndWhileClosedLines() {

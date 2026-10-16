@@ -38,11 +38,40 @@ final class ModeHeaderTests: XCTestCase {
         }
     }
 
+    func testExplanations() {
+        XCTAssertEqual(ModeHeader.explanation(for: .off, lidKeepsScreenOn: true), "The Mac sleeps as usual.")
+        XCTAssertEqual(ModeHeader.explanation(for: .screen, lidKeepsScreenOn: true), "Keeps the Mac and its screen awake. Closing the lid still puts it to sleep.")
+        XCTAssertEqual(ModeHeader.explanation(for: .lid, lidKeepsScreenOn: true), "Keeps the Mac running with the lid closed. While the lid is open, the screen stays on too.")
+        XCTAssertEqual(ModeHeader.explanation(for: .lid, lidKeepsScreenOn: false), "Keeps the Mac running with the lid closed. While the lid is open, the screen sleeps as usual.")
+    }
+
+    func testTheModelCarriesTheExplanationAndTheStatus() {
+        let lid = ModeHeader.model(mode: .lid, awakeEndsAt: nil, screenChosen: nil, lidRemaining: 3600, lidPaused: false, lidChosen: nil, lidKeepsScreenOn: false, now: now)
+        XCTAssertTrue(lid.explanation.hasSuffix("the screen sleeps as usual."))
+        XCTAssertEqual(lid.caption, "1:00 of closed-lid time left")
+        XCTAssertFalse(lid.lidKeepsScreenOn)
+        let starting = ModeHeader.model(mode: .off, awakeEndsAt: nil, screenChosen: nil, lidRemaining: nil, lidPaused: false, lidChosen: nil, lidStarting: true, now: now)
+        XCTAssertEqual(starting.explanation, ModeHeader.explanation(for: .lid, lidKeepsScreenOn: true))
+        let screen = ModeHeader.model(mode: .screen, awakeEndsAt: nil, screenChosen: nil, lidRemaining: nil, lidPaused: false, lidChosen: nil, now: now)
+        XCTAssertEqual(screen.explanation, ModeHeader.explanation(for: .screen, lidKeepsScreenOn: true))
+    }
+
+    func testTheSetupButtonShowsOnlyForLidWithoutAHotspot() {
+        func shows(_ mode: StatusItemController.Mode, _ configured: Bool) -> Bool {
+            ModeHeader.model(mode: mode, awakeEndsAt: nil, screenChosen: nil, lidRemaining: 60, lidPaused: false, lidChosen: nil, hotspotConfigured: configured, now: now).showsHotspotSetup
+        }
+        XCTAssertTrue(shows(.lid, false))
+        XCTAssertFalse(shows(.lid, true))
+        XCTAssertFalse(shows(.screen, false))
+        XCTAssertFalse(shows(.off, false))
+    }
+
     func testOffHasNoChips() {
         let m = ModeHeader.model(mode: .off, awakeEndsAt: nil, screenChosen: nil, lidRemaining: nil, lidPaused: false, lidChosen: nil, now: now)
         XCTAssertEqual(m.selected, .off)
         XCTAssertTrue(m.chips.isEmpty)
-        XCTAssertEqual(m.caption, "The Mac sleeps as usual.")
+        XCTAssertEqual(m.explanation, "The Mac sleeps as usual.")
+        XCTAssertEqual(m.caption, "", "Off has no status line")
     }
 
     func testScreenChipsAndHighlight() {

@@ -38,6 +38,11 @@ final class AwakeController {
         return nil
     }
 
+    /// Whether a lid session holds the screen on while the lid is open
+    /// (`Config.lidKeepsScreenOn`). Read at each change; `settingsChanged`
+    /// applies a new value at once.
+    @ObservationIgnored var keepsScreenOnWhileLidOpen: @MainActor () -> Bool = { true }
+
     /// Called after every state change, for the hotspot failover hookup.
     @ObservationIgnored var onChange: (@MainActor (State) -> Void)?
 
@@ -115,8 +120,14 @@ final class AwakeController {
         syncLidHold()
     }
 
+    /// The screen setting changed: hold or release the lid-session screen
+    /// hold now rather than at the next lid event.
+    func settingsChanged() {
+        syncLidHold()
+    }
+
     private func syncLidHold() {
-        let want = lidSessionActive && sessionLidOpen && !lidClosedByEvent
+        let want = lidSessionActive && sessionLidOpen && !lidClosedByEvent && keepsScreenOnWhileLidOpen()
         guard want != lidHoldActive else { return }
         if want {
             do {

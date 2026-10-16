@@ -15,31 +15,49 @@ final class ModeHeaderView: NSView {
 
     let segments: NSSegmentedControl
     private(set) var chipButtons: [NSButton] = []
+    /// What the selected mode does.
+    let explanationLabel: NSTextField
+    /// The status line; hidden when empty.
     let captionLabel: NSTextField
+    /// "Set up hotspot failover…", shown for Lid without a hotspot.
+    let setupButton: NSButton
 
     private var model: ModeHeader.Model
     private let onTab: @MainActor (ModeHeader.Tab) -> Void
     private let onChip: @MainActor (ModeHeader.ChipAction) -> Void
+    private let onSetupHotspot: @MainActor () -> Void
     private let stack = NSStackView()
     private let chipRow = NSStackView()
 
     init(model: ModeHeader.Model,
          onTab: @escaping @MainActor (ModeHeader.Tab) -> Void,
-         onChip: @escaping @MainActor (ModeHeader.ChipAction) -> Void) {
+         onChip: @escaping @MainActor (ModeHeader.ChipAction) -> Void,
+         onSetupHotspot: @escaping @MainActor () -> Void = {}) {
         self.model = model
         self.onTab = onTab
         self.onChip = onChip
+        self.onSetupHotspot = onSetupHotspot
         segments = NSSegmentedControl(labels: ModeHeader.tabTitles, trackingMode: .selectOne, target: nil, action: nil)
+        explanationLabel = NSTextField(wrappingLabelWithString: "")
         captionLabel = NSTextField(labelWithString: "")
+        setupButton = NSButton(title: "Set up hotspot failover\u{2026}", target: nil, action: nil)
         super.init(frame: NSRect(x: 0, y: 0, width: Self.minimumWidth, height: 80))
 
         segments.target = self
         segments.action = #selector(tabChanged(_:))
         segments.segmentDistribution = .fillEqually
-        for (index, title) in ModeHeader.tabTitles.enumerated() {
-            segments.setToolTip(title, forSegment: index)
-        }
         segments.setAccessibilityLabel("Mode")
+
+        explanationLabel.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        explanationLabel.textColor = .labelColor
+        // The Lid sentences need three lines at the header's width.
+        explanationLabel.maximumNumberOfLines = 0
+        explanationLabel.preferredMaxLayoutWidth = Self.minimumWidth - 28
+
+        setupButton.target = self
+        setupButton.action = #selector(setupClicked(_:))
+        setupButton.bezelStyle = .inline
+        setupButton.controlSize = .small
 
         captionLabel.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
         captionLabel.textColor = .secondaryLabelColor
@@ -53,8 +71,10 @@ final class ModeHeaderView: NSView {
         stack.spacing = 6
         stack.edgeInsets = NSEdgeInsets(top: 8, left: 14, bottom: 8, right: 14)
         stack.addArrangedSubview(segments)
+        stack.addArrangedSubview(explanationLabel)
         stack.addArrangedSubview(chipRow)
         stack.addArrangedSubview(captionLabel)
+        stack.addArrangedSubview(setupButton)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
@@ -78,6 +98,11 @@ final class ModeHeaderView: NSView {
 
     private func apply() {
         segments.selectedSegment = model.selected.rawValue
+        for tab in ModeHeader.Tab.allCases {
+            segments.setToolTip(ModeHeader.explanation(for: tab, lidKeepsScreenOn: model.lidKeepsScreenOn), forSegment: tab.rawValue)
+        }
+        explanationLabel.stringValue = model.explanation
+        setupButton.isHidden = !model.showsHotspotSetup
         if chipButtons.map(\.title) != model.chips.map(\.title) {
             for button in chipButtons { chipRow.removeArrangedSubview(button); button.removeFromSuperview() }
             chipButtons = model.chips.enumerated().map { index, chip in
@@ -97,6 +122,7 @@ final class ModeHeaderView: NSView {
         }
         chipRow.isHidden = model.chips.isEmpty
         captionLabel.stringValue = model.caption
+        captionLabel.isHidden = model.caption.isEmpty
         layoutSubtreeIfNeeded()
         let fitting = fittingSize
         setFrameSize(NSSize(width: max(fitting.width, Self.minimumWidth), height: fitting.height))
@@ -108,6 +134,11 @@ final class ModeHeaderView: NSView {
         sender.selectedSegment = model.selected.rawValue
         guard let clicked else { return }
         onTab(clicked)
+    }
+
+    @objc private func setupClicked(_ sender: NSButton) {
+        enclosingMenuItem?.menu?.cancelTracking()
+        onSetupHotspot()
     }
 
     @objc private func chipClicked(_ sender: NSButton) {
