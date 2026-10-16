@@ -91,9 +91,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 config: manager.config,
                 scanner: CoreWLANScanner(),
                 secrets: secrets,
-                saveConfig: { config in
-                    manager.config = config
-                    try manager.store.saveConfig(config)
+                saveHotspot: { ssid, alsoInScreenMode in
+                    manager.config.hotspotSSID = ssid
+                    manager.config.awakeHotspotFailover = alsoInScreenMode
+                    try manager.store.saveConfig(manager.config)
                 },
                 passwordStored: { outcome in
                     SettingsView.passwordStored(outcome, configuredSSID: manager.config.hotspotSSID, services: manager.services)

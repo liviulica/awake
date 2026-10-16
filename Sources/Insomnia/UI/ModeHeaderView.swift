@@ -50,7 +50,8 @@ final class ModeHeaderView: NSView {
 
         explanationLabel.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
         explanationLabel.textColor = .labelColor
-        explanationLabel.maximumNumberOfLines = 2
+        // The Lid sentences need three lines at the header's width.
+        explanationLabel.maximumNumberOfLines = 0
         explanationLabel.preferredMaxLayoutWidth = Self.minimumWidth - 28
 
         setupButton.target = self

@@ -8,7 +8,9 @@ struct HotspotSetupView: View {
     let locationPermission: LocationPermission
     let onDone: @MainActor () -> Void
 
-    private static let wifiSettingsURL = URL(string: "x-apple.systempreferences:com.apple.Wi-Fi-Settings.extension")
+    /// The Wi-Fi pane's extension ID on macOS 26 (Wi-Fi.appex allows the
+    /// x-apple.systempreferences scheme).
+    private static let wifiSettingsURL = URL(string: "x-apple.systempreferences:com.apple.wifi-settings-extension")
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -126,7 +128,7 @@ struct HotspotSetupView: View {
     }
 
     private var done: some View {
-        Text("Hotspot failover is set up. When Wi-Fi drops during a lid session, Ember joins \(setup.chosenName), and switches back when your Wi-Fi returns.")
+        Text("Hotspot failover is set up. When Wi-Fi drops during a lid session, Ember joins \(setup.savedName), and switches back when your Wi-Fi returns.")
             .fixedSize(horizontal: false, vertical: true)
     }
 
@@ -136,6 +138,7 @@ struct HotspotSetupView: View {
         HStack {
             if setup.step == .hotspot || setup.step == .password {
                 Button("Back") { setup.back() }
+                    .disabled(setup.saving)
             }
             Spacer()
             if setup.saving { ProgressView().controlSize(.small) }

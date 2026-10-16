@@ -13,7 +13,7 @@ final class HotspotSetupViewTests: XCTestCase {
 
     func testEveryStepLaysOut() async {
         let setup = HotspotSetup(config: Config(), scanner: Scanner(), secrets: InMemoryHotspotSecretStore(),
-                                 saveConfig: { _ in }, passwordStored: { _ in })
+                                 saveHotspot: { _, _ in }, passwordStored: { _ in })
         let permission = LocationPermission(authorizationStatus: .notDetermined)
         var seen: [HotspotSetup.Step] = []
         for _ in 0..<4 {

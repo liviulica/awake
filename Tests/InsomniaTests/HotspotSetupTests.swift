@@ -18,10 +18,13 @@ final class HotspotSetupTests: XCTestCase {
     @MainActor
     private final class FlakyStore: HotspotSecretStore {
         var failSave = false
+        /// Holds a save until opened.
+        var gate: AsyncGate?
         private(set) var password: String?
         func load() async throws -> String? { password }
         func peek() async throws -> String? { password }
         func save(_ password: String) async throws -> HotspotPasswordChange {
+            if let gate { await gate.wait() }
             if failSave { throw KeychainError(status: errSecIO) }
             self.password = password
             return HotspotPasswordChange(ssid: "")
@@ -32,14 +35,21 @@ final class HotspotSetupTests: XCTestCase {
         }
     }
 
+    /// The app's live config: the setup writes only its two fields into it.
+    private var live = Config()
     private var savedConfigs: [Config] = []
     private var outcomes: [HotspotStoreOutcome] = []
 
-    private func make(config: Config = Config(), scan: Result<ScannedNetworks, Error> = .success(ScannedNetworks(names: ["Home", "iPhone"], current: "Home")),
+    private func make(config: Config? = nil, scan: Result<ScannedNetworks, Error> = .success(ScannedNetworks(names: ["Home", "iPhone"], current: "Home")),
                       store: FlakyStore = FlakyStore()) -> HotspotSetup {
-        HotspotSetup(config: config, scanner: FakeScanner(result: scan), secrets: store,
-                     saveConfig: { [unowned self] in self.savedConfigs.append($0) },
-                     passwordStored: { [unowned self] in self.outcomes.append($0) })
+        if let config { live = config }
+        return HotspotSetup(config: live, scanner: FakeScanner(result: scan), secrets: store,
+                            saveHotspot: { [unowned self] ssid, alsoInScreenMode in
+                                self.live.hotspotSSID = ssid
+                                self.live.awakeHotspotFailover = alsoInScreenMode
+                                self.savedConfigs.append(self.live)
+                            },
+                            passwordStored: { [unowned self] in self.outcomes.append($0) })
     }
 
     func testStartsAtWiFiNamesWithTheCurrentValues() {
@@ -175,5 +185,45 @@ final class HotspotSetupTests: XCTestCase {
         let again = make(config: savedConfigs.last ?? Config())
         XCTAssertEqual(again.step, .wifiNames)
         XCTAssertEqual(again.typedName, "iPhone")
+    }
+
+    /// Final review / Codex: a setting changed elsewhere while the window
+    /// was open survives the save; only the two hotspot fields are written.
+    func testSaveKeepsSettingsChangedWhileTheWindowWasOpen() async {
+        let setup = make()
+        live.lidKeepsScreenOn = false
+        live.freezeList = ["com.example.app"]
+        await setup.next()
+        setup.pick("iPhone")
+        await setup.next()
+        setup.password = "secret"
+        await setup.next()
+        XCTAssertEqual(setup.step, .done)
+        XCTAssertEqual(live.hotspotSSID, "iPhone")
+        XCTAssertFalse(live.lidKeepsScreenOn, "the newer setting survived")
+        XCTAssertEqual(live.freezeList, ["com.example.app"])
+    }
+
+    /// Codex: Back while the password save runs does nothing, and Done
+    /// names the hotspot that was saved.
+    func testBackIsIgnoredWhileSaving() async {
+        let store = FlakyStore()
+        let gate = AsyncGate()
+        store.gate = gate
+        let setup = make(store: store)
+        await setup.next()
+        setup.pick("iPhone")
+        await setup.next()
+        setup.password = "secret"
+        let saving = Task { await setup.next() }
+        await gate.waitUntilStarted()
+        XCTAssertTrue(setup.saving)
+        setup.back()
+        XCTAssertEqual(setup.step, .password, "no going back mid-save")
+        setup.typedName = "Other"
+        await gate.open()
+        await saving.value
+        XCTAssertEqual(setup.step, .done)
+        XCTAssertEqual(setup.savedName, "iPhone", "Done names what was saved")
     }
 }

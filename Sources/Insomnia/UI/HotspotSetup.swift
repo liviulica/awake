@@ -23,25 +23,28 @@ final class HotspotSetup {
     private(set) var saveError: String?
     private(set) var saving = false
 
-    @ObservationIgnored private var config: Config
     @ObservationIgnored private let scanner: any WiFiScanning
     @ObservationIgnored private let secrets: any HotspotSecretStore
-    @ObservationIgnored private let saveConfig: @MainActor (Config) throws -> Void
+    /// Writes the hotspot name and the screen-mode toggle into the app's
+    /// live config and config.json, leaving every other setting as it is.
+    @ObservationIgnored private let saveHotspot: @MainActor (_ ssid: String, _ alsoInScreenMode: Bool) throws -> Void
     @ObservationIgnored private let passwordStored: @MainActor (HotspotStoreOutcome) -> Void
 
     init(config: Config, scanner: any WiFiScanning, secrets: any HotspotSecretStore,
-         saveConfig: @escaping @MainActor (Config) throws -> Void,
+         saveHotspot: @escaping @MainActor (_ ssid: String, _ alsoInScreenMode: Bool) throws -> Void,
          passwordStored: @escaping @MainActor (HotspotStoreOutcome) -> Void) {
-        self.config = config
         self.scanner = scanner
         self.secrets = secrets
-        self.saveConfig = saveConfig
+        self.saveHotspot = saveHotspot
         self.passwordStored = passwordStored
         typedName = config.hotspotSSID
         alsoInScreenMode = config.awakeHotspotFailover
     }
 
     var chosenName: String { HotspotSSID.normalized(typedName) }
+
+    /// The name the last save wrote (what Done names).
+    private(set) var savedName = ""
 
     var canContinue: Bool {
         guard !saving else { return false }
@@ -70,6 +73,8 @@ final class HotspotSetup {
     }
 
     func back() {
+        // Not while a save runs: it would finish for the name it started with.
+        guard !saving else { return }
         switch step {
         case .hotspot: step = .wifiNames
         case .password: step = .hotspot
@@ -99,16 +104,13 @@ final class HotspotSetup {
     private func save() async {
         saving = true
         defer { saving = false }
-        var updated = config
-        updated.hotspotSSID = chosenName
-        updated.awakeHotspotFailover = alsoInScreenMode
+        let name = chosenName
         do {
-            try saveConfig(updated)
+            try saveHotspot(name, alsoInScreenMode)
         } catch {
             saveError = "Could not save the settings: \(error.localizedDescription)"
             return
         }
-        config = updated
         let outcome = await SettingsView.storePassword(hasNoPassword ? "" : password, in: secrets)
         passwordStored(outcome)
         if let notice = outcome.notice {
@@ -116,6 +118,7 @@ final class HotspotSetup {
             return
         }
         saveError = nil
+        savedName = name
         step = .done
     }
 }

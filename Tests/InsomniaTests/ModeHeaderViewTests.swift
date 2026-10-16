@@ -62,4 +62,18 @@ final class ModeHeaderViewTests: XCTestCase {
             XCTAssertEqual(v.segments.toolTip(forSegment: tab.rawValue), ModeHeader.explanation(for: tab, lidKeepsScreenOn: true))
         }
     }
+
+    /// Final review: the Lid explanation needs three lines at the header's
+    /// width; it must not be cut before "too." or "usual.".
+    func testTheLidExplanationIsNotCutOff() {
+        for keep in [true, false] {
+            let lid = ModeHeader.model(mode: .lid, awakeEndsAt: nil, screenChosen: nil, lidRemaining: 60, lidPaused: false, lidChosen: nil, lidKeepsScreenOn: keep, now: now)
+            let v = ModeHeaderView(model: lid, onTab: { _ in }, onChip: { _ in })
+            let unlimited = NSTextField(wrappingLabelWithString: lid.explanation)
+            unlimited.font = v.explanationLabel.font
+            unlimited.maximumNumberOfLines = 0
+            unlimited.preferredMaxLayoutWidth = v.explanationLabel.preferredMaxLayoutWidth
+            XCTAssertEqual(v.explanationLabel.fittingSize.height, unlimited.fittingSize.height, accuracy: 0.5, "keep \(keep)")
+        }
+    }
 }
