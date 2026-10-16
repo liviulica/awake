@@ -12,6 +12,8 @@ struct SettingsView: View {
     /// Applies a change of "Lid mode keeps the screen on" to a running
     /// session at once (`AwakeController.settingsChanged`).
     var lidScreenSettingChanged: @MainActor () -> Void = {}
+    /// Opens the guided hotspot setup (`HotspotSetupWindow`).
+    var showHotspotSetup: @MainActor () -> Void = {}
 
     @State private var newFreezeBundle = ""
     @State private var newAgentBundle = ""
@@ -216,6 +218,12 @@ struct SettingsView: View {
 
     private var networkSection: some View {
         Section {
+            HStack {
+                Text("A guided setup: Location, your iPhone's hotspot, its password.")
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("Set up\u{2026}") { showHotspotSetup() }
+            }
             TextField("Hotspot SSID", text: bind(\.hotspotSSID))
             Toggle("Use hotspot failover in screen mode too", isOn: bind(\.awakeHotspotFailover))
             HStack {

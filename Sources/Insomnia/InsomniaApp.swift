@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let awake = AwakeController(assertion: IOPMAwakeAssertion())
     private var statusItem: StatusItemController?
     private var settingsWindow: SettingsWindow?
+    private var hotspotSetupWindow: HotspotSetupWindow?
     private var terminating = false
     #if DEBUG || INSOMNIA_LID_SIMULATION
     /// The smoke test's mode (`TestMode`): nil unless the environment asks
@@ -85,21 +86,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Log.error("could not save config after the launch at login check: \(error.localizedDescription)")
             }
         }
-        let settings = SettingsWindow { [manager, secrets, locationPermission, loginItem, awake] in
+        let setup = HotspotSetupWindow(make: { [manager, secrets] in
+            HotspotSetup(
+                config: manager.config,
+                scanner: CoreWLANScanner(),
+                secrets: secrets,
+                saveConfig: { config in
+                    manager.config = config
+                    try manager.store.saveConfig(config)
+                },
+                passwordStored: { outcome in
+                    SettingsView.passwordStored(outcome, configuredSSID: manager.config.hotspotSSID, services: manager.services)
+                }
+            )
+        }, locationPermission: locationPermission)
+        hotspotSetupWindow = setup
+        let settings = SettingsWindow { [manager, secrets, locationPermission, loginItem, awake, weak setup] in
             AnyView(
                 SettingsView(
                     manager: manager,
                     secrets: secrets,
                     locationPermission: locationPermission,
                     loginItem: loginItem,
-                    lidScreenSettingChanged: { awake.settingsChanged() }
+                    lidScreenSettingChanged: { awake.settingsChanged() },
+                    showHotspotSetup: { setup?.show() }
                 )
             )
         }
         settingsWindow = settings
-        statusItem = StatusItemController(manager: manager, status: status, awake: awake) { [weak settings] in
+        statusItem = StatusItemController(manager: manager, status: status, awake: awake, showSettings: { [weak settings] in
             settings?.show()
-        }
+        }, showHotspotSetup: { [weak setup] in
+            setup?.show()
+        })
         #if DEBUG || INSOMNIA_LID_SIMULATION
         if let testMode {
             Log.info(TestMode.marker)

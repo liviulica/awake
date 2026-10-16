@@ -143,14 +143,14 @@ final class AwakeControllerTests: XCTestCase {
     func testWithTheScreenSettingOffALidSessionHoldsNoScreen() {
         let a = FakeAwakeAssertion()
         let c = AwakeController(assertion: a)
-        var keep = false
-        c.keepsScreenOnWhileLidOpen = { keep }
+        let keep = Locked(false)
+        c.keepsScreenOnWhileLidOpen = { keep.value }
         c.lidSessionChanged(active: true, lidOpen: true)
         XCTAssertFalse(a.isHeld, "lid open, setting off: the display follows its own timer")
-        keep = true
+        keep.value = true
         c.settingsChanged()
         XCTAssertTrue(a.isHeld, "back on: held at once")
-        keep = false
+        keep.value = false
         c.settingsChanged()
         XCTAssertFalse(a.isHeld, "off again: released at once")
     }
