@@ -262,7 +262,7 @@ move_bundle() { # from to
   "$MV" "$1" "$2"
 }
 
-# Whether sudo grants the three pmset commands of the rule without a
+# Whether sudo grants the four pmset commands of the rule without a
 # password: 0 when it does, 124 when a check did not answer within
 # CALL_TIMEOUT_SECONDS and stopped on SIGTERM, 125 when it did not stop and
 # is still running (BOUNDED_PID), 1 otherwise. `sudo -n -l <command>` checks
@@ -278,7 +278,8 @@ sudo_alive_note() {
   printf "It was sent SIGTERM and is still running as pid %s. It is not killed, because killing sudo could leave what it runs as root behind" "${BOUNDED_PID:-?}"
 }
 pmset_rule_effective() {
-  pmset_rule_check -a disablesleep 0 \
+  pmset_rule_check -a disablesleep 1 \
+    && pmset_rule_check -a disablesleep 0 \
     && pmset_rule_check -b lowpowermode 1 \
     && pmset_rule_check -b lowpowermode 0
 }
@@ -406,8 +407,10 @@ fi
 step "Writing $SUDOERS (requires your password once)"
 TMP_SUDOERS="$("$MKTEMP")"
 cat > "$TMP_SUDOERS" <<SUDO
-# Installed by Ember install.sh. Three commands, none of which can keep the
-# Mac awake: turning sleep off asks for the administrator password each time.
+# Installed by Ember install.sh. The four pmset commands Ember runs. Turning
+# sleep off without a password is a stopgap until the signed helper: any
+# program running as $USER can use it to keep the Mac awake.
+$USER ALL=(root) NOPASSWD: /usr/bin/pmset -a disablesleep 1
 $USER ALL=(root) NOPASSWD: /usr/bin/pmset -a disablesleep 0
 $USER ALL=(root) NOPASSWD: /usr/bin/pmset -b lowpowermode 1
 $USER ALL=(root) NOPASSWD: /usr/bin/pmset -b lowpowermode 0

@@ -40,6 +40,8 @@ Accessibility descriptions do not change.
 
 ## Left-click: off → screen → lid → off
 
+> Superseded on 2026-10-16 by `2026-10-16-ember-menu-v2-design.md` (click toggles screen only; tabs and chips replace the control items).
+
 | From | Left-click does | Notes |
 |---|---|---|
 | Off | Screen mode on, until turned off | As today. |
@@ -65,6 +67,8 @@ pure function `clickAction(isRightClick:controlHeld:mode:)` returning
   mode on click" with the six durations.
 
 ## The menu
+
+> Superseded on 2026-10-16 by `2026-10-16-ember-menu-v2-design.md` (click toggles screen only; tabs and chips replace the control items).
 
 Standard `NSMenu`, `autoenablesItems` off. Rules:
 

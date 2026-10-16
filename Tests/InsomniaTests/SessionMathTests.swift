@@ -51,6 +51,23 @@ final class SessionMathTests: XCTestCase {
         XCTAssertEqual(capped.extensions, [1800, maxDuration - 5400])
     }
 
+    func testWithRemainingSetsAPausedSessionsClosedTimeAndLeavesTheLease() {
+        let p = SessionMath.newPausedSession(now: t0, duration: 8 * 3600, maxDuration: maxDuration)
+        let s = SessionMath.withRemaining(p, remaining: 2 * 3600, now: t0.addingTimeInterval(60), maxDuration: maxDuration)
+        XCTAssertEqual(s.pausedRemaining, 2 * 3600)
+        XCTAssertEqual(s.endsAt, p.endsAt, "the lease is not the end")
+        XCTAssertEqual(s.extensions, [-6 * 3600])
+    }
+
+    func testWithRemainingMovesARunningSessionsEndAndClamps() {
+        let s = Session(startedAt: t0, endsAt: t0.addingTimeInterval(3600))
+        let now = t0.addingTimeInterval(600)
+        XCTAssertEqual(SessionMath.withRemaining(s, remaining: 4 * 3600, now: now, maxDuration: maxDuration).endsAt, now.addingTimeInterval(4 * 3600))
+        XCTAssertEqual(SessionMath.withRemaining(s, remaining: 30 * 3600, now: now, maxDuration: maxDuration).endsAt, now.addingTimeInterval(maxDuration))
+        XCTAssertEqual(SessionMath.withRemaining(s, remaining: 5, now: now, maxDuration: maxDuration).endsAt, now.addingTimeInterval(SessionMath.minimumDuration))
+        XCTAssertEqual(SessionMath.withRemaining(s, remaining: 1800, now: now, maxDuration: maxDuration).extensions, [-1200])
+    }
+
     func testExtendAddsToEndAndRecordsExtension() {
         let s = Session(startedAt: t0, endsAt: t0.addingTimeInterval(3600))
         let e = SessionMath.extended(s, by: 1800, now: t0.addingTimeInterval(600), maxDuration: maxDuration)

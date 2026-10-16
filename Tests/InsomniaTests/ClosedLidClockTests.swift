@@ -82,6 +82,15 @@ final class ClosedLidClockTests: XCTestCase {
         XCTAssertEqual(m.session?.pausedRemaining, 24 * 3600, "capped at 24 h of closed time")
     }
 
+    func testSetRemainingWhilePausedSetsClosedTime() async throws {
+        h.clamshell.closed = false
+        let m = h.makeManager(closedLidClock: true)
+        await m.start(duration: 8 * 3600)
+        await m.setRemaining(2 * 3600)
+        XCTAssertEqual(m.session?.pausedRemaining, 2 * 3600)
+        XCTAssertEqual(try h.store.loadSession()?.pausedRemaining, 2 * 3600, "journaled")
+    }
+
     func testReconcileResumesAPausedSessionWhenTheLidIsClosed() async throws {
         var s = Session(startedAt: h.clock.now, endsAt: h.clock.now.addingTimeInterval(SessionMath.pauseLease))
         s.pausedRemaining = 1800

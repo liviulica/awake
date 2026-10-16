@@ -97,6 +97,16 @@ final class FakeSleepGuard: SleepGuarding, @unchecked Sendable {
     /// prompt that timed out: the worst case, a password typed just as
     /// osascript was stopped.
     var promptTimesOut = false
+    /// The read-back after a start finds SleepDisabled 0 again, as macOS
+    /// 26.6.2 can do about 2 s after `disablesleep 1`.
+    var revertOnConfirm = false
+    /// Holds the read-back until opened, so a test can see the session
+    /// published before the read-back has answered.
+    var confirmGate: AsyncGate?
+    private var _confirms = 0
+    /// How many read-backs ran. Not in `calls`: the read-back runs beside
+    /// the session, and many tests pin `calls` exactly.
+    var confirms: Int { lock.withLock { _confirms } }
     private var _stillRunning: Set<String> = []
     private var _stuckExitsAtOnce = false
     private var _stuckExitStatus: Int32 = 0
@@ -237,6 +247,15 @@ final class FakeSleepGuard: SleepGuarding, @unchecked Sendable {
         if !disabled, let gate = restoreGate { await gate.wait() }
         sleepDisabled = disabled
         try afterEffect("disablesleep \(disabled ? 1 : 0)")
+    }
+
+    func confirmSleepDisabled() async throws {
+        lock.withLock { _confirms += 1 }
+        if let gate = confirmGate { await gate.wait() }
+        if revertOnConfirm {
+            sleepDisabled = false
+            throw SleepDisableRevertedError(settle: 5)
+        }
     }
 
     func isSleepDisabled() async throws -> Bool {

@@ -154,6 +154,28 @@ final class RecoverySafetyTests: XCTestCase {
         XCTAssertNil(m.scheduledDeadline)
     }
 
+    /// End requested while a lid chip's set-remaining waits on launchd. It
+    /// must not write the session back after the end removed it.
+    func testEndDuringSetRemainingMustNotResurrectSession() async throws {
+        let m = h.makeManager()
+        await m.start(duration: 3600)
+        let gate = AsyncGate()
+        h.backstop.armGate = gate
+
+        let set = Task { await m.setRemaining(1800) }
+        await gate.waitUntilStarted()
+        let end = await runUntilSuspended { await m.end(reason: .user) }
+        await gate.open()
+        await set.value
+        _ = await end.value
+
+        XCTAssertNil(m.session, "session resurrected by the late set-remaining")
+        XCTAssertNil(try h.store.loadSession(), "session.json rewritten after the end deleted it")
+        XCTAssertFalse(h.guardFake.sleepDisabled)
+        XCTAssertEqual(try h.store.loadState(), RuntimeState.clean)
+        XCTAssertNil(m.scheduledDeadline)
+    }
+
     /// The deadline passes while reconcile's read of SleepDisabled for the
     /// session on disk is still running. The end waits for it, so its
     /// `disablesleep 0` lands last and nothing stays journaled.

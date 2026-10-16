@@ -2,8 +2,9 @@ import AppKit
 import Observation
 
 /// The menu bar item (spec 2026-10-15 "Left-click"): a fixed template icon,
-/// a countdown when something is timed, left-click cycles off → screen →
-/// lid → off, right-click (or ctrl-click) opens the menu. A plain
+/// a countdown when something is timed, left-click turns screen mode on and
+/// off (during a lid session it opens the menu), right-click (or ctrl-click)
+/// opens the menu. A plain
 /// NSStatusItem with no hosted view and no key window: nothing here takes
 /// the keyboard, and the item's width changes only when the countdown
 /// appears or goes, or gains or loses a digit (crossing 10:00).
@@ -21,11 +22,24 @@ final class StatusItemController: NSObject {
         case off, screen, lid
     }
 
+    /// Runs `body` once the menu's tracking has ended: a run-loop block in
+    /// the default mode, which an open menu's tracking mode does not run.
+    /// Not a main-queue block: a modal alert started inside one holds every
+    /// other main-queue job (the lease renewal, the deadline, the timers)
+    /// until it closes, because the main queue does not nest.
+    static func presentOutsideTracking(_ body: @escaping @MainActor () -> Void) {
+        RunLoop.main.perform(inModes: [.default]) { MainActor.assumeIsolated(body) }
+    }
+
+    /// Which Custom… prompt to show.
+    enum DurationPrompt: Equatable {
+        case screen, lid
+    }
+
     /// What a click on the item does.
     enum ClickAction: Equatable {
         case turnOnScreen
-        case startLid
-        case endLid
+        case turnOffScreen
         case showMenu
     }
 
@@ -44,7 +58,7 @@ final class StatusItemController: NSObject {
     private let confirmRelaunch: @MainActor (String) -> Bool
     /// The "Custom…" prompt: the text typed, or nil when cancelled.
     /// Injected so tests never see the NSAlert.
-    private let askDurationText: @MainActor () -> String?
+    private let askDurationText: @MainActor (DurationPrompt) -> String?
     /// Tells the person something with a plain alert. Injected for tests.
     private let showNotice: @MainActor (String) -> Void
     /// What the countdown reads the time from; tests inject a fake clock.
@@ -58,6 +72,14 @@ final class StatusItemController: NSObject {
     /// this a second click (or the menu's start) would queue another start,
     /// and a cancel would bring the prompt straight back.
     private(set) var lidStartInFlight = false
+    /// The length last picked for screen mode or the lid session from a
+    /// chip (nil when none was), so the header highlights it. Forgotten
+    /// when the Mac leaves that mode.
+    private(set) var screenChosen: TimeInterval?
+    private(set) var lidChosen: TimeInterval?
+    private var lastMode: Mode = .off
+    /// The header of the menu that is open now, refreshed in place.
+    private weak var openHeader: ModeHeaderView?
 
     init(
         manager: SessionManager,
@@ -65,7 +87,7 @@ final class StatusItemController: NSObject {
         awake: AwakeController,
         showSettings: @escaping () -> Void,
         confirmRelaunch: (@MainActor (String) -> Bool)? = nil,
-        askDurationText: (@MainActor () -> String?)? = nil,
+        askDurationText: (@MainActor (DurationPrompt) -> String?)? = nil,
         showNotice: (@MainActor (String) -> Void)? = nil,
         clock: @escaping @Sendable () -> Date = { Date() }
     ) {
@@ -129,15 +151,15 @@ final class StatusItemController: NSObject {
         return awake == .off ? .off : .screen
     }
 
-    /// Right-click and ctrl-click open the menu. A plain left click walks
-    /// off → screen → lid → off. The third step ends a session with one
-    /// click; the spec records that the owner accepted this.
+    /// Right-click and ctrl-click open the menu. A plain left click toggles
+    /// screen mode; during a lid session it opens the menu, so a stray click
+    /// never ends a session (spec 2026-10-16 "Left-click").
     static func clickAction(isRightClick: Bool, controlHeld: Bool, mode: Mode) -> ClickAction {
         if isRightClick || controlHeld { return .showMenu }
         switch mode {
         case .off: return .turnOnScreen
-        case .screen: return .startLid
-        case .lid: return .endLid
+        case .screen: return .turnOffScreen
+        case .lid: return .showMenu
         }
     }
 
@@ -181,6 +203,14 @@ final class StatusItemController: NSObject {
 
     private func refresh() {
         let now = clock()
+        // Every change ends in a refresh, so this is where leaving a mode
+        // is noticed and the length picked for it forgotten.
+        let mode = Self.mode(lidActive: manager.isActive, awake: awake.state)
+        if mode != lastMode {
+            if lastMode == .screen { screenChosen = nil }
+            if lastMode == .lid { lidChosen = nil }
+            lastMode = mode
+        }
         let p = Self.presentation(lidRemaining: manager.session?.closedLidRemaining(at: now), awake: awake.state, now: now)
         if let button = statusItem.button {
             button.image = MenuBarIcon.image(p.icon)
@@ -196,14 +226,90 @@ final class StatusItemController: NSObject {
             RunLoop.main.add(t, forMode: .common)
             tick = t
         }
+        openHeader?.update(headerModel(now: now))
+    }
+
+    // MARK: Header
+
+    /// The open menu's header, from the real state.
+    func headerModel(now: Date) -> ModeHeader.Model {
+        ModeHeader.model(
+            mode: Self.mode(lidActive: manager.isActive, awake: awake.state),
+            awakeEndsAt: awake.endsAt,
+            screenChosen: screenChosen,
+            lidRemaining: manager.session?.closedLidRemaining(at: now),
+            lidPaused: manager.session?.isPaused ?? false,
+            lidChosen: lidChosen,
+            lidStarting: lidStartInFlight,
+            now: now
+        )
+    }
+
+    /// A tab click (spec 2026-10-16 "Tabs").
+    func applyTab(_ tab: ModeHeader.Tab) async {
+        // A newer choice than a Lid start still waiting wins: ending through
+        // the manager bumps its end ticket, so the pending start rolls back.
+        if lidStartInFlight, tab != .lid {
+            _ = await manager.end(reason: .user)
+        }
+        switch ModeHeader.transition(from: Self.mode(lidActive: manager.isActive, awake: awake.state), to: tab) {
+        case .none:
+            break
+        case .turnOnScreen:
+            screenChosen = nil
+            awake.turnOn(for: nil)
+        case .turnOffScreen:
+            awake.turnOff(reason: "user")
+        case .startLid:
+            let length = manager.config.lidClickDuration
+            await startLidSession(length)
+            if manager.isActive { lidChosen = length }
+        case .endLid:
+            _ = await manager.end(reason: .user)
+        case .endLidThenTurnOnScreen:
+            _ = await manager.end(reason: .user)
+            if !manager.isActive {
+                stateChanged()
+                screenChosen = nil
+                awake.turnOn(for: nil)
+            }
+        }
+        refresh()
+    }
+
+    /// A chip click. A chip for a mode the Mac has left meanwhile (the menu
+    /// stayed open across a timer end) does nothing.
+    func applyChip(_ action: ModeHeader.ChipAction) async {
+        let mode = Self.mode(lidActive: manager.isActive, awake: awake.state)
+        switch action {
+        case let .screenFor(length):
+            guard mode == .screen else { return }
+            awake.turnOn(for: length)
+            screenChosen = length
+        case let .lidRemaining(length):
+            guard mode == .lid else { return }
+            await manager.setRemaining(min(length, Config.lidMaxDuration))
+            lidChosen = length
+        case .screenCustom, .lidCustom:
+            let kind: DurationPrompt = action == .screenCustom ? .screen : .lid
+            // Once the menu has closed, and outside any main-queue job.
+            Self.presentOutsideTracking { [weak self] in
+                guard let self, let length = self.customDuration(kind) else { return }
+                Task { @MainActor in
+                    await self.applyChip(kind == .screen ? .screenFor(length) : .lidRemaining(min(length, Config.lidMaxDuration)))
+                }
+            }
+            return
+        }
+        refresh()
     }
 
     // MARK: Clicks
 
     @objc private func buttonClicked(_ sender: NSStatusBarButton) {
         let event = NSApp.currentEvent
-        // A double-click is one step: the second mouse-up of a pair would
-        // otherwise move the cycle on again (off → screen → lid prompt).
+        // A double-click is one click: the second mouse-up of a pair would
+        // otherwise toggle screen mode straight back.
         if Self.isRepeatClick(clickCount: event?.clickCount ?? 1, isRightClick: event?.type == .rightMouseUp) { return }
         let action = Self.clickAction(
             isRightClick: event?.type == .rightMouseUp,
@@ -224,10 +330,8 @@ final class StatusItemController: NSObject {
         case .turnOnScreen:
             awake.turnOn(for: nil)
             refresh()
-        case .startLid:
-            await startLidSession(manager.config.lidClickDuration)
-        case .endLid:
-            _ = await manager.end(reason: .user)
+        case .turnOffScreen:
+            awake.turnOff(reason: "user")
             refresh()
         case .showMenu:
             break
@@ -243,8 +347,9 @@ final class StatusItemController: NSObject {
             return
         }
         lidStartInFlight = true
-        defer { lidStartInFlight = false }
+        refresh()
         await manager.start(duration: min(duration, Config.lidMaxDuration))
+        lidStartInFlight = false
         refresh()
     }
 
@@ -254,7 +359,7 @@ final class StatusItemController: NSObject {
     }
 
     /// Not assigned to `statusItem.menu`, which would swallow the left click
-    /// that cycles the modes.
+    /// that toggles screen mode.
     private func showMenu() {
         guard let button = statusItem.button else { return }
         // The lid and the battery are read right here, so the menu opens on
@@ -268,20 +373,23 @@ final class StatusItemController: NSObject {
         // Same for the foreign-sleep line: re-read the bit now, and let the
         // next opening drop the line if sleep is enabled again.
         Task { await manager.recheckForeignSleep() }
+        let header = ModeHeaderView(
+            model: headerModel(now: clock()),
+            onTab: { [weak self] tab in Task { @MainActor in await self?.applyTab(tab) } },
+            onChip: { [weak self] chip in Task { @MainActor in await self?.applyChip(chip) } }
+        )
+        openHeader = header
         let menu = StatusMenu.menu(
             Self.menuItems(manager: manager, status: status, awake: awake, now: clock()),
+            header: header,
             target: self,
             settings: #selector(menuOpenSettings),
             quit: #selector(menuQuit),
             relaunchBrowser: #selector(menuRelaunchBrowser(_:)),
-            stopWaitingForOutput: #selector(menuStopWaitingForOutput(_:)),
-            toggleAwake: #selector(menuToggleAwake(_:)),
-            awakeFor: #selector(menuAwakeFor(_:)),
-            startLid: #selector(menuStartLid(_:)),
-            extendLid: #selector(menuExtendLid(_:)),
-            endLid: #selector(menuEndLid(_:))
+            stopWaitingForOutput: #selector(menuStopWaitingForOutput(_:))
         )
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 4), in: button)
+        openHeader = nil
     }
 
     /// The menu's lines from what the session, screen mode and the status
@@ -289,14 +397,6 @@ final class StatusItemController: NSObject {
     static func menuItems(manager: SessionManager, status: any StatusSource, awake: AwakeController, now: Date) -> [StatusMenu.Item] {
         let locationAuthorized = (status as? LiveStatusSource)?.locationPermission.isAuthorized ?? true
         return StatusMenu.items(
-            controls: StatusMenu.controlItems(
-                awakeOn: awake.isOn,
-                awakeEndsAt: awake.endsAt,
-                lidRemaining: manager.session?.closedLidRemaining(at: now),
-                lidPaused: manager.session?.isPaused ?? false,
-                clickDuration: manager.config.lidClickDuration,
-                now: now
-            ),
             mac: StatusMenu.macLines(
                 battery: StatusLines.battery(percent: status.batteryPercent, isCharging: status.isCharging),
                 batterySymbol: StatusLines.batterySymbol(percent: status.batteryPercent, isCharging: status.isCharging),
@@ -313,7 +413,9 @@ final class StatusItemController: NSObject {
             ),
             sessionActive: manager.isActive,
             sleepHeld: manager.state.sleepDisabledByUs,
-            throttledBrowsers: status.throttledBrowsers,
+            // Only during a lid session: a throttled browser matters when the
+            // lid is closed and the display off (owner, 2026-10-16).
+            throttledBrowsers: manager.isActive ? status.throttledBrowsers : [],
             relaunchProblems: status.relaunchProblems,
             // A report about an SSID edited away since is not shown.
             hotspotWarning: status.hotspotPasswordReport?.problem(for: manager.config.hotspotSSID)?.menuLine,
@@ -326,39 +428,6 @@ final class StatusItemController: NSObject {
     }
 
     // MARK: Menu actions
-
-    @objc private func menuToggleAwake(_ sender: NSMenuItem) {
-        awake.toggle()
-        refresh()
-    }
-
-    /// No represented duration is "until I turn it off".
-    @objc private func menuAwakeFor(_ sender: NSMenuItem) {
-        awake.turnOn(for: (sender.representedObject as? NSNumber)?.doubleValue)
-        refresh()
-    }
-
-    /// No represented duration is "Custom…"; `startLidSession` caps it.
-    @objc private func menuStartLid(_ sender: NSMenuItem) {
-        let chosen = (sender.representedObject as? NSNumber)?.doubleValue ?? customDuration()
-        guard let chosen else { return }
-        Task { @MainActor in await startLidSession(chosen) }
-    }
-
-    @objc private func menuExtendLid(_ sender: NSMenuItem) {
-        let extra = (sender.representedObject as? NSNumber)?.doubleValue ?? 3600
-        Task { @MainActor in
-            await manager.extend(by: extra)
-            refresh()
-        }
-    }
-
-    @objc private func menuEndLid(_ sender: NSMenuItem) {
-        Task { @MainActor in
-            _ = await manager.end(reason: .user)
-            refresh()
-        }
-    }
 
     @objc private func menuOpenSettings() { showSettings() }
 
@@ -403,10 +472,10 @@ final class StatusItemController: NSObject {
     /// "Custom…": a duration typed as "90", "1h30m" or "2h" (DurationParser).
     /// Nil when cancelled, or when unreadable, which the person is told;
     /// `startLidSession` caps it at 24 hours. Internal so tests drive it.
-    func customDuration() -> TimeInterval? {
-        guard let text = askDurationText() else { return nil }
+    func customDuration(_ kind: DurationPrompt) -> TimeInterval? {
+        guard let text = askDurationText(kind) else { return nil }
         guard let seconds = DurationParser.seconds(from: text) else {
-            Log.info("custom lid duration not understood: \(text.count) characters")
+            Log.info("custom \(kind == .lid ? "lid" : "screen") duration not understood: \(text.count) characters")
             showNotice(Self.unreadableDurationNotice)
             return nil
         }
@@ -415,14 +484,20 @@ final class StatusItemController: NSObject {
 
     /// A modal alert, so the field has the keyboard only while the person is
     /// typing in it.
-    private static func askCustomDurationText() -> String? {
+    private static func askCustomDurationText(_ kind: DurationPrompt) -> String? {
         let alert = NSAlert()
-        alert.messageText = "Keep awake with the lid closed for how long?"
-        alert.informativeText = "For example 90m, 3h or 1h30m. The most is 24 hours."
+        switch kind {
+        case .screen:
+            alert.messageText = "Keep the screen awake for how long?"
+            alert.informativeText = "For example 90m, 3h or 1h30m."
+        case .lid:
+            alert.messageText = "Keep awake with the lid closed for how long?"
+            alert.informativeText = "For example 90m, 3h or 1h30m. The most is 24 hours."
+        }
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
         field.placeholderString = "3h"
         alert.accessoryView = field
-        alert.addButton(withTitle: "Start")
+        alert.addButton(withTitle: "Set")
         alert.addButton(withTitle: "Cancel")
         alert.window.initialFirstResponder = field
         NSApp.activate()

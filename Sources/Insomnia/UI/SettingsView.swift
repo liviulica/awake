@@ -98,14 +98,14 @@ struct SettingsView: View {
 
     // MARK: Modes
 
-    /// The click cycle and the one-click lid duration (spec 2026-10-15
-    /// "The click duration"). A hand-edited value outside the choices shows
+    /// The click and the length the Lid tab starts with (spec 2026-10-16
+    /// "The default lid length"). A hand-edited value outside the choices shows
     /// no selection; picking any choice writes a valid one.
     private var modesSection: some View {
         Section("Modes") {
-            Text("Click the menu bar icon to cycle: off, screen awake, lid closed, off.")
+            Text("Click the menu bar icon to turn screen mode on and off. Lid mode starts from the menu's Lid tab.")
                 .foregroundStyle(.secondary)
-            Picker("Lid mode on click", selection: bind(\.lidClickDuration)) {
+            Picker("Lid mode starts for", selection: bind(\.lidClickDuration)) {
                 ForEach(Config.lidClickChoices, id: \.self) { choice in
                     Text(StatusMenu.durationTitle(choice)).tag(choice)
                 }
