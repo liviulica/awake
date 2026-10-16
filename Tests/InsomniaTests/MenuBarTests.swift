@@ -429,6 +429,21 @@ final class ModeHeaderControllerTests: XCTestCase {
         XCTAssertEqual(relaunchItems(), 1, "lid session: the warning and its relaunch")
     }
 
+    /// With no hotspot configured the Lid header offers the setup.
+    func testTheLidHeaderOffersHotspotSetupWhenNoneIsConfigured() async {
+        let h = Harness()
+        defer { h.home.destroy() }
+        let m = h.makeManager()
+        m.config.hotspotSSID = ""
+        let awake = AwakeController(assertion: FakeAwakeAssertion(), clock: { h.clock.now })
+        let c = StatusItemController(manager: m, status: PlaceholderStatus(), awake: awake, showSettings: {})
+        defer { c.stop() }
+        await m.start(duration: 3600)
+        XCTAssertTrue(c.headerModel(now: h.clock.now).showsHotspotSetup)
+        m.config.hotspotSSID = "iPhone"
+        XCTAssertFalse(c.headerModel(now: h.clock.now).showsHotspotSetup)
+    }
+
     /// Leaving a mode forgets the length picked for it, so the next session
     /// does not highlight a stale chip.
     func testLeavingAModeForgetsItsChosenLength() async {

@@ -53,6 +53,8 @@ final class StatusItemController: NSObject {
     /// Opens the settings window. Injected because the window is owned by the
     /// app delegate, which outlives any one status item.
     private let showSettings: () -> Void
+    /// Opens the hotspot setup window (spec 2026-10-16 explanations).
+    private let showHotspotSetup: @MainActor () -> Void
     /// Asks before a browser is quit for a relaunch; true means go ahead.
     /// Injected so tests never see the NSAlert.
     private let confirmRelaunch: @MainActor (String) -> Bool
@@ -86,6 +88,7 @@ final class StatusItemController: NSObject {
         status: any StatusSource,
         awake: AwakeController,
         showSettings: @escaping () -> Void,
+        showHotspotSetup: (@MainActor () -> Void)? = nil,
         confirmRelaunch: (@MainActor (String) -> Bool)? = nil,
         askDurationText: (@MainActor (DurationPrompt) -> String?)? = nil,
         showNotice: (@MainActor (String) -> Void)? = nil,
@@ -95,6 +98,7 @@ final class StatusItemController: NSObject {
         self.status = status
         self.awake = awake
         self.showSettings = showSettings
+        self.showHotspotSetup = showHotspotSetup ?? {}
         self.confirmRelaunch = confirmRelaunch ?? Self.askBeforeRelaunch
         self.askDurationText = askDurationText ?? Self.askCustomDurationText
         self.showNotice = showNotice ?? Self.showAlert
@@ -241,6 +245,8 @@ final class StatusItemController: NSObject {
             lidPaused: manager.session?.isPaused ?? false,
             lidChosen: lidChosen,
             lidStarting: lidStartInFlight,
+            lidKeepsScreenOn: manager.config.lidKeepsScreenOn,
+            hotspotConfigured: !HotspotSSID.normalized(manager.config.hotspotSSID).isEmpty,
             now: now
         )
     }
@@ -376,7 +382,8 @@ final class StatusItemController: NSObject {
         let header = ModeHeaderView(
             model: headerModel(now: clock()),
             onTab: { [weak self] tab in Task { @MainActor in await self?.applyTab(tab) } },
-            onChip: { [weak self] chip in Task { @MainActor in await self?.applyChip(chip) } }
+            onChip: { [weak self] chip in Task { @MainActor in await self?.applyChip(chip) } },
+            onSetupHotspot: { [weak self] in Self.presentOutsideTracking { self?.showHotspotSetup() } }
         )
         openHeader = header
         let menu = StatusMenu.menu(

@@ -31,7 +31,8 @@ final class ModeHeaderViewTests: XCTestCase {
         v.update(off)
         XCTAssertEqual(v.segments.selectedSegment, 0)
         XCTAssertTrue(v.chipButtons.allSatisfy(\.isHidden) || v.chipButtons.isEmpty)
-        XCTAssertEqual(v.captionLabel.stringValue, "The Mac sleeps as usual.")
+        XCTAssertEqual(v.explanationLabel.stringValue, "The Mac sleeps as usual.")
+        XCTAssertTrue(v.captionLabel.isHidden, "Off has no status line")
         XCTAssertGreaterThanOrEqual(v.frame.width, 260)
     }
 
@@ -44,5 +45,21 @@ final class ModeHeaderViewTests: XCTestCase {
         XCTAssertEqual(v.chipButtons.filter { !$0.isHidden }.map(\.title), ["1 h", "2 h", "4 h", "8 h", "12 h", "Custom\u{2026}"])
         XCTAssertEqual(v.chipButtons.first?.state, .on)
         XCTAssertEqual(v.captionLabel.stringValue, "1:00 of closed-lid time left")
+    }
+
+    func testTheSetupButtonAndTheTooltips() {
+        var setups = 0
+        let lid = ModeHeader.model(mode: .lid, awakeEndsAt: nil, screenChosen: nil, lidRemaining: 3600, lidPaused: false, lidChosen: nil, hotspotConfigured: false, now: now)
+        let v = ModeHeaderView(model: lid, onTab: { _ in }, onChip: { _ in }, onSetupHotspot: { setups += 1 })
+        XCTAssertFalse(v.setupButton.isHidden)
+        XCTAssertEqual(v.setupButton.title, "Set up hotspot failover\u{2026}")
+        v.setupButton.performClick(nil)
+        XCTAssertEqual(setups, 1)
+        let configured = ModeHeader.model(mode: .lid, awakeEndsAt: nil, screenChosen: nil, lidRemaining: 3600, lidPaused: false, lidChosen: nil, hotspotConfigured: true, now: now)
+        v.update(configured)
+        XCTAssertTrue(v.setupButton.isHidden)
+        for tab in ModeHeader.Tab.allCases {
+            XCTAssertEqual(v.segments.toolTip(forSegment: tab.rawValue), ModeHeader.explanation(for: tab, lidKeepsScreenOn: true))
+        }
     }
 }
