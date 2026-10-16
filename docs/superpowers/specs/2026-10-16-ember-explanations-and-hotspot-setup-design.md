@@ -107,6 +107,9 @@ Join, and keep that screen open while you choose it here."
 - "Not listed? Type its name:" text field.
 - Continue is enabled once a name is picked or typed (trimmed, non-empty).
   Picking fills the field.
+- A second line: "On this Mac: System Settings → Wi-Fi → Ask to join
+  hotspots: Automatically" (the README's existing requirement), with a
+  button that opens the Wi-Fi settings pane.
 
 **Step 3 of 3: Password.**
 "The hotspot's password, from the same iPhone screen. It is kept in your
