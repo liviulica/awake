@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="112" height="112" viewBox="100 100 824 824" role="img" aria-labelledby="ember-title ember-desc">
+  <title id="ember-title">Ember</title>
+  <desc id="ember-desc">The Ember mark: a lit flame with a pointed top, a round bottom and a second tongue on its left, in moon-white on a midnight rounded tile.</desc>
+  <!-- scripts/generate-app-icon.sh writes this file from AppIconArtwork, and PackagingTests fails if the two differ, so edit the Swift drawing and rerun the script. The layout matches the app icon: an 824-unit tile inset 100 units in a 1024 canvas, corners at 22.37% of the tile, the flame 60% of the tile tall and centred on it. -->
+  <rect x="100" y="100" width="824" height="824" rx="184.3288" fill="#303336"/>
+  <!-- FlameGeometry on its 24-unit grid, the same path as the menu bar's screen-on icon. -->
+  <g transform="translate(145.7778 185.4519) scale(30.5185)">
+    <path d="M12 2.6 C13.8 6 17.4 8.6 17.4 13.4 C17.4 16.3823 14.9823 18.8 12 18.8 C9.0177 18.8 6.6 16.3823 6.6 13.4 C6.6 10.6 8.2 8.8 9.6 7.6 C9.8 9.6 10.6 10.8 11.6 11.4 C11 8.6 11.3 5.4 12 2.6 Z" fill="#E6E3DD"/>
+  </g>
+</svg>

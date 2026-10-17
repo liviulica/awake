@@ -67,19 +67,10 @@ enum MenuBarIcon: Equatable, CaseIterable {
         return small
     }
 
-    /// The flame, in 24-unit y-down coordinates: pointed top, round bottom
-    /// through (12, 18.8). Internal so the test can measure it.
+    /// The flame, in 24-unit y-down coordinates (`FlameGeometry`, which the
+    /// app icon draws too). Internal so the test can measure it.
     static func flame() -> NSBezierPath {
-        let p = NSBezierPath()
-        p.move(to: NSPoint(x: 12, y: 2.6))
-        p.curve(to: NSPoint(x: 17.4, y: 13.4), controlPoint1: NSPoint(x: 13.8, y: 6), controlPoint2: NSPoint(x: 17.4, y: 8.6))
-        // Round bottom: from the right side, down through (12, 18.8), to the left side.
-        p.appendArc(withCenter: NSPoint(x: 12, y: 13.4), radius: 5.4, startAngle: 0, endAngle: 180, clockwise: false)
-        p.curve(to: NSPoint(x: 9.6, y: 7.6), controlPoint1: NSPoint(x: 6.6, y: 10.6), controlPoint2: NSPoint(x: 8.2, y: 8.8))
-        p.curve(to: NSPoint(x: 11.6, y: 11.4), controlPoint1: NSPoint(x: 9.8, y: 9.6), controlPoint2: NSPoint(x: 10.6, y: 10.8))
-        p.curve(to: NSPoint(x: 12, y: 2.6), controlPoint1: NSPoint(x: 11, y: 8.6), controlPoint2: NSPoint(x: 11.3, y: 5.4))
-        p.close()
-        return p
+        NSBezierPath(cgPath: FlameGeometry.path)
     }
 
     private static func stroke(_ path: NSBezierPath, width: CGFloat) {

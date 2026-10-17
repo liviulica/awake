@@ -236,3 +236,9 @@ and is exported once for LastPass.
 
 Companion app and notifications; building releases in GitHub Actions; a
 Settings "Uninstall" button; delta updates.
+
+## Later: the app icon (2026-10-17)
+
+The app icon changes from the open eye to the lit flame (`FlameGeometry`,
+shared with the menu bar), shipped as the second real update after 0.2.1,
+so the update test has a change anyone can see in the Dock and Finder.
