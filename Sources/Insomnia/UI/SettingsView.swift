@@ -14,6 +14,9 @@ struct SettingsView: View {
     var lidScreenSettingChanged: @MainActor () -> Void = {}
     /// Opens the guided hotspot setup (`HotspotSetupWindow`).
     var showHotspotSetup: @MainActor () -> Void = {}
+    /// The release build's helper and updater; nil in a source build, which
+    /// then shows neither the Updates section nor the helper line.
+    var release: ReleaseSetup?
 
     @State private var newFreezeBundle = ""
     @State private var newAgentBundle = ""
@@ -23,6 +26,8 @@ struct SettingsView: View {
     /// Names of the apps the automatic lid-close scope would freeze right
     /// now (the freeze list excluded); refreshed on appear and toggle.
     @State private var wouldFreeze: [String] = []
+    /// Sparkle's "check automatically" setting, read when the window opens.
+    @State private var autoChecks = true
 
     var body: some View {
         Form {
@@ -32,11 +37,16 @@ struct SettingsView: View {
             powerSection
             networkSection
             appSection
+            if let updater = release?.updater {
+                updatesSection(updater)
+            }
         }
         .formStyle(.grouped)
         .frame(width: 520)
         .frame(minHeight: 560, idealHeight: 720)
         .onAppear {
+            autoChecks = release?.updater?.automaticallyChecks ?? true
+            release?.refreshHelper()
             loadPassword()
             refreshWouldFreeze()
             // The user may have approved or removed the item in System
@@ -412,6 +422,9 @@ struct SettingsView: View {
         Section("App") {
             Toggle("Launch at login", isOn: launchAtLogin)
             loginItemNote
+            if let release {
+                helperRow(release)
+            }
             LabeledContent("Config") {
                 Text(manager.paths.configFile.path)
                     .font(.caption)
@@ -424,6 +437,49 @@ struct SettingsView: View {
                     .foregroundStyle(.orange)
             }
         }
+    }
+
+    /// The release build's helper (spec 2026-10-17): allowed, or the step
+    /// that is missing with the button that does it.
+    @ViewBuilder
+    private func helperRow(_ release: ReleaseSetup) -> some View {
+        LabeledContent("Helper") {
+            if release.helperNeedsApproval {
+                HStack {
+                    Text("Waiting for your approval. Lid mode needs it.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                    Button("Open Login Items") { release.openApproval() }
+                }
+            } else {
+                Text("Allowed").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func updatesSection(_ updater: Updater) -> some View {
+        Section("Updates") {
+            Toggle("Automatically check for updates", isOn: Binding(
+                get: { autoChecks },
+                set: { on in
+                    updater.automaticallyChecks = on
+                    autoChecks = on
+                }
+            ))
+            LabeledContent("Version \(Self.versionText())") {
+                Button("Check Now") { updater.checkForUpdates() }
+            }
+            Text("An update never restarts Ember during a lid session or while screen mode is on; it installs when that ends.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// "0.2.0 (2000)" from the bundle's Info.plist.
+    static func versionText(_ info: [String: Any] = Bundle.main.infoDictionary ?? [:]) -> String {
+        let short = info["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info["CFBundleVersion"] as? String ?? "?"
+        return "\(short) (\(build))"
     }
 
     /// The switch shows what macOS has on file (`LoginItem.isRegistered`:

@@ -65,6 +65,8 @@ final class StatusItemController: NSObject {
     private let showNotice: @MainActor (String) -> Void
     /// What the countdown reads the time from; tests inject a fake clock.
     private let clock: @Sendable () -> Date
+    /// The release build's helper and updater; nil in a source build.
+    private let release: ReleaseSetup?
     private let statusItem: NSStatusItem
     /// Redraws the countdown while one is shown. It reads whole minutes,
     /// so every 30 s keeps it at most half a minute behind.
@@ -92,6 +94,7 @@ final class StatusItemController: NSObject {
         confirmRelaunch: (@MainActor (String) -> Bool)? = nil,
         askDurationText: (@MainActor (DurationPrompt) -> String?)? = nil,
         showNotice: (@MainActor (String) -> Void)? = nil,
+        release: ReleaseSetup? = nil,
         clock: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.manager = manager
@@ -103,6 +106,7 @@ final class StatusItemController: NSObject {
         self.askDurationText = askDurationText ?? Self.askCustomDurationText
         self.showNotice = showNotice ?? Self.showAlert
         self.clock = clock
+        self.release = release
         Self.seedPreferredPositionIfNeeded()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.autosaveName = Self.autosaveName
@@ -379,6 +383,8 @@ final class StatusItemController: NSObject {
         // Same for the foreign-sleep line: re-read the bit now, and let the
         // next opening drop the line if sleep is enabled again.
         Task { await manager.recheckForeignSleep() }
+        // The approval happens in System Settings, so it is read again here.
+        release?.refreshHelper()
         let header = ModeHeaderView(
             model: headerModel(now: clock()),
             onTab: { [weak self] tab in Task { @MainActor in await self?.applyTab(tab) } },
@@ -387,13 +393,15 @@ final class StatusItemController: NSObject {
         )
         openHeader = header
         let menu = StatusMenu.menu(
-            Self.menuItems(manager: manager, status: status, awake: awake, now: clock()),
+            Self.menuItems(manager: manager, status: status, awake: awake, release: release, now: clock()),
             header: header,
             target: self,
             settings: #selector(menuOpenSettings),
             quit: #selector(menuQuit),
             relaunchBrowser: #selector(menuRelaunchBrowser(_:)),
-            stopWaitingForOutput: #selector(menuStopWaitingForOutput(_:))
+            stopWaitingForOutput: #selector(menuStopWaitingForOutput(_:)),
+            approveHelper: #selector(menuApproveHelper),
+            checkForUpdates: #selector(menuCheckForUpdates)
         )
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 4), in: button)
         openHeader = nil
@@ -401,7 +409,7 @@ final class StatusItemController: NSObject {
 
     /// The menu's lines from what the session, screen mode and the status
     /// source report now. Static, so a test can check them without a status item.
-    static func menuItems(manager: SessionManager, status: any StatusSource, awake: AwakeController, now: Date) -> [StatusMenu.Item] {
+    static func menuItems(manager: SessionManager, status: any StatusSource, awake: AwakeController, release: ReleaseSetup? = nil, now: Date) -> [StatusMenu.Item] {
         let locationAuthorized = (status as? LiveStatusSource)?.locationPermission.isAuthorized ?? true
         return StatusMenu.items(
             mac: StatusMenu.macLines(
@@ -431,13 +439,23 @@ final class StatusItemController: NSObject {
             commandRunning: manager.commandWarning,
             foreignSleep: manager.foreignSleepWarning,
             outputsWaiting: manager.outputsWaitingForRestore,
-            lidSimulationBuild: LidSimulationBuild.isCompiledIn
+            lidSimulationBuild: LidSimulationBuild.isCompiledIn,
+            helperNeedsApproval: release?.helperNeedsApproval ?? false,
+            canCheckForUpdates: release?.updater != nil,
+            updateHeldBack: release?.updateHeldBack ?? false
         )
     }
 
     // MARK: Menu actions
 
     @objc private func menuOpenSettings() { showSettings() }
+
+    @objc private func menuApproveHelper() { release?.openApproval() }
+
+    @objc private func menuCheckForUpdates() {
+        // Sparkle's window, like an alert, is shown once the menu has closed.
+        Self.presentOutsideTracking { [weak self] in self?.release?.updater?.checkForUpdates() }
+    }
 
     @objc private func menuQuit() { NSApplication.shared.terminate(nil) }
 

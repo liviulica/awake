@@ -27,13 +27,55 @@ To come. The planned set:
 
 ## Install
 
-Requires macOS 26 or later on an Apple Silicon Mac. There is no signed release
-yet, so Ember is built from source (Xcode with Swift 6.2 or later).
+Requires macOS 26 or later on an Apple Silicon Mac.
 
 **Insomnia must be uninstalled first.** Both apps control the same macOS sleep
-setting and cannot be installed together. The installer refuses while Insomnia
-is present and tells you to run `scripts/uninstall.sh` from your Insomnia
-checkout.
+setting and cannot be used together.
+
+1. Download `Ember-<version>.dmg` from the
+   [latest release](https://github.com/liviulica/ember/releases/latest).
+2. Open it and drag **Ember** into **Applications**, then open Ember from
+   Applications. It is signed and notarized by Charging Pixels; macOS asks
+   once to confirm opening an app downloaded from the internet.
+3. Lid mode needs one approval: macOS shows "Ember added a background item",
+   and Ember's menu says "Lid mode needs your approval". Click **Open Login
+   Items…** and turn Ember on. Screen mode works right away.
+
+Ember updates itself: it checks once a day, and "Check for Updates…" in the
+menu checks now. An update never restarts Ember during a lid session or while
+screen mode is on; it installs when that ends. Turn automatic checks off in
+Settings → Updates.
+
+<details>
+<summary><strong>What Ember changes on your Mac</strong></summary>
+
+- The app, in `/Applications`.
+- A **helper** (`app.chargingpixels.ember.helper`), a small program macOS runs
+  as root once you approve it in Login Items. It answers only Ember (checked
+  by code signature) and does two things: turns sleep off for a lid session,
+  and writes the sudoers rule below.
+- A **sudoers rule** at `/etc/sudoers.d/ember-<your uid>`, written by the helper. A
+  sudoers rule decides who can run what with `sudo`. This one lets your user
+  account run only the commands that give sleep back or switch Low Power
+  Mode, so the recovery agent can restore the Mac without the app:
+
+  ```text
+  /usr/bin/pmset -a disablesleep 0
+  /usr/bin/pmset -b lowpowermode 1
+  /usr/bin/pmset -b lowpowermode 0
+  ```
+
+- A **recovery agent**, a `launchd` job (`app.chargingpixels.ember.recovery`)
+  that runs every minute. If the app is gone, it tries to undo a session's
+  changes (see [How recovery works](#how-recovery-works)).
+
+</details>
+
+<details>
+<summary><strong>Build from source instead</strong></summary>
+
+Needs Xcode with Swift 6.2 or later. The installer refuses while a release is
+in `/Applications`, and while Insomnia is installed.
 
 ```bash
 git clone https://github.com/liviulica/ember.git
@@ -42,33 +84,14 @@ cd ember
 open "$HOME/Applications/Ember.app"
 ```
 
-<details>
-<summary><strong>What the installer changes on your Mac</strong></summary>
-
-The installer asks for your administrator password once, because the sudoers
-rule is a system file. It installs:
-
-- The app, at `~/Applications/Ember.app`.
-- A **recovery agent**, a `launchd` job (`app.chargingpixels.ember.recovery`)
-  that runs every minute. If the app is gone, it tries to undo a session's
-  changes (see [How recovery works](#how-recovery-works)).
-- A **sudoers rule** at `/etc/sudoers.d/ember`. A sudoers rule decides who can
-  run what with `sudo`. This one lets your user account, not just Ember, run
-  these four commands without a password, so lid mode starts without asking.
-  Any program running as you can use it too, including to keep the Mac awake;
-  that is a stopgap until a signed helper replaces the rule. If you installed
-  before October 2026, run `scripts/install.sh` once more to get the fourth
-  line; until then lid mode asks for your password.
-
-```text
-/usr/bin/pmset -a disablesleep 1
-/usr/bin/pmset -a disablesleep 0
-/usr/bin/pmset -b lowpowermode 1
-/usr/bin/pmset -b lowpowermode 0
-```
-
-Any program running as you can use that rule too, so review it before you
-install.
+A source build is ad-hoc signed, has no helper and no updates, and goes in
+`~/Applications`. The installer asks for your administrator password once to
+write `/etc/sudoers.d/ember` with the three lines above plus
+`/usr/bin/pmset -a disablesleep 1`, so lid mode starts without asking. Any
+program running as you can use that fourth line to keep the Mac awake;
+review it before you install. A release removes that file once its helper is
+approved and has written its own, and offers to move the source build in `~/Applications` to the
+Trash.
 
 </details>
 
@@ -187,11 +210,14 @@ it goes back to the hotspot and waits longer before it tries again. "Use hotspot
 screen mode too" in Settings (off by default) runs the same failover in screen
 mode.
 
-**Network.** Ember makes one kind of network request: while hotspot failover
+**Network.** Ember makes two kinds of network request. While hotspot failover
 runs with a hotspot configured, it checks
 `http://captive.apple.com/hotspot-detect.html`, the address macOS itself uses
-to test the connection. The request carries a neutral user
-agent and no cookies. Nothing else leaves your Mac.
+to test the connection; the request carries a neutral user agent and no
+cookies. A release also checks for updates (once a day, or when you ask) at
+`https://chargingpixels.com/ember/appcast.xml`, which redirects to the latest
+GitHub release, sending only Ember's and Sparkle's version in the user agent.
+Nothing else leaves your Mac.
 
 [docs/extras.md](docs/extras.md) has the details.
 
@@ -227,12 +253,14 @@ them before you share one.
 
 ## Uninstall
 
-From your checkout:
+A release:
 
 ```bash
-./scripts/uninstall.sh          # removes the app, the agent and the sudoers rule
-./scripts/uninstall.sh --purge  # also removes settings and logs
+/Applications/Ember.app/Contents/Resources/uninstall.sh          # the app, the helper, the agent and the sudoers rule
+/Applications/Ember.app/Contents/Resources/uninstall.sh --purge  # also settings and logs
 ```
+
+A source build, from your checkout: `./scripts/uninstall.sh` (or `--purge`).
 
 The uninstaller undoes any open session first and stops if it can't.
 
@@ -242,6 +270,7 @@ The uninstaller undoes any open session first and stops if it can't.
 swift build
 scripts/test-fast.sh   # unit tests, a few minutes
 swift test             # the full suite, before a release
+scripts/release.sh X.Y.Z --dry-run   # build, sign, notarize, DMG and appcast, not published
 ```
 
 The tests use fakes and temporary folders, so they never change your power

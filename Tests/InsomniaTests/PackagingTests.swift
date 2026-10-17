@@ -306,7 +306,9 @@ final class PackagingTests: XCTestCase {
     /// codesign can sign the result) and whose `codesign` is either the real
     /// tool or a recorder. Its `rm`, `mkdir`, `cp` and `chmod` record each
     /// call and then run the real tool. ROOT is a scratch checkout with the
-    /// real Info.plist, icon and backstop.sh copied in.
+    /// real Info.plist, icon, helper plist, entitlements, backstop.sh and
+    /// uninstall.sh copied in; the binary directory also holds a helper (a
+    /// copy of /usr/bin/true) and the real Sparkle.framework.
     private func patchedBuildApp(recordingCodesign: Bool) throws -> (script: URL, calls: URL) {
         let fm = FileManager.default
         let checkout = scratch.appendingPathComponent("checkout", isDirectory: true)
@@ -316,11 +318,15 @@ final class PackagingTests: XCTestCase {
         for dir in [checkout.appendingPathComponent("scripts"), checkout.appendingPathComponent("Resources"), bin, binroot] {
             try fm.createDirectory(at: dir, withIntermediateDirectories: true)
         }
-        for name in ["Info.plist", "AppIcon.icns"] {
+        for name in ["Info.plist", "AppIcon.icns", "app.chargingpixels.ember.helper.plist", "Ember.entitlements"] {
             try fm.copyItem(at: Self.repoRoot.appendingPathComponent("Resources/\(name)"), to: checkout.appendingPathComponent("Resources/\(name)"))
         }
-        try fm.copyItem(at: Self.repoRoot.appendingPathComponent("scripts/backstop.sh"), to: checkout.appendingPathComponent("scripts/backstop.sh"))
+        for name in ["backstop.sh", "uninstall.sh"] {
+            try fm.copyItem(at: Self.repoRoot.appendingPathComponent("scripts/\(name)"), to: checkout.appendingPathComponent("scripts/\(name)"))
+        }
         try fm.copyItem(atPath: "/usr/bin/true", toPath: binroot.appendingPathComponent("Ember").path)
+        try fm.copyItem(atPath: "/usr/bin/true", toPath: binroot.appendingPathComponent("EmberHelper").path)
+        try fm.copyItem(at: Self.sparkleFramework, to: binroot.appendingPathComponent("Sparkle.framework"))
 
         func fake(_ name: String, _ body: String) throws -> URL {
             let url = bin.appendingPathComponent(name)
@@ -340,7 +346,7 @@ final class PackagingTests: XCTestCase {
             : URL(fileURLWithPath: "/usr/bin/codesign")
 
         var tools = ["SWIFT": swift.path, "CODESIGN": codesign.path]
-        for (name, real) in ["RM": "/bin/rm", "MKDIR": "/bin/mkdir", "CP": "/bin/cp", "CHMOD": "/bin/chmod"] {
+        for (name, real) in ["RM": "/bin/rm", "MKDIR": "/bin/mkdir", "CP": "/bin/cp", "CHMOD": "/bin/chmod", "DITTO": "/usr/bin/ditto"] {
             tools[name] = try fake("recorded-\(name.lowercased())", """
             printf '\(name.lowercased()) %s\\n' "$*" >> "\(calls.path)"
             exec \(real) "$@"
@@ -359,8 +365,15 @@ final class PackagingTests: XCTestCase {
         return (script, calls)
     }
 
-    /// Ad-hoc by default: the output is a complete bundle (binary,
-    /// Info.plist, icon, backstop.sh) whose real signature verifies, whose
+    /// The Sparkle.framework SwiftPM resolved (the macOS slice of the
+    /// xcframework), which build-app.sh copies from the binary directory.
+    static var sparkleFramework: URL {
+        repoRoot.appendingPathComponent(".build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework", isDirectory: true)
+    }
+
+    /// Ad-hoc by default: the output is a complete bundle (binary, helper,
+    /// Sparkle, the helper's launchd plist, Info.plist, icon, backstop.sh,
+    /// uninstall.sh) whose real signature verifies deep and strict, whose
     /// resource seal covers the backstop, and whose designated requirement
     /// is the build's cdhash, the pin install.sh's agent uses.
     func testBuildAppAssemblesAndAdHocSignsABundleWhoseSealCoversTheBackstop() throws {
@@ -372,9 +385,16 @@ final class PackagingTests: XCTestCase {
         XCTAssertEqual(r.status, 0, r.output)
         let bundle = out.appendingPathComponent("Ember.app")
         XCTAssertEqual(r.output.components(separatedBy: "\n").filter { !$0.isEmpty }.last, bundle.path, "the bundle path is printed last")
-        for rel in ["Contents/MacOS/Ember", "Contents/Info.plist", "Contents/Resources/AppIcon.icns", "Contents/Resources/backstop.sh", "Contents/_CodeSignature/CodeResources"] {
+        for rel in ["Contents/MacOS/Ember", "Contents/MacOS/EmberHelper", "Contents/Info.plist", "Contents/Resources/AppIcon.icns",
+                    "Contents/Resources/backstop.sh", "Contents/Resources/uninstall.sh", "Contents/_CodeSignature/CodeResources",
+                    "Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle", "Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app",
+                    "Contents/Library/LaunchDaemons/app.chargingpixels.ember.helper.plist"] {
             XCTAssertTrue(FileManager.default.fileExists(atPath: bundle.appendingPathComponent(rel).path), rel)
         }
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: bundle.appendingPathComponent("Contents/Frameworks/Sparkle.framework/Versions/Current").path), "B", "the framework's links are kept")
+        XCTAssertEqual(try run("/usr/bin/codesign", ["--verify", "--deep", "--strict", bundle.path]).status, 0)
+        let helper = try run("/usr/bin/codesign", ["-dv", bundle.appendingPathComponent("Contents/MacOS/EmberHelper").path])
+        XCTAssertTrue(helper.output.contains("Identifier=app.chargingpixels.ember.helper"), helper.output)
         let perms = try FileManager.default.attributesOfItem(atPath: Paths.backstopScript(inBundle: bundle).path)[.posixPermissions] as? Int
         XCTAssertEqual(perms.map { $0 & 0o111 }, 0o111, "backstop.sh is executable")
         XCTAssertEqual(try run("/usr/bin/codesign", ["--verify", "--strict", bundle.path]).status, 0)
@@ -420,12 +440,12 @@ final class PackagingTests: XCTestCase {
         XCTAssertEqual(URL(fileURLWithPath: printed).resolvingSymlinksInPath(), bundle.resolvingSymlinksInPath(), "the printed path is absolute")
     }
 
-    /// Releases are ad-hoc signed and not notarized, so the signature is
-    /// ad-hoc whatever the environment says: an INSOMNIA_SIGN_IDENTITY left
-    /// over from older instructions changes nothing, and nothing asks for
-    /// the hardened runtime or a timestamp. No --deep (no nested code).
-    /// Checked with a recording codesign.
-    func testBuildAppAlwaysSignsAdHoc() throws {
+    /// Without --sign the signature is ad-hoc whatever the environment says:
+    /// an INSOMNIA_SIGN_IDENTITY left over from older instructions changes
+    /// nothing, and nothing asks for the hardened runtime or a timestamp.
+    /// Nested code is signed inside out, the app last. Checked with a
+    /// recording codesign.
+    func testBuildAppSignsAdHocByDefaultInsideOut() throws {
         let (script, calls) = try patchedBuildApp(recordingCodesign: true)
         let out = scratch.appendingPathComponent("out", isDirectory: true)
         let bundle = out.appendingPathComponent("Ember.app").path
@@ -439,13 +459,55 @@ final class PackagingTests: XCTestCase {
             let label = identity ?? "no identity"
             XCTAssertEqual(r.status, 0, "\(label): \(r.output)")
             let recorded = try String(contentsOf: calls, encoding: .utf8).components(separatedBy: "\n").filter { $0.hasPrefix("codesign") }
-            XCTAssertEqual(recorded, [
-                "codesign --force --sign - \(bundle)",
-                "codesign --verify --strict \(bundle)",
+            XCTAssertEqual(recorded, Self.insideOut(bundle: bundle, sign: "codesign --force --sign -", appExtra: "") + [
+                "codesign --verify --deep --strict \(bundle)",
                 "codesign -dvv \(bundle)",
             ], label)
             XCTAssertTrue(r.output.contains("Signing ad-hoc"), "\(label): \(r.output)")
         }
+    }
+
+    /// The signing order of every build: Sparkle's nested code, the
+    /// framework, the helper, then the app.
+    private static func insideOut(bundle: String, sign: String, appExtra: String) -> [String] {
+        let fw = "\(bundle)/Contents/Frameworks/Sparkle.framework"
+        return [
+            "\(sign) \(fw)/Versions/B/XPCServices/Installer.xpc",
+            "\(sign) --preserve-metadata=entitlements \(fw)/Versions/B/XPCServices/Downloader.xpc",
+            "\(sign) \(fw)/Versions/B/Autoupdate",
+            "\(sign) \(fw)/Versions/B/Updater.app",
+            "\(sign) \(fw)",
+            "\(sign) --identifier app.chargingpixels.ember.helper \(bundle)/Contents/MacOS/EmberHelper",
+            "\(sign) \(appExtra)\(bundle)",
+        ]
+    }
+
+    /// With an identity every piece gets the hardened runtime and a secure
+    /// timestamp, and the app its entitlements: what notarization needs.
+    func testBuildAppWithAnIdentitySignsForNotarization() throws {
+        let (script, calls) = try patchedBuildApp(recordingCodesign: true)
+        let out = scratch.appendingPathComponent("out", isDirectory: true)
+        let bundle = out.appendingPathComponent("Ember.app").path
+        let identity = "Developer ID Application: Example (ABCDE12345)"
+        let r = try run("/bin/bash", [script.path, "--output", out.path, "--sign", identity], environment: ["PATH": "/usr/bin:/bin", "HOME": scratch.path])
+        XCTAssertEqual(r.status, 0, r.output)
+        let checkout = script.deletingLastPathComponent().deletingLastPathComponent().path
+        let recorded = try String(contentsOf: calls, encoding: .utf8).components(separatedBy: "\n").filter { $0.hasPrefix("codesign") }
+        XCTAssertEqual(recorded, Self.insideOut(bundle: bundle, sign: "codesign --force --sign \(identity) -o runtime --timestamp",
+                                                appExtra: "--entitlements \(checkout)/Resources/Ember.entitlements ") + [
+            "codesign --verify --deep --strict \(bundle)",
+            "codesign -dvv \(bundle)",
+        ])
+    }
+
+    /// A lid simulation build is a test build: never signed for release.
+    func testBuildAppRefusesToSignALidSimulationBuildWithAnIdentity() throws {
+        let (script, calls) = try patchedBuildApp(recordingCodesign: true)
+        let r = try run("/bin/bash", [script.path, "--output", scratch.appendingPathComponent("out").path, "--sign", "Developer ID Application: X (ABCDE12345)"],
+                        environment: ["PATH": "/usr/bin:/bin", "HOME": scratch.path, "INSOMNIA_LID_SIMULATION": "1"])
+        XCTAssertEqual(r.status, 2, r.output)
+        XCTAssertTrue(r.output.contains("never signed with an identity"), r.output)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: calls.path), "nothing was built or signed")
     }
 
     /// Every file build-app.sh removes, creates or copies goes through its
@@ -457,7 +519,7 @@ final class PackagingTests: XCTestCase {
         let app = out.appendingPathComponent("Ember.app").path
         let shadow = scratch.appendingPathComponent("shadow", isDirectory: true)
         try FileManager.default.createDirectory(at: shadow, withIntermediateDirectories: true)
-        for name in ["rm", "mkdir", "cp", "chmod"] {
+        for name in ["rm", "mkdir", "cp", "chmod", "ditto"] {
             let url = shadow.appendingPathComponent(name)
             try TestScripts.write("#!/bin/bash\nprintf 'PATH \(name) %s\\n' \"$*\" >> \"\(calls.path)\"\nexit 1\n", to: url)
         }
@@ -471,7 +533,9 @@ final class PackagingTests: XCTestCase {
         for call in [
             "mkdir -p \(out.path)",
             "rm -rf \(app)",
-            "mkdir -p \(app)/Contents/MacOS \(app)/Contents/Resources",
+            "mkdir -p \(app)/Contents/MacOS \(app)/Contents/Resources \(app)/Contents/Frameworks \(app)/Contents/Library/LaunchDaemons",
+            "cp \(checkout)/Resources/app.chargingpixels.ember.helper.plist \(app)/Contents/Library/LaunchDaemons/app.chargingpixels.ember.helper.plist",
+            "cp \(checkout)/scripts/uninstall.sh \(app)/Contents/Resources/uninstall.sh",
             "cp \(checkout)/Resources/Info.plist \(app)/Contents/Info.plist",
             "cp \(checkout)/Resources/AppIcon.icns \(app)/Contents/Resources/AppIcon.icns",
             "cp \(checkout)/scripts/backstop.sh \(app)/Contents/Resources/backstop.sh",
@@ -480,6 +544,8 @@ final class PackagingTests: XCTestCase {
             XCTAssertTrue(recorded.contains(call), "\(call) not in \(recorded)")
         }
         XCTAssertTrue(recorded.contains { $0.hasPrefix("cp ") && $0.hasSuffix(" \(app)/Contents/MacOS/Ember") }, "\(recorded)")
+        XCTAssertTrue(recorded.contains { $0.hasPrefix("cp ") && $0.hasSuffix(" \(app)/Contents/MacOS/EmberHelper") }, "\(recorded)")
+        XCTAssertTrue(recorded.contains { $0.hasPrefix("ditto ") && $0.hasSuffix(" \(app)/Contents/Frameworks/Sparkle.framework") }, "\(recorded)")
     }
 
     func testBuildAppNeedsAnOutputDirectory() throws {

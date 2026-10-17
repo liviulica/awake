@@ -88,6 +88,9 @@ final class FakeSleepGuard: SleepGuarding, @unchecked Sendable {
     private var _restoreCalledAt: Date?
     private var _readGate: AsyncGate?
     var throwOn: Set<String> = []
+    /// What `restoreProblem()` answers before a lid start; nil is ready.
+    var restoreProblemAnswer: String?
+    func restoreProblem() async -> String? { restoreProblemAnswer }
     /// Commands that take effect and *then* fail (a timeout after pmset
     /// already applied the setting): the ambiguous failure shape.
     var throwAfterEffect: Set<String> = []

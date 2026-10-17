@@ -16,6 +16,9 @@ enum MenuSymbol {
     static let warning = "exclamationmark.triangle"
     static let relaunch = "arrow.clockwise"
     static let stopWaiting = "speaker.slash"
+    static let approve = "checkmark.shield"
+    static let update = "arrow.down.circle"
+    static let checkUpdates = "arrow.triangle.2.circlepath"
 }
 
 /// The right-click menu on the status item: under the header view
@@ -45,6 +48,9 @@ enum StatusMenu {
             /// save the item was built for, its save ID included, so a
             /// later one is not dropped.
             case stopWaitingForOutput(SavedAudioOutput)
+            /// Open System Settings > Login Items to allow the helper.
+            case approveHelper
+            case checkForUpdates
         }
 
         let title: String
@@ -62,6 +68,10 @@ enum StatusMenu {
     static let settingsTitle = "Settings\u{2026}"
     static let quitTitle = "Quit Ember"
     static let headerTitle = "Mac"
+    static let helperApprovalLine = "Lid mode needs your approval in Login Items"
+    static let approveHelperTitle = "Open Login Items\u{2026}"
+    static let updateHeldBackLine = "Update ready: installs when this session ends"
+    static let checkForUpdatesTitle = "Check for Updates\u{2026}"
 
     static func durationTitle(_ duration: TimeInterval?) -> String {
         guard let duration else { return "Until I turn it off" }
@@ -94,6 +104,11 @@ enum StatusMenu {
     /// line per browser; `outputsWaiting` are output devices still muted
     /// from a lid close because they were not connected to get their volume
     /// back; each gets a line and an item to stop waiting for it.
+    /// `helperNeedsApproval` (release builds) adds the approval line and the
+    /// item that opens Login Items, first among the warnings: lid mode
+    /// cannot start until it is done. `canCheckForUpdates` (release builds)
+    /// adds "Check for Updates…" above Settings, after the line about an
+    /// update waiting for the session to end (`updateHeldBack`).
     static func items(
         mac: [Item] = [],
         sessionActive: Bool,
@@ -105,7 +120,10 @@ enum StatusMenu {
         commandRunning: String? = nil,
         foreignSleep: String? = nil,
         outputsWaiting: [SavedAudioOutput] = [],
-        lidSimulationBuild: Bool = false
+        lidSimulationBuild: Bool = false,
+        helperNeedsApproval: Bool = false,
+        canCheckForUpdates: Bool = false,
+        updateHeldBack: Bool = false
     ) -> [Item] {
         var sections: [[Item]] = []
 
@@ -119,6 +137,10 @@ enum StatusMenu {
         }
 
         var warnings: [Item] = []
+        if helperNeedsApproval {
+            warnings.append(warning(helperApprovalLine))
+            warnings.append(Item(title: approveHelperTitle, kind: .approveHelper, symbol: MenuSymbol.approve))
+        }
         for browser in throttledBrowsers {
             // The warning alone is a dead end; each browser's relaunch is
             // the next item.
@@ -142,10 +164,14 @@ enum StatusMenu {
         }
         sections.append(warnings)
 
-        sections.append([
-            Item(title: settingsTitle, kind: .settings, symbol: MenuSymbol.settings),
-            Item(title: quitTitle, kind: .quit),
-        ])
+        var last: [Item] = []
+        if canCheckForUpdates {
+            if updateHeldBack { last.append(Item(title: updateHeldBackLine, kind: .info, symbol: MenuSymbol.update)) }
+            last.append(Item(title: checkForUpdatesTitle, kind: .checkForUpdates, symbol: MenuSymbol.checkUpdates))
+        }
+        last.append(Item(title: settingsTitle, kind: .settings, symbol: MenuSymbol.settings))
+        last.append(Item(title: quitTitle, kind: .quit))
+        sections.append(last)
 
         var out: [Item] = []
         for section in sections where !section.isEmpty {
@@ -183,10 +209,13 @@ enum StatusMenu {
         settings: Selector,
         quit: Selector,
         relaunchBrowser: Selector,
-        stopWaitingForOutput: Selector
+        stopWaitingForOutput: Selector,
+        approveHelper: Selector? = nil,
+        checkForUpdates: Selector? = nil
     ) -> NSMenu {
         let selectors = Selectors(settings: settings, quit: quit, relaunchBrowser: relaunchBrowser,
-                                  stopWaitingForOutput: stopWaitingForOutput)
+                                  stopWaitingForOutput: stopWaitingForOutput,
+                                  approveHelper: approveHelper, checkForUpdates: checkForUpdates)
         let menu = build(items, target: target, selectors: selectors)
         if let header {
             let item = NSMenuItem()
@@ -199,6 +228,7 @@ enum StatusMenu {
 
     private struct Selectors {
         let settings, quit, relaunchBrowser, stopWaitingForOutput: Selector
+        let approveHelper, checkForUpdates: Selector?
     }
 
     @MainActor
@@ -230,6 +260,10 @@ enum StatusMenu {
             case let .stopWaitingForOutput(waiting):
                 entry = action(title: item.title, selector: s.stopWaitingForOutput, key: "", target: target)
                 entry.representedObject = waiting
+            case .approveHelper:
+                entry = action(title: item.title, selector: s.approveHelper, key: "", target: target)
+            case .checkForUpdates:
+                entry = action(title: item.title, selector: s.checkForUpdates, key: "", target: target)
             }
             if let symbol = item.symbol {
                 entry.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
@@ -240,11 +274,11 @@ enum StatusMenu {
     }
 
     @MainActor
-    private static func action(title: String, selector: Selector, key: String, target: AnyObject?) -> NSMenuItem {
+    private static func action(title: String, selector: Selector?, key: String, target: AnyObject?) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: selector, keyEquivalent: key)
         item.keyEquivalentModifierMask = .command
         item.target = target
-        item.isEnabled = true
+        item.isEnabled = selector != nil
         return item
     }
 }

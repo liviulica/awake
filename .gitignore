@@ -7,3 +7,4 @@ DerivedData/
 *.app
 .DS_Store
 .superpowers/
+dist/

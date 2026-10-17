@@ -1,9 +1,10 @@
+import EmberHelperKit
 import Foundation
 
-/// The only things Ember ever does as root: the four sudoers-allowed pmset
-/// commands written by install.sh, with `disablesleep 1` falling back to the
-/// administrator prompt (`AdminCommandRunning`) on an install made before
-/// that line existed.
+/// The only things Ember ever does as root: turning sleep off (through the
+/// release build's helper, else the sudoers line install.sh writes, else
+/// the administrator prompt) and the sudoers-allowed pmset commands that
+/// give sleep back or switch Low Power Mode.
 protocol SleepGuarding: Sendable {
     func setSleepDisabled(_ disabled: Bool) async throws
     func isSleepDisabled() async throws -> Bool
@@ -15,12 +16,19 @@ protocol SleepGuarding: Sendable {
     /// bit back, throwing `SleepDisableRevertedError` when macOS set it back
     /// to 0. Run beside the session, so a start is not held for the wait.
     func confirmSleepDisabled() async throws
+    /// Before a lid start: nil when sleep can be given back without the app
+    /// (the sudoers lines backstop.sh uses are in place), else why not, as a
+    /// sentence the menu can show.
+    func restoreProblem() async -> String?
 }
 
 extension SleepGuarding {
     /// Guards with nothing to read back (the simulated one, test doubles)
     /// confirm at once.
     func confirmSleepDisabled() async throws {}
+    /// Guards that need no sudoers rule (the simulated one, test doubles)
+    /// are always ready.
+    func restoreProblem() async -> String? { nil }
 }
 
 struct SleepGuardError: Error, LocalizedError, Sendable {
@@ -89,6 +97,13 @@ struct PmsetSleepGuard: SleepGuarding {
     let runner: CancellableCommand
     /// Runs `disableSleepCommand`; tests pass one that runs a fake pmset.
     let admin: any AdminCommandRunning
+    /// The release build's privileged helper (`NoHelper` in a source build).
+    let helper: any PrivilegedHelping
+    /// Finds a root `pmset -a disablesleep 1` still running after the helper
+    /// stopped answering (tests pass a fake).
+    let pgrepPath: String
+    /// How often that check runs while one is.
+    let orphanPoll: Duration
 
     init(
         sudo: String = Self.sudo,
@@ -98,7 +113,10 @@ struct PmsetSleepGuard: SleepGuarding {
         settle: TimeInterval = Self.settle,
         settleWait: @escaping @Sendable (TimeInterval) async throws -> Void = { try await Task.sleep(for: .seconds($0)) },
         runner: CancellableCommand = CancellableCommand(),
-        admin: any AdminCommandRunning = OsascriptAdminRunner()
+        admin: any AdminCommandRunning = OsascriptAdminRunner(),
+        helper: any PrivilegedHelping = NoHelper(),
+        pgrep: String = "/usr/bin/pgrep",
+        orphanPoll: Duration = .milliseconds(200)
     ) {
         sudoPath = sudo
         pmsetPath = pmset
@@ -108,13 +126,18 @@ struct PmsetSleepGuard: SleepGuarding {
         self.settleWait = settleWait
         self.runner = runner
         self.admin = admin
+        self.helper = helper
+        pgrepPath = pgrep
+        self.orphanPoll = orphanPoll
     }
 
     /// The read-back after `settle` is `confirmSleepDisabled`, which the
     /// manager runs beside the started session. Restoring sleep is not read
-    /// back. Disabling goes through `sudo -n`, or through
-    /// the administrator prompt on a rule without the `disablesleep 1` line,
-    /// which throws `AdminPromptCancelledError` when the person cancels it.
+    /// back. Disabling goes through the helper when it is enabled; when it
+    /// cannot be reached (not when its pmset fails) through `sudo -n`, or
+    /// through the administrator prompt on a rule without the `disablesleep
+    /// 1` line, which throws `AdminPromptCancelledError` when the person
+    /// cancels it.
     func setSleepDisabled(_ disabled: Bool) async throws {
         guard disabled else {
             try await sudoPmset(["-a", "disablesleep", "0"])
@@ -122,8 +145,26 @@ struct PmsetSleepGuard: SleepGuarding {
         }
         // The same rule as `sudoPmset`: only inside a recovery transaction,
         // with the prompt's command holding the lock until it exits.
-        guard RecoveryLock.held != nil else {
+        guard let lock = RecoveryLock.held else {
             throw SleepGuardError(command: "pmset -a disablesleep 1", status: -1, stderr: "not run: no recovery transaction holds the lock")
+        }
+        if helper.state == .enabled {
+            do {
+                let r = try await helper.disableSleep(holding: lock)
+                guard r.status == 0 else {
+                    throw SleepGuardError(command: "EmberHelper: pmset -a disablesleep 1", status: r.status, stderr: r.message)
+                }
+                return
+            } catch let error as HelperConnectionError {
+                // Nothing ran, or the helper died after starting pmset. Such
+                // a pmset holds this transaction's own lock description, so
+                // the lock does not keep a restore in this transaction (a
+                // failed fallback ends the start right here) from running
+                // before it lands. Wait for it to be gone first, however
+                // long that takes, as the helper itself would have.
+                Log.error("\(error.localizedDescription); turning sleep off through sudo instead")
+                await waitForOrphanedDisable()
+            }
         }
         do {
             try await sudoPmset(["-a", "disablesleep", "1"])
@@ -147,6 +188,80 @@ struct PmsetSleepGuard: SleepGuarding {
         case nil:
             throw SleepGuardError(command: "pmset -g", status: 0, stderr: "no SleepDisabled line reading 0 or 1, so `pmset -a disablesleep 1` could not be read back")
         }
+    }
+
+    /// Returns once no root `pmset -a disablesleep 1` is running: pgrep
+    /// exits 1 (no match). A match, or a pgrep that fails or does not
+    /// answer, is not proof of that, so the wait goes on.
+    func waitForOrphanedDisable() async {
+        var logged = false
+        let started = ContinuousClock.now
+        while (try? await runner.run(pgrepPath, ["-U", "0", "-f", "^\(pmsetPath) -a disablesleep 1$"], timeout: commandTimeout))?.status != 1 {
+            if !logged, ContinuousClock.now - started > .seconds(commandTimeout) {
+                Log.error("a root pmset -a disablesleep 1 the helper started may still be running (pgrep finds it or cannot tell); waiting for it before anything else changes sleep")
+                logged = true
+            }
+            try? await Task.sleep(for: orphanPoll)
+        }
+    }
+
+    /// Lid mode needs the restore commands in sudoers: the recovery agent
+    /// gives sleep back through them when the app is gone. A release build
+    /// whose helper is enabled has it (re)write the rule when they are
+    /// missing, then checks again. Runs inside the start's transaction.
+    func restoreProblem() async -> String? {
+        if await restoreRuleAllowed() { return nil }
+        let state = helper.state
+        if state == .enabled {
+            do {
+                let r = try await helper.installRestoreRule()
+                if r.status != 0 { Log.error("helper could not write the restore rule: status \(r.status) \(r.message)") }
+            } catch {
+                Log.error("could not ask the helper for the restore rule: \(error.localizedDescription)")
+            }
+            if await restoreRuleAllowed() { return nil }
+        }
+        return Self.restoreProblemText(helper: state)
+    }
+
+    static func restoreProblemText(helper state: HelperState) -> String {
+        switch state {
+        case .unavailable:
+            return "Lid mode can't start: the sudoers rule that lets Ember turn sleep back on is missing. Run scripts/install.sh"
+        case .enabled:
+            return "Lid mode can't start: Ember's helper could not write the rule that turns sleep back on (see the log)"
+        case .notRegistered, .requiresApproval, .notFound:
+            return "Lid mode needs your approval in System Settings \u{2192} General \u{2192} Login Items: without it, nothing can turn sleep back on if Ember quits"
+        }
+    }
+
+    /// `disablesleep 0` is run for real, with `-k` so a password typed
+    /// earlier does not count: only running it proves sudo needs no
+    /// password for it, since `sudo -l` also passes for a command that needs
+    /// one when any other rule is passwordless (`listpw=any`). Sleep is on
+    /// before a lid start, so it changes nothing; a bit someone else set is
+    /// given back, as the session's end would. A run that outlives its
+    /// SIGTERM is waited for, with the lock still held, so it cannot land
+    /// after a start that follows. The Low Power Mode lines cannot be run
+    /// without changing the mode, so `sudo -n -l` checks them, which can
+    /// pass without them; then only Low Power Mode would stay as the
+    /// session left it after a crash.
+    func restoreRuleAllowed() async -> Bool {
+        do {
+            try await sudoPmset(["-a", "disablesleep", "0"], sudoOptions: ["-k"])
+        } catch let still as CommandStillRunningError {
+            Log.error("\(still.localizedDescription); waiting for it to exit before the lid start goes on")
+            await still.command.waitUntilExit()
+            return false
+        } catch {
+            return false
+        }
+        for args in RestoreRule.commands.dropFirst() {
+            guard let r = try? await runner.run(sudoPath, ["-n", "-l", pmsetPath] + args, timeout: commandTimeout), r.succeeded else {
+                return false
+            }
+        }
+        return true
     }
 
     /// sudo refused for want of a password: the rule predates its fourth

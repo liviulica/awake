@@ -35,6 +35,27 @@ The scripts run under macOS `/bin/bash` 3.2 (the recovery agent, `install.sh`
 and `uninstall.sh`): no `mapfile`, no `declare -A`, no `${x,,}`, and no empty
 array expansion under `set -u`.
 
+## Releases
+
+Releases are built on the maintainer's Mac, not in CI (spec
+`docs/superpowers/specs/2026-10-17-ember-installer-and-updates-design.md`):
+
+1. In a pull request, set `CFBundleShortVersionString` in `Resources/Info.plist`
+   to X.Y.Z and `CFBundleVersion` to X·1000000 + Y·1000 + Z; merge it.
+2. On `main`, run `swift test` (the full suite), then
+   `scripts/release.sh X.Y.Z --dry-run` to build, sign, notarize and staple the
+   app and the DMG and write `dist/X.Y.Z/appcast.xml`.
+3. `scripts/release.sh X.Y.Z` does the same and, after asking, creates the
+   GitHub release vX.Y.Z with the DMG and `appcast.xml`. Every installed copy
+   finds it through `https://chargingpixels.com/ember/appcast.xml`, which
+   redirects to the latest release's `appcast.xml`.
+
+It needs the Developer ID Application certificate of CHARGING PIXELS S.R.L.
+in the login keychain, the notarytool keychain profile `ember-notary`, and the
+Sparkle EdDSA key (account `ember`) in the login keychain. The public half of
+that key is `SUPublicEDKey` in Info.plist; an update signed with any other key
+is refused, so the private key must never be lost or replaced.
+
 ## Writing tests
 
 Use injected system dependencies and temporary journals for automated tests.

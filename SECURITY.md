@@ -14,12 +14,21 @@ anywhere public.
 
 ## What the app can and cannot protect
 
-The installer grants the user account passwordless access to four exact pmset
-commands listed in the README, including `pmset -a disablesleep 1`, which turns
-sleep off. This grant is not exclusive to the Ember app: other processes
-running as that user can invoke them too, and so can keep the Mac awake
-without asking. That line is a stopgap until a signed helper replaces the
-sudoers rule. The app is not
+A release turns sleep off through its privileged helper, a launchd daemon
+registered with `SMAppService` that runs as root once the user approves it
+in Login Items. The helper accepts connections only from code signed by team
+4UA742BB8G with Ember's identifier, and the app talks only to a helper
+signed the same way. It does two fixed things: `pmset -a disablesleep 1`,
+and writing `/etc/sudoers.d/ember-<uid>` with three restore-only lines for
+the calling user (the uid comes from the connection, never from the message,
+and the account name must be a plain one; each account has its own file).
+It then removes install.sh's `/etc/sudoers.d/ember` when every line in it is
+that user's. Those lines, listed in the README,
+let any process running as that user turn sleep back on or switch Low Power
+Mode without a password, which the recovery agent needs; none of them turns
+sleep off. A source build (`scripts/install.sh`) has no helper: its rule has a
+fourth line, `pmset -a disablesleep 1`, which any process running as that user
+can use to keep the Mac awake. The app is not
 sandboxed; local logs can contain SSIDs, process metadata.
 The lines the app writes to `ember.log` also reach the unified log with the
 body marked private, so programs reading `log show` see `<private>` instead of
@@ -42,14 +51,15 @@ The hotspot password is a generic-password item in the login Keychain
 that saved it, so any other program asking for it gets the system Keychain
 prompt, which you can refuse. Ember itself reads the item with prompts
 switched off: an item it may not read is reported in the menu and in Settings
-instead of being prompted for or silently ignored. Two limits remain. Ad-hoc
-signing gives every install a new code identity, so the access list pins one
-build and the password must be entered again after a reinstall; a stable
-signing identity (Developer ID) would let the access list name every build
-signed with it. And the item lives in the file-based login Keychain, which
+instead of being prompted for or silently ignored. Two limits remain. In a
+source build, ad-hoc signing gives every install a new code identity, so the
+access list pins one build and the password must be entered again after a
+reinstall; a release's Developer ID signature stays the same across updates,
+so its access list keeps working (moving from a source build to a release
+asks for the password once). And the item lives in the file-based login Keychain, which
 ignores the data-protection accessibility classes (this device only, when
 unlocked); using that Keychain needs an access-group entitlement, which needs
-a team id. Builds are ad-hoc signed, so both limits stay.
+a team id and is not done yet.
 
 In builds of the current source, the recovery LaunchAgent runs only the `backstop.sh` sealed inside the
 signed app bundle, after `codesign --verify --strict` passes against the code
@@ -65,16 +75,20 @@ tampered bundle; they are not a boundary against a process running as the
 same user, which can edit the plist, load its own agent, replace and relaunch
 the app, and invoke the four pmset commands directly.
 
-There is no signed release yet. Ember is built from source and ad-hoc signed
-on the machine that installs it; `scripts/install.sh` runs the build itself.
-Ember makes one network request: while hotspot failover runs with a hotspot
-configured, a `GET` of `http://captive.apple.com/hotspot-detect.html` with a
-neutral user agent (see the README). Starting a lid session runs
-`sudo -n pmset -a disablesleep 1`; on an install made before that rule line
-it raises the standard macOS administrator prompt instead. Either way the
-command string is a constant, and nothing a user can type reaches it. The
-passwordless line lets any program running as you keep the Mac awake; it is
-a stopgap until a signed helper replaces the sudoers rule.
+Releases are signed with the Developer ID of CHARGING PIXELS S.R.L., use the
+hardened runtime, and are notarized; source builds are ad-hoc signed on the
+machine that installs them. A release updates itself with Sparkle 2: the feed
+is fetched over HTTPS and an update is installed only when its EdDSA signature
+matches `SUPublicEDKey` in the running app's Info.plist (and Sparkle checks
+that the new bundle is signed by the same team). Ember makes two kinds of
+network request: while hotspot failover runs with a hotspot configured, a
+`GET` of `http://captive.apple.com/hotspot-detect.html` with a neutral user
+agent, and a release's update check (see the README). Starting a lid session
+asks the helper when it is approved; otherwise, or when the helper cannot be
+reached, it runs `sudo -n pmset -a disablesleep 1`, and on a rule without that
+line it raises the standard macOS administrator prompt. Every command string
+is a constant, and nothing a user can type reaches it. A lid session does not
+start until the restore lines are in place.
 
 One known window remains in the prompt fallback. A prompt left open until its 300 s
 limit is stopped with SIGTERM (never SIGKILL) to osascript, and the start is
@@ -84,8 +98,8 @@ running, and that shell can then turn sleep off after the undo: sleep stays
 disabled with a clean journal, so neither the backstop nor the next launch
 restores it (the next launch only warns in the menu), until a later session
 end or `sudo pmset -a disablesleep 0`.
-The window is milliseconds wide. Only the privileged helper planned for
-phase 2, which replaces the administrator prompt, closes it.
+The window is milliseconds wide. A release with its helper approved never
+reaches the prompt, so it does not have this window.
 
 Passing automated checks or a secret scan does not establish the absence of
 vulnerabilities. Do not probe recovery by disrupting someone else's processes,

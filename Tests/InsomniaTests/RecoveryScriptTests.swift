@@ -4338,6 +4338,18 @@ final class RecoveryScriptTests: XCTestCase {
     /// Ember and Insomnia drive the same SleepDisabled bit, so the installer
     /// refuses while any Insomnia file exists, before the build and the
     /// password prompt.
+    /// A release in /Applications and a source install would be two
+    /// Embers driving one setting: refused before anything is built.
+    func testInstallRefusesWhileAReleaseIsInApplications() throws {
+        try fx.prepareInstall()
+        try FileManager.default.createDirectory(at: fx.releaseApp, withIntermediateDirectories: true)
+        let r = try fx.run(fx.installRedirected, extraEnvironment: ["USER": "tester"])
+        XCTAssertEqual(r.status, 1, r.stdout + r.stderr)
+        XCTAssertTrue(r.stderr.contains("A release of Ember is installed at \(fx.releaseApp.path)"), r.stderr)
+        XCTAssertFalse(fx.calls().contains { $0.hasPrefix("swift ") || $0.hasPrefix("sudo") }, "\(fx.calls())")
+        XCTAssertFalse(fx.exists(fx.sudoers))
+    }
+
     func testInstallRefusesWhileInsomniaIsInstalled() throws {
         try fx.prepareInstall()
         let insomnia = fx.root.appendingPathComponent("Applications/Insomnia.app")
@@ -6388,6 +6400,9 @@ private final class ScriptFixture {
 
     var backstop: URL { repoScripts.appendingPathComponent("backstop.sh") }
     var uninstall: URL { repoScripts.appendingPathComponent("uninstall.sh") }
+    /// Where a release would be (/Applications/Ember.app), apart from the
+    /// source install's folder.
+    var releaseApp: URL { root.appendingPathComponent("SystemApplications/Ember.app", isDirectory: true) }
     var install: URL { repoScripts.appendingPathComponent("install.sh") }
     var installRedirected: URL { repoScripts.appendingPathComponent("install.redirected.sh") }
     /// installRedirected with a 1 s limit for each bounded call.
@@ -6527,6 +6542,17 @@ private final class ScriptFixture {
         try fm.createDirectory(at: binroot, withIntermediateDirectories: true)
         let binary = binroot.appendingPathComponent("Ember")
         try TestScripts.write("#!/bin/bash\nexit 0\n", to: binary)
+        // What build-app.sh copies beside the app since the helper and
+        // Sparkle: a helper binary, a framework with the nested code it
+        // signs (the fake codesign signs nothing), and the helper's plist.
+        try TestScripts.write("#!/bin/bash\nexit 0\n", to: binroot.appendingPathComponent("EmberHelper"))
+        let sparkle = binroot.appendingPathComponent("Sparkle.framework/Versions/B", isDirectory: true)
+        for nested in ["XPCServices/Installer.xpc", "XPCServices/Downloader.xpc", "Updater.app"] {
+            try fm.createDirectory(at: sparkle.appendingPathComponent(nested), withIntermediateDirectories: true)
+        }
+        try "autoupdate".write(to: sparkle.appendingPathComponent("Autoupdate"), atomically: true, encoding: .utf8)
+        try fm.copyItem(at: Self.productionScripts.deletingLastPathComponent().appendingPathComponent("Resources/app.chargingpixels.ember.helper.plist"),
+                        to: resources.appendingPathComponent("app.chargingpixels.ember.helper.plist"))
         try fm.createDirectory(at: plist.deletingLastPathComponent(), withIntermediateDirectories: true)
     }
 
@@ -6663,6 +6689,7 @@ private final class ScriptFixture {
             "INSOMNIA_SUDOERS": root.appendingPathComponent("etc/sudoers.d/insomnia").path,
             "INSOMNIA_PLIST": root.appendingPathComponent("home/Library/LaunchAgents/com.insomnia.backstop.plist").path,
             "INSOMNIA_APP": root.appendingPathComponent("Applications/Insomnia.app").path,
+            "RELEASE_APP": releaseApp.path,
             "PGREP": bin.appendingPathComponent("pgrep").path,
             "KILL": bin.appendingPathComponent("kill").path,
             "OSASCRIPT": bin.appendingPathComponent("osascript").path,
