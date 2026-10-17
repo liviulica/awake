@@ -96,6 +96,9 @@ SUDOERS=/etc/sudoers.d/ember
 INSOMNIA_SUDOERS=/etc/sudoers.d/insomnia
 INSOMNIA_PLIST="$HOME/Library/LaunchAgents/com.insomnia.backstop.plist"
 INSOMNIA_APP="$HOME/Applications/Insomnia.app"
+# Where a release (the signed DMG) is installed. A source install beside it
+# would be a second Ember driving the same setting with its own agent.
+RELEASE_APP=/Applications/Ember.app
 UID_NUM="$(id -u)"
 # Where the new bundle is assembled and signed (step 3) and where the previous
 # one waits during the swap (step 6). Both inside $APP_DIR, so the swap is two
@@ -308,6 +311,11 @@ for path in "$INSOMNIA_SUDOERS" "$INSOMNIA_PLIST" "$INSOMNIA_APP"; do
 done
 if [[ -n "$insomnia_found" ]]; then
   echo "Insomnia is installed (found:$insomnia_found). Ember and Insomnia both control this Mac's sleep setting and cannot be installed together. Uninstall Insomnia first (scripts/uninstall.sh in your Insomnia checkout), then run this installer again. Nothing was changed." >&2
+  exit 1
+fi
+
+if [[ -e "$RELEASE_APP" ]]; then
+  echo "A release of Ember is installed at $RELEASE_APP. A source install beside it would be a second Ember controlling the same setting. Use the release (it updates itself), or remove it first with $RELEASE_APP/Contents/Resources/uninstall.sh, then run this installer again. Nothing was changed." >&2
   exit 1
 fi
 

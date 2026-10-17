@@ -6663,6 +6663,7 @@ private final class ScriptFixture {
             "INSOMNIA_SUDOERS": root.appendingPathComponent("etc/sudoers.d/insomnia").path,
             "INSOMNIA_PLIST": root.appendingPathComponent("home/Library/LaunchAgents/com.insomnia.backstop.plist").path,
             "INSOMNIA_APP": root.appendingPathComponent("Applications/Insomnia.app").path,
+            "RELEASE_APP": root.appendingPathComponent("Applications/Ember.app").path,
             "PGREP": bin.appendingPathComponent("pgrep").path,
             "KILL": bin.appendingPathComponent("kill").path,
             "OSASCRIPT": bin.appendingPathComponent("osascript").path,

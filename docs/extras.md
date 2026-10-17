@@ -19,7 +19,8 @@ internet there, macOS picked the hotspot or another network, or nothing joined)
 it waits longer before the next try (60 seconds, doubling up to 10 minutes),
 and goes back to the hotspot itself when there is no internet or no network.
 
-The internet check is Ember's only network request: a plain `GET` of
+The internet check is Ember's only network request besides a release's update
+check (README, Network): a plain `GET` of
 `http://captive.apple.com/hotspot-detect.html`, the address macOS itself uses
 to test the connection, with Apple's own neutral user agent
 (`CaptiveNetworkSupport/1.0 wispr`) and no cookies. It runs only while failover

@@ -190,10 +190,17 @@ STAT=/usr/bin/stat
 # frozenProcesses entries (see above), and the bundle's Info.plist, which
 # must declare InsomniaResumeFrozenVersion RESUME_FROZEN_VERSION before the
 # binary is run: an older build has no such mode and would open the menu bar
-# app instead. Fixed paths like the tools, never PATH. install.sh puts the
-# bundle here, copying the binary before Info.plist.
-INSOMNIA_BIN="${HOME:-}/Applications/Ember.app/Contents/MacOS/Ember"
-INSOMNIA_INFO="${HOME:-}/Applications/Ember.app/Contents/Info.plist"
+# app instead. Fixed paths like the tools, never PATH: the bundle this
+# script is sealed in when it runs from one (the LaunchAgent runs the copy
+# in Contents/Resources, wherever the bundle is installed, /Applications for
+# a DMG install), else the bundle install.sh puts in ~/Applications, copying
+# the binary before Info.plist.
+APP_BUNDLE="${HOME:-}/Applications/Ember.app"
+case "${BASH_SOURCE[0]}" in
+  */Ember.app/Contents/Resources/backstop.sh) APP_BUNDLE="${BASH_SOURCE[0]%/Contents/Resources/backstop.sh}" ;;
+esac
+INSOMNIA_BIN="$APP_BUNDLE/Contents/MacOS/Ember"
+INSOMNIA_INFO="$APP_BUNDLE/Contents/Info.plist"
 RESUME_FROZEN_VERSION=1
 LOCK_TIMEOUT_SECONDS=10
 # Longest a single undo command (sudo pmset, defaults) may run before it is

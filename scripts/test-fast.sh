@@ -4,4 +4,4 @@
 # (`swift test`) before a release.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-exec swift test --skip 'RecoveryScriptTests|AgentModeExitInANewBootTests|AppEncodedJournalScriptTests|PackagingTests|LidSimulationGateScriptTests|ResumeFrozenCommandTests' "$@"
+exec swift test --skip 'RecoveryScriptTests|AgentModeExitInANewBootTests|AppEncodedJournalScriptTests|PackagingTests|LidSimulationGateScriptTests|ResumeFrozenCommandTests|ReleaseScriptTests' "$@"

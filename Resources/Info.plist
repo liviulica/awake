@@ -19,9 +19,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.0</string>
+	<string>0.2.0</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>2000</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>26.0</string>
 	<key>LSUIElement</key>
@@ -47,6 +47,12 @@
 	<string>NSApplication</string>
 	<key>InsomniaResumeFrozenVersion</key>
 	<integer>1</integer>
+	<key>SUFeedURL</key>
+	<string>https://chargingpixels.com/ember/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>4MBLACdNK/mfQMaTQNHt9YCvc+bLDXFkpI1oSjayeUA=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 Liviu Lica. Portions copyright © 2026 Krish Garg. MIT License.</string>
 </dict>

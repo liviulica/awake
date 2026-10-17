@@ -28,6 +28,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: StatusItemController?
     private var settingsWindow: SettingsWindow?
     private var hotspotSetupWindow: HotspotSetupWindow?
+    /// The helper and the updater of a release build (spec 2026-10-17); nil
+    /// in a source build and in test mode.
+    private var release: ReleaseSetup?
     private var terminating = false
     #if DEBUG || INSOMNIA_LID_SIMULATION
     /// The smoke test's mode (`TestMode`): nil unless the environment asks
@@ -69,7 +72,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // No Dock icon even when run from `swift run` (the bundle has LSUIElement).
         NSApp.setActivationPolicy(.accessory)
-        Log.info("launched")
+        Log.info("launched \(SettingsView.versionText())\(ReleaseSignature.isDeveloperID ? ", release build" : "")")
+        if wantsReleaseSetup {
+            // Before anything is armed or registered against this path.
+            guard ReleaseSetup.checkLocation() else { exit(0) }
+            let manager = self.manager, awake = self.awake
+            release = ReleaseSetup(helper: liveHelper, updater: Updater { manager.isActive || awake.state != .off })
+        }
         if LidSimulationBuild.isCompiledIn {
             Log.info(LidSimulationBuild.marker)
         }
@@ -102,7 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }, locationPermission: locationPermission)
         hotspotSetupWindow = setup
-        let settings = SettingsWindow { [manager, secrets, locationPermission, loginItem, awake, weak setup] in
+        let settings = SettingsWindow { [manager, secrets, locationPermission, loginItem, awake, weak setup, release] in
             AnyView(
                 SettingsView(
                     manager: manager,
@@ -110,7 +119,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     locationPermission: locationPermission,
                     loginItem: loginItem,
                     lidScreenSettingChanged: { awake.settingsChanged() },
-                    showHotspotSetup: { setup?.show() }
+                    showHotspotSetup: { setup?.show() },
+                    release: release
                 )
             )
         }
@@ -119,7 +129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             settings?.show()
         }, showHotspotSetup: { [weak setup] in
             setup?.show()
-        })
+        }, release: release)
         #if DEBUG || INSOMNIA_LID_SIMULATION
         if let testMode {
             Log.info(TestMode.marker)
@@ -142,6 +152,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         awake.onChange = { [weak self] _ in self?.reconcileAwakeFailover() }
         observeAwakeFailoverInputs()
         Task { await manager.reconcile() }
+        release?.launch(manager: manager)
+    }
+
+    /// A release build outside test mode.
+    private var wantsReleaseSetup: Bool {
+        #if DEBUG || INSOMNIA_LID_SIMULATION
+        if testMode != nil { return false }
+        #endif
+        return ReleaseSignature.isDeveloperID
     }
 
     /// Starts or stops screen mode's failover from the current screen mode state,
@@ -174,6 +193,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self else { return }
                 self.reconcileAwakeFailover()
                 self.manager.services?.configChanged()
+                self.release?.updater?.busyChanged()
                 self.observeAwakeFailoverInputs()
             }
         }

@@ -4,6 +4,9 @@ import Foundation
 // or SwiftUI start, so backstop.sh can borrow the app's kernel-level
 // identity check (see ResumeFrozenCommand), which ends itself when its
 // lifetime is up. Anything else starts the menu bar app.
+if let status = UnregisterHelperCommand.run(Array(CommandLine.arguments.dropFirst())) {
+    exit(status)
+}
 if let output = ResumeFrozenCommand.run(Array(CommandLine.arguments.dropFirst()), endAfter: ResumeFrozenCommand.endProcess) {
     for line in output.lines { print(line) }
     exit(output.status)

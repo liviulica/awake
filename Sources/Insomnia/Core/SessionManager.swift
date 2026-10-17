@@ -657,7 +657,7 @@ final class SessionManager {
     static func live(paths: Paths = .fromEnvironment()) -> SessionManager {
         live(
             paths: paths,
-            sleepGuard: PmsetSleepGuard(),
+            sleepGuard: PmsetSleepGuard(helper: liveHelper),
             backstop: LaunchdBackstop(paths: paths),
             clamshell: { LidObserver.readClamshellState() },
             closedLidSleep: IOKitClosedLidSleep(),
@@ -1224,6 +1224,21 @@ final class SessionManager {
     /// setting may have been applied before the error or timeout), so it is
     /// undone from the journal like an end, and the journal keeps the entry
     /// until that undo is confirmed.
+    /// A release build at launch: when a recovery agent is installed, arm
+    /// it again so it pins this bundle. After a move from an install.sh
+    /// copy it still points at the old one, which may be in the Trash by
+    /// now; arm() is a no-op when it already matches.
+    func rearmRecoveryAgentIfInstalled() async {
+        guard FileManager.default.fileExists(atPath: paths.backstopPlist.path) else { return }
+        _ = await exclusive("re-arm recovery agent at launch") {
+            do {
+                try await self.backstop.arm()
+            } catch {
+                Log.error("recovery agent could not be re-armed at launch: \(error.localizedDescription)")
+            }
+        }
+    }
+
     func start(duration: TimeInterval) async {
         guard !quitRequested else {
             Log.info("start ignored: quit requested")
@@ -1243,6 +1258,16 @@ final class SessionManager {
     private func performStart(duration: TimeInterval, ticket: Int) async {
         guard session == nil else {
             Log.info("start ignored: session already active")
+            return
+        }
+        guard endTicket == ticket, !quitRequested else {
+            Log.info("start abandoned: an end was requested first")
+            return
+        }
+        // Nothing is journaled or changed until sleep is known to be
+        // restorable without the app (spec 2026-10-17 "Lid start gate").
+        if let problem = await sleepGuard.restoreProblem() {
+            fail(problem)
             return
         }
         guard endTicket == ticket, !quitRequested else {

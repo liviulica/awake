@@ -90,7 +90,13 @@ QUIT_WAIT_SECONDS=10
 # backstop.sh bounds its own commands; the two sudo calls
 # prompt for a password and are left to sudo's own prompt timeout.
 CALL_TIMEOUT_SECONDS=30
+# The installed app: the bundle this script is sealed in when it runs from
+# one (a DMG install runs /Applications/Ember.app/Contents/Resources/
+# uninstall.sh), else the bundle install.sh puts in ~/Applications.
 APP="$HOME/Applications/Ember.app"
+case "$SCRIPT_DIR" in
+  */Ember.app/Contents/Resources) APP="${SCRIPT_DIR%/Contents/Resources}" ;;
+esac
 SUDOERS=/etc/sudoers.d/ember
 # The --resume-frozen interface version this checkout's backstop.sh speaks
 # (see step 3).
@@ -977,6 +983,21 @@ if [[ -d "$CANDIDATE_DIR" && ! -L "$CANDIDATE_DIR" ]]; then "$RMDIR" "$CANDIDATE
 step "Removing $SUDOERS (requires your password)"
 if [[ -e "$SUDOERS" ]] || "$SUDO" test -e "$SUDOERS"; then
   "$SUDO" rm -f "$SUDOERS"
+fi
+
+# A release build registered its privileged helper with macOS; only the app
+# itself can unregister it, so that happens before the bundle goes. A
+# source build has no helper plist and is skipped. A failure is reported
+# and does not stop the uninstall: macOS drops a helper whose bundle is gone.
+if [[ -x "$APP/Contents/MacOS/Ember" && -f "$APP/Contents/Library/LaunchDaemons/app.chargingpixels.ember.helper.plist" ]]; then
+  step "Unregistering the helper"
+  helper_rc=0
+  bounded "$APP/Contents/MacOS/Ember" --unregister-helper || helper_rc=$?
+  if (( helper_rc == 0 )); then
+    echo "${BOUNDED_OUTPUT:-helper unregistered}"
+  else
+    echo "warning: the helper could not be unregistered (exit $helper_rc, 124 means it did not answer within ${CALL_TIMEOUT_SECONDS}s: ${BOUNDED_OUTPUT:-no detail}); remove it in System Settings > General > Login Items if it is still listed" >&2
+  fi
 fi
 
 step "Removing app bundle"
