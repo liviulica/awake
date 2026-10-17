@@ -314,6 +314,17 @@ final class ReleaseFlowTests: XCTestCase {
         XCTAssertEqual(helper.calls, ["register", "open"])
     }
 
+    /// macOS reports a daemon that was never registered as notFound: launch
+    /// registers it all the same.
+    @MainActor
+    func testLaunchRegistersAHelperMacOSReportsAsNotFound() {
+        let helper = FakeHelper(.notFound)
+        let setup = ReleaseSetup(helper: helper, updater: nil)
+        setup.refreshHelper(registerIfNeeded: true)
+        XCTAssertEqual(helper.calls, ["register"])
+        XCTAssertEqual(setup.helperState, .requiresApproval)
+    }
+
     /// Approved in System Settings: the next look (the menu opening) sees it
     /// and has the helper write the restore rule.
     @MainActor
