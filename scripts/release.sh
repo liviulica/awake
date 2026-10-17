@@ -44,7 +44,6 @@ DATE=/bin/date
 RM=/bin/rm
 MKDIR=/bin/mkdir
 LN=/bin/ln
-GREP=/usr/bin/grep
 ENV=/usr/bin/env
 
 IDENTITY="Developer ID Application: CHARGING PIXELS S.R.L. (4UA742BB8G)"
@@ -99,7 +98,8 @@ COMMIT="$("$GIT" rev-parse HEAD)"
 if "$GIT" rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
   die "tag v$VERSION already exists"
 fi
-"$SECURITY" find-identity -v -p codesigning | "$GREP" -qF "\"$IDENTITY\"" || die "the signing identity '$IDENTITY' is not in the keychain"
+identities="$("$SECURITY" find-identity -v -p codesigning)"
+[[ "$identities" == *"\"$IDENTITY\""* ]] || die "the signing identity '$IDENTITY' is not in the keychain"
 [[ -x "$SIGN_UPDATE" ]] || die "Sparkle's sign_update is missing at $SIGN_UPDATE; run 'swift package resolve'"
 if (( ! DRY_RUN )); then
   "$GH" auth status >/dev/null 2>&1 || die "gh is not logged in"
@@ -133,10 +133,14 @@ step "Building and signing"
 # 3. Verify -------------------------------------------------------------------
 step "Verifying the bundle"
 "$CODESIGN" --verify --deep --strict "$APP"
+# Output is read whole before it is searched: `grep -q` stops at the first
+# match, and under pipefail the writer it leaves behind fails the pipeline.
 for code in "$APP" "$APP/Contents/MacOS/EmberHelper"; do
-  "$CODESIGN" -dv "$code" 2>&1 | "$GREP" -q 'flags=.*runtime' || die "$code is not signed with the hardened runtime"
+  details="$("$CODESIGN" -dv "$code" 2>&1)"
+  [[ "$details" == *"flags="*"runtime"* ]] || die "$code is not signed with the hardened runtime"
 done
-if "$STRINGS" -a "$APP/Contents/MacOS/Ember" | "$GREP" -qF "Lid simulation build:"; then
+binary_strings="$("$STRINGS" -a "$APP/Contents/MacOS/Ember")"
+if [[ "$binary_strings" == *"Lid simulation build:"* ]]; then
   die "the lid simulation is compiled into this build"
 fi
 

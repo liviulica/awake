@@ -49,7 +49,10 @@ final class ReleaseScriptTests: XCTestCase {
             echo helper > "$out/Ember.app/Contents/MacOS/EmberHelper"
             """),
             "SIGN_UPDATE": try fake("sign_update", #"echo 'sparkle:edSignature="SIGNATURE==" length="4242"'"#),
-            "CODESIGN": try fake("codesign", #"[[ "$1" == -dv ]] && echo 'CodeDirectory v=20500 size=1 flags=0x10000(runtime) hashes=1' >&2; exit 0"#),
+            // Like the real one, -dv prints more after the flags line: a
+            // check that stops reading at the match must not fail the run
+            // (it did under pipefail, in the first real dry run).
+            "CODESIGN": try fake("codesign", #"[[ "$1" == -dv ]] && { echo 'CodeDirectory v=20500 size=1 flags=0x10000(runtime) hashes=1'; for i in $(seq 1 5000); do echo "Info line $i"; done; } >&2; exit 0"#),
             "XCRUN": try fake("xcrun", """
             if [[ "$1 $2" == "notarytool submit" ]]; then echo '{"id":"sub-1","status":"\(notary)"}'; fi
             exit 0
