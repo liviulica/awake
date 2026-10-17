@@ -220,12 +220,15 @@ final class HelperKitTests: XCTestCase {
 
     func testTheHelperExitsOnlyAfterBeingIdleForItsDelay() async throws {
         let exited = ExitFlag()
-        let delegate = HelperListenerDelegate(version: "1", idleExit: 0.2, exitProcess: { exited.set() }, log: { _ in })
+        // Timing-free on a slow runner: not before the delay has had a
+        // chance to pass, and within a generous bound after it.
+        let delegate = HelperListenerDelegate(version: "1", idleExit: 0.5, exitProcess: { exited.set() }, log: { _ in })
+        let scheduled = ContinuousClock.now
         delegate.scheduleIdleExit()
-        try await Task.sleep(for: .milliseconds(100))
-        XCTAssertFalse(exited.value)
-        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertFalse(exited.value, "not at once")
+        for _ in 0..<500 where !exited.value { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertTrue(exited.value)
+        XCTAssertGreaterThanOrEqual(ContinuousClock.now - scheduled, .milliseconds(500), "only after the idle delay")
     }
 }
 
