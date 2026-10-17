@@ -70,8 +70,8 @@ final class Updater: NSObject, SPUUpdaterDelegate {
     /// What Ember is doing now, as an `UpdateMoment`.
     private let moment: @MainActor () -> UpdateMoment
     /// Records that Lid mode is to start again after the restart, with this
-    /// much closed-lid time.
-    private let restoreLid: @MainActor (TimeInterval) -> Void
+    /// much closed-lid time; nil removes the record.
+    private let restoreLid: @MainActor (TimeInterval?) -> Void
     /// Asks whether to turn `mode` off so the update installs now; true to
     /// turn it off. Injected so tests never see the alert.
     private let askTurnOff: @MainActor (String) -> Bool
@@ -81,7 +81,7 @@ final class Updater: NSObject, SPUUpdaterDelegate {
 
     init(
         moment: @escaping @MainActor () -> UpdateMoment,
-        restoreLid: @escaping @MainActor (TimeInterval) -> Void,
+        restoreLid: @escaping @MainActor (TimeInterval?) -> Void,
         turnOffScreen: @escaping @MainActor () -> Void,
         askTurnOff: (@MainActor (String) -> Bool)? = nil,
         startController: Bool = true
@@ -117,17 +117,19 @@ final class Updater: NSObject, SPUUpdaterDelegate {
 
     /// Call when Screen mode or Lid mode starts, ends, pauses or runs.
     func busyChanged() {
-        let now = moment()
-        guard gate.isHolding, now.waitingFor == nil else { return }
-        prepare(now)
-        gate.update(now)
+        gate.update(moment())
     }
 
-    /// Before a restart the moment allows: a paused Lid mode is recorded so
-    /// the new version starts it again.
-    private func prepare(_ now: UpdateMoment) {
-        if case let .nowRestoringLid(remaining) = now {
+    /// Sparkle is about to quit Ember and start the new version: the last
+    /// moment, so the record of a paused Lid mode is written only for a
+    /// restart that is really happening, from what Ember is doing right now.
+    /// Anything else clears an older record. (A quit Ember refuses clears it
+    /// too: `AppDelegate.applicationShouldTerminate`.)
+    func willRelaunch() {
+        if case let .nowRestoringLid(remaining) = moment() {
             restoreLid(remaining)
+        } else {
+            restoreLid(nil)
         }
     }
 
@@ -136,10 +138,7 @@ final class Updater: NSObject, SPUUpdaterDelegate {
     /// The person chose Install and Relaunch. True holds the restart.
     func decideRelaunch(version: String, install: @escaping () -> Void) -> Bool {
         let now = moment()
-        guard gate.shouldHold(now, install: install) else {
-            prepare(now)
-            return false
-        }
+        guard gate.shouldHold(now, install: install) else { return false }
         let mode = now.waitingFor ?? "Lid mode"
         Log.info("update \(version) is ready; it installs when \(mode) ends")
         // Only Screen mode can be turned off from here: with the lid closed
@@ -163,13 +162,16 @@ final class Updater: NSObject, SPUUpdaterDelegate {
             Log.info("update \(version) downloaded; it installs when \(now.waitingFor ?? "Lid mode") ends")
         } else {
             Log.info("update \(version) downloaded; installing and restarting now")
-            prepare(now)
             install()
         }
         return true
     }
 
     // MARK: SPUUpdaterDelegate
+
+    nonisolated func updaterWillRelaunchApplication(_ updater: SPUUpdater) {
+        MainActor.assumeIsolated { willRelaunch() }
+    }
 
     nonisolated func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem, untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
         let version = item.displayVersionString
@@ -205,6 +207,10 @@ struct ResumeAfterUpdate: Codable, Equatable {
 
     var remaining: TimeInterval
     var savedAt: Date
+
+    static func clear(at url: URL) {
+        try? FileManager.default.removeItem(at: url)
+    }
 
     static func save(remaining: TimeInterval, at url: URL, now: Date = Date()) {
         do {

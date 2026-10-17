@@ -252,7 +252,8 @@ final class ReleaseFlowTests: XCTestCase {
     @MainActor
     private final class UpdaterRig {
         var moment: UpdateMoment = .now
-        var restored: [TimeInterval] = []
+        /// What each relaunch recorded: the closed-lid time, or nil (cleared).
+        var restored: [TimeInterval?] = []
         var asked: [String] = []
         var answer = false
         var screenTurnedOff = 0
@@ -275,13 +276,20 @@ final class ReleaseFlowTests: XCTestCase {
         XCTAssertEqual(rig.restored, [])
     }
 
+    /// The record is written when Sparkle announces the relaunch, from
+    /// what Ember is doing then, and cleared for any other moment.
     @MainActor
-    func testAnAutomaticUpdateWithTheLidOpenRecordsLidModeThenInstalls() {
+    func testAnAutomaticUpdateWithTheLidOpenInstallsAndTheRelaunchRecordsLidMode() {
         let rig = UpdaterRig()
         rig.moment = .nowRestoringLid(remaining: 5400)
         XCTAssertTrue(rig.updater.decideAutomaticInstall(version: "0.2.2", install: rig.install))
-        XCTAssertEqual(rig.restored, [5400])
         XCTAssertEqual(rig.installs, 1)
+        XCTAssertEqual(rig.restored, [], "nothing recorded until the restart is really happening")
+        rig.updater.willRelaunch()
+        XCTAssertEqual(rig.restored, [5400])
+        rig.moment = .now
+        rig.updater.willRelaunch()
+        XCTAssertEqual(rig.restored, [5400, nil], "a relaunch with nothing on clears an older record")
     }
 
     /// Screen mode, or a closed lid: the update waits, without asking, and
@@ -297,8 +305,9 @@ final class ReleaseFlowTests: XCTestCase {
         XCTAssertEqual(rig.installs, 0, "still closed")
         rig.moment = .nowRestoringLid(remaining: 1800)
         rig.updater.busyChanged()
-        XCTAssertEqual(rig.restored, [1800], "the lid opened: Lid mode comes back after the restart")
-        XCTAssertEqual(rig.installs, 1)
+        XCTAssertEqual(rig.installs, 1, "the lid opened: the update goes ahead")
+        rig.updater.willRelaunch()
+        XCTAssertEqual(rig.restored, [1800], "and Lid mode comes back after the restart")
     }
 
     @MainActor
@@ -306,8 +315,9 @@ final class ReleaseFlowTests: XCTestCase {
         let rig = UpdaterRig()
         rig.moment = .nowRestoringLid(remaining: 7200)
         XCTAssertFalse(rig.updater.decideRelaunch(version: "0.2.2", install: rig.install), "not held: Sparkle restarts now")
-        XCTAssertEqual(rig.restored, [7200])
         XCTAssertFalse(rig.updater.gate.isHolding)
+        rig.updater.willRelaunch()
+        XCTAssertEqual(rig.restored, [7200])
     }
 
     /// Install and Relaunch with Screen mode on: held, and Ember asks
@@ -406,7 +416,9 @@ final class ReleaseFlowTests: XCTestCase {
         let none = StatusMenu.items(sessionActive: false, sleepHeld: false, throttledBrowsers: [], error: nil)
         XCTAssertFalse(none.contains { $0.kind == .checkForUpdates }, "a source build has no updater")
         let items = StatusMenu.items(sessionActive: false, sleepHeld: false, throttledBrowsers: [], error: nil, canCheckForUpdates: true, updateHeldFor: "Screen mode")
-        XCTAssertEqual(items.map(\.title), ["Update ready: installs when Screen mode ends", StatusMenu.checkForUpdatesTitle, StatusMenu.settingsTitle, StatusMenu.quitTitle])
+        XCTAssertEqual(items.map(\.title), ["Update ready: installs when Screen mode ends", StatusMenu.settingsTitle, StatusMenu.quitTitle])
+        let held = StatusMenu.items(sessionActive: false, sleepHeld: false, throttledBrowsers: [], error: nil, canCheckForUpdates: false, updateHeldFor: "Lid mode")
+        XCTAssertEqual(held.map(\.title), ["Update ready: installs when Lid mode ends", StatusMenu.settingsTitle, StatusMenu.quitTitle], "no check while one waits: it would do nothing")
         let plain = StatusMenu.items(sessionActive: false, sleepHeld: false, throttledBrowsers: [], error: nil, canCheckForUpdates: true)
         XCTAssertEqual(plain.map(\.title), [StatusMenu.checkForUpdatesTitle, StatusMenu.settingsTitle, StatusMenu.quitTitle])
     }

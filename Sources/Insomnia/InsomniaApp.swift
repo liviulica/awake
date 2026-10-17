@@ -87,7 +87,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         lidRemaining: session?.closedLidRemaining(at: Date()) ?? 0
                     )
                 },
-                restoreLid: { ResumeAfterUpdate.save(remaining: $0, at: manager.paths.resumeAfterUpdateFile) },
+                restoreLid: { remaining in
+                    if let remaining {
+                        ResumeAfterUpdate.save(remaining: remaining, at: manager.paths.resumeAfterUpdateFile)
+                    } else {
+                        ResumeAfterUpdate.clear(at: manager.paths.resumeAfterUpdateFile)
+                    }
+                },
                 turnOffScreen: { awake.turnOff(reason: "update") }
             )
             release = ReleaseSetup(helper: liveHelper, updater: updater)
@@ -236,6 +242,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 sender.reply(toApplicationShouldTerminate: true)
             } else {
                 Log.error("quit deferred: recovery still pending (\(outcome)); staying to retry")
+                // Not restarting after all: an update must not start Lid
+                // mode again on some later launch.
+                ResumeAfterUpdate.clear(at: manager.paths.resumeAfterUpdateFile)
                 terminating = false
                 sender.reply(toApplicationShouldTerminate: false)
             }

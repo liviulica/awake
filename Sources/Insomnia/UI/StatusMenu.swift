@@ -165,8 +165,9 @@ enum StatusMenu {
         sections.append(warnings)
 
         var last: [Item] = []
-        if canCheckForUpdates {
-            if let mode = updateHeldFor { last.append(Item(title: updateHeldBackLine(mode), kind: .info, symbol: MenuSymbol.update)) }
+        if let mode = updateHeldFor {
+            last.append(Item(title: updateHeldBackLine(mode), kind: .info, symbol: MenuSymbol.update))
+        } else if canCheckForUpdates {
             last.append(Item(title: checkForUpdatesTitle, kind: .checkForUpdates, symbol: MenuSymbol.checkUpdates))
         }
         last.append(Item(title: settingsTitle, kind: .settings, symbol: MenuSymbol.settings))

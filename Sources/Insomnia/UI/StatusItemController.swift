@@ -441,7 +441,9 @@ final class StatusItemController: NSObject {
             outputsWaiting: manager.outputsWaitingForRestore,
             lidSimulationBuild: LidSimulationBuild.isCompiledIn,
             helperNeedsApproval: release?.helperNeedsApproval ?? false,
-            canCheckForUpdates: release?.updater != nil,
+            // While an update waits, Sparkle's session is open and a check
+            // would do nothing; the waiting line says what happens instead.
+            canCheckForUpdates: release?.updater != nil && release?.updateHeldFor == nil,
             updateHeldFor: release?.updateHeldFor
         )
     }

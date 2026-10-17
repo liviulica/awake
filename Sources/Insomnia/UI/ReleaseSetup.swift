@@ -76,6 +76,10 @@ final class ReleaseSetup {
             if let resume {
                 Log.info("starting Lid mode again after the update with \(Int(resume))s of closed-lid time")
                 await manager.start(duration: resume)
+                if manager.session == nil {
+                    // The menu shows why (the start's own error).
+                    Log.error("Lid mode could not be started again after the update")
+                }
             }
         }
     }
