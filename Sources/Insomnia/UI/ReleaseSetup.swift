@@ -75,7 +75,9 @@ final class ReleaseSetup {
     /// Newly enabled: has it write the restore rule.
     func refreshHelper(registerIfNeeded: Bool = false) {
         var state = helper.state
-        if registerIfNeeded, state == .notRegistered {
+        // A daemon that was never registered reads notFound, not
+        // notRegistered (macOS 26, seen on the first 0.2.0 install).
+        if registerIfNeeded, state == .notRegistered || state == .notFound {
             do {
                 try helper.register()
                 Log.info("helper registered; waiting for approval in System Settings > General > Login Items")

@@ -120,7 +120,8 @@ turning sleep *off* moves to the helper.
      DMG): an alert "Move Ember to Applications" and quit.
   2. A copy at `~/Applications/Ember.app` (the install.sh location) while
      this one runs elsewhere: offer to move it to the Trash.
-  3. Helper: `.notRegistered` → `register()`; `.enabled` →
+  3. Helper: `.notRegistered` or `.notFound` (what macOS 26 reports for a
+     daemon never registered) → `register()`; `.enabled` →
      `installRestoreRule()`. Status is read again whenever the menu opens.
   4. If the recovery LaunchAgent plist exists, re-arm it, so it pins this
      bundle (after a migration it still points at the old one).
