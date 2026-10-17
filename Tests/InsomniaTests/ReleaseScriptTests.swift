@@ -164,6 +164,27 @@ final class ReleaseScriptTests: XCTestCase {
         XCTAssertFalse(try recorded().contains { $0.hasPrefix("build-app") })
     }
 
+    /// notarytool can give up on a slow upload; the next attempt goes on.
+    func testAFailedUploadIsTriedAgain() throws {
+        try writeScript()
+        let xcrun = bin.appendingPathComponent("xcrun")
+        let count = root.appendingPathComponent("submits")
+        try TestScripts.write("""
+        #!/bin/bash
+        printf 'xcrun %s\\n' "$*" >> "\(calls.path)"
+        if [[ "$1 $2" == "notarytool submit" ]]; then
+          n=$(( $(/bin/cat "\(count.path)" 2>/dev/null || echo 0) + 1 )); echo "$n" > "\(count.path)"
+          (( n == 1 )) && { echo 'Error: HTTPClientError.deadlineExceeded' >&2; exit 1; }
+          echo '{"id":"sub-2","status":"Accepted"}'
+        fi
+        exit 0
+        """, to: xcrun)
+        let r = try run(["0.2.0", "--dry-run"])
+        XCTAssertEqual(r.status, 0, r.output)
+        XCTAssertTrue(r.output.contains("attempt 1 of 3"), r.output)
+        XCTAssertEqual(try recorded().filter { $0.hasPrefix("xcrun notarytool submit") }.count, 3, "app twice, then the DMG")
+    }
+
     func testARejectedNotarizationStopsWithApplesLog() throws {
         try writeScript(notary: "Invalid")
         let r = try run(["0.2.0", "--dry-run"])

@@ -114,8 +114,16 @@ DMG="$OUT/Ember-$VERSION.dmg"
 # Submits $1 for notarization and waits. Fails with Apple's log when it is
 # not accepted.
 notarize() { # file
-  local result id status
-  result="$("$XCRUN" notarytool submit "$1" --keychain-profile "$NOTARY_PROFILE" --wait --output-format json)"
+  local result="" id status attempt
+  # Up to three uploads: notarytool gives up on a slow connection
+  # (HTTPClientError.deadlineExceeded) without a status to read.
+  for attempt in 1 2 3; do
+    if result="$("$XCRUN" notarytool submit "$1" --keychain-profile "$NOTARY_PROFILE" --wait --output-format json)"; then
+      break
+    fi
+    result=""
+    echo "notarytool submit failed (attempt $attempt of 3)" >&2
+  done
   id="$("$PLUTIL" -extract id raw -o - - <<<"$result" 2>/dev/null || true)"
   status="$("$PLUTIL" -extract status raw -o - - <<<"$result" 2>/dev/null || true)"
   if [[ "$status" != Accepted ]]; then
