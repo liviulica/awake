@@ -128,7 +128,9 @@ notarize() { # file
   status="$("$PLUTIL" -extract status raw -o - - <<<"$result" 2>/dev/null || true)"
   if [[ "$status" != Accepted ]]; then
     echo "notarization of $1: ${status:-no status} (submission ${id:-unknown})" >&2
-    [[ -n "$id" ]] && "$XCRUN" notarytool log "$id" --keychain-profile "$NOTARY_PROFILE" >&2 || true
+    if [[ -n "$id" ]]; then
+      "$XCRUN" notarytool log "$id" --keychain-profile "$NOTARY_PROFILE" >&2 || true
+    fi
     exit 1
   fi
   echo "notarized $1 (submission $id)"
