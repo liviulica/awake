@@ -120,9 +120,14 @@ final class ReleaseSetup {
     private func offerToTrashOldCopy() {
         let home = FileManager.default.homeDirectoryForCurrentUser
         guard let old = LegacyInstall.oldCopy(running: Bundle.main.bundleURL, home: home, bundleIdentifier: LegacyInstall.bundleIdentifier) else { return }
+        let running = NSWorkspace.shared.runningApplications.filter {
+            $0.bundleIdentifier == Paths.bundleIdentifier
+                && $0.bundleURL?.resolvingSymlinksInPath().path == old.resolvingSymlinksInPath().path
+        }
         let alert = NSAlert()
         alert.messageText = "Move the old Ember to the Trash?"
         alert.informativeText = "An older copy of Ember, installed from source, is at \(old.path). This one replaces it; keeping both would only confuse which one runs."
+            + (running.isEmpty ? "" : " It is running now: it is quit first, which ends its session.")
         alert.addButton(withTitle: "Move to Trash")
         alert.addButton(withTitle: "Keep It")
         NSApp.activate()
@@ -130,11 +135,23 @@ final class ReleaseSetup {
             Log.info("kept the old copy at \(old.path)")
             return
         }
-        NSWorkspace.shared.recycle([old]) { _, error in
-            if let error {
-                Log.error("could not move \(old.path) to the Trash: \(error.localizedDescription)")
-            } else {
-                Log.info("moved the old copy at \(old.path) to the Trash")
+        Task { @MainActor in
+            // Asked to quit, as its own Quit item would: it ends its session
+            // and may refuse while recovery is pending.
+            for app in running { app.terminate() }
+            for _ in 0..<150 where running.contains(where: { !$0.isTerminated }) {
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            if running.contains(where: { !$0.isTerminated }) {
+                Log.error("the old copy at \(old.path) is still running after 15 s; not moving it to the Trash")
+                return
+            }
+            NSWorkspace.shared.recycle([old]) { _, error in
+                if let error {
+                    Log.error("could not move \(old.path) to the Trash: \(error.localizedDescription)")
+                } else {
+                    Log.info("moved the old copy at \(old.path) to the Trash")
+                }
             }
         }
     }

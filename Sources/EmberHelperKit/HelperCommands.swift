@@ -6,7 +6,8 @@ public struct HelperCommands: Sendable {
     public let pmset: String
     public let visudo: String
     public let install: String
-    public let rulePath: String
+    /// Where the rule files live (/etc/sudoers.d).
+    public let sudoersDirectory: String
     /// pmset normally exits in well under a second; past this it gets
     /// SIGTERM (never SIGKILL, which could leave a root change landing
     /// after the app moved on) and the reply still waits for its exit.
@@ -17,14 +18,14 @@ public struct HelperCommands: Sendable {
         pmset: String = "/usr/bin/pmset",
         visudo: String = "/usr/sbin/visudo",
         install: String = "/usr/bin/install",
-        rulePath: String = RestoreRule.path,
+        sudoersDirectory: String = RestoreRule.directory,
         pmsetTimeout: TimeInterval = 20,
         temporaryDirectory: URL = FileManager.default.temporaryDirectory
     ) {
         self.pmset = pmset
         self.visudo = visudo
         self.install = install
-        self.rulePath = rulePath
+        self.sudoersDirectory = sudoersDirectory
         self.pmsetTimeout = pmsetTimeout
         self.temporaryDirectory = temporaryDirectory
     }
@@ -51,14 +52,30 @@ public struct HelperCommands: Sendable {
         return Result(status: status, message: r.output)
     }
 
-    /// Writes the restore rule for `user` unless the file already holds it
-    /// exactly. The new text is checked with `visudo -cf` before `install`
-    /// puts it in place (root:wheel, 0440); a text visudo refuses is never
-    /// installed.
-    public func installRestoreRule(user: String) -> Result {
+    public func rulePath(forUID uid: uid_t) -> String {
+        (sudoersDirectory as NSString).appendingPathComponent(RestoreRule.fileName(forUID: uid))
+    }
+
+    public var legacyPath: String {
+        (sudoersDirectory as NSString).appendingPathComponent(RestoreRule.legacyName)
+    }
+
+    /// Writes the restore rule for `user` (`uid`) unless its file already
+    /// holds it exactly. The new text is checked with `visudo -cf` before
+    /// `install` puts it in place (root:wheel, 0440); a text visudo refuses
+    /// is never installed. Then install.sh's file goes when every rule line
+    /// in it is this user's: its passwordless `disablesleep 1` line is the
+    /// stopgap the helper replaces.
+    public func installRestoreRule(user: String, uid: uid_t) -> Result {
         guard RestoreRule.isValidUserName(user) else {
             return Result(status: HelperStatus.notRun, message: "'\(user)' is not a user name the rule can hold")
         }
+        let written = writeRule(user: user, path: rulePath(forUID: uid))
+        guard written.status == 0 else { return written }
+        return Result(status: 0, message: [written.message, removeLegacyRule(user: user)].compactMap { $0 }.joined(separator: "; "))
+    }
+
+    private func writeRule(user: String, path rulePath: String) -> Result {
         let text = RestoreRule.text(user: user)
         if let existing = try? String(contentsOfFile: rulePath, encoding: .utf8), existing == text {
             return Result(status: 0, message: "\(rulePath) already is the restore rule for \(user)")
@@ -79,6 +96,22 @@ public struct HelperCommands: Sendable {
             return Result(status: put.status ?? HelperStatus.notRun, message: "install could not put the rule at \(rulePath): \(put.output)")
         }
         return Result(status: 0, message: "wrote the restore rule for \(user) to \(rulePath)")
+    }
+
+    /// Removes install.sh's file when it holds rules for `user` only; nil
+    /// when there was nothing to say.
+    private func removeLegacyRule(user: String) -> String? {
+        guard let text = try? String(contentsOfFile: legacyPath, encoding: .utf8) else { return nil }
+        let rules = text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty && !$0.hasPrefix("#") }
+        guard rules.allSatisfy({ $0.hasPrefix("\(user) ") }) else {
+            return "kept \(legacyPath): it has rules for other accounts"
+        }
+        do {
+            try FileManager.default.removeItem(atPath: legacyPath)
+            return "removed \(legacyPath), install.sh's rule"
+        } catch {
+            return "could not remove \(legacyPath): \(error.localizedDescription)"
+        }
     }
 
     struct RunResult {

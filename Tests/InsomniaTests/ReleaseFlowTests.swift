@@ -62,28 +62,52 @@ final class ReleaseFlowTests: XCTestCase {
         return try String(contentsOf: log, encoding: .utf8).split(separator: "\n").map(String.init)
     }
 
-    /// A sudo that records its arguments; `-l` checks pass only while the
-    /// `allowed` file exists, and anything else succeeds.
+    /// A sudo that records its arguments; the restore commands (run or
+    /// listed) pass only while the `allowed` file exists, and anything else
+    /// succeeds.
     private func fakeSudo() throws -> String {
         let url = dir.appendingPathComponent("sudo")
         try TestScripts.write("""
         #!/bin/bash
         printf '%s\\n' "$*" >> "\(log.path)"
-        if [[ "$2" == -l ]]; then [[ -e "\(allowed.path)" ]]; exit; fi
+        if [[ "$2" == -l || "$*" == *"disablesleep 0"* ]]; then [[ -e "\(allowed.path)" ]]; exit; fi
         exit 0
         """, to: url)
         return url.path
     }
 
-    private func sleepGuard(_ helper: FakeHelper) throws -> PmsetSleepGuard {
-        PmsetSleepGuard(sudo: try fakeSudo(), pmset: "/usr/bin/pmset", timeout: 5, stopGrace: 1, admin: FakeAdminRunner(pmset: "/usr/bin/false"), helper: helper)
+    /// A pgrep that finds the orphaned pmset for its first `runs` calls.
+    private func fakePgrep(runs: Int) throws -> String {
+        let url = dir.appendingPathComponent("pgrep")
+        let count = dir.appendingPathComponent("pgrep.count")
+        try TestScripts.write("""
+        #!/bin/bash
+        n=$(( $(/bin/cat "\(count.path)" 2>/dev/null || echo 0) + 1 ))
+        echo "$n" > "\(count.path)"
+        printf 'pgrep %s\\n' "$*" >> "\(log.path)"
+        (( n <= \(runs) ))
+        """, to: url)
+        return url.path
     }
 
-    private func disable(_ g: PmsetSleepGuard) async throws {
+    private func sleepGuard(_ helper: FakeHelper, orphanRuns: Int = 0) throws -> PmsetSleepGuard {
+        PmsetSleepGuard(sudo: try fakeSudo(), pmset: "/usr/bin/pmset", timeout: 5, stopGrace: 1, admin: FakeAdminRunner(pmset: "/usr/bin/false"),
+                        helper: helper, pgrep: try fakePgrep(runs: orphanRuns), orphanPoll: .milliseconds(10))
+    }
+
+    private func locked<T: Sendable>(_ body: @Sendable () async throws -> T) async throws -> T {
         let lock = RecoveryLock(url: dir.appendingPathComponent(".recovery.lock"))
         let handle = try XCTUnwrap(try lock.tryAcquire())
         defer { handle.release() }
-        try await RecoveryLock.$held.withValue(handle) { try await g.setSleepDisabled(true) }
+        return try await RecoveryLock.$held.withValue(handle) { try await body() }
+    }
+
+    private func disable(_ g: PmsetSleepGuard) async throws {
+        try await locked { try await g.setSleepDisabled(true) }
+    }
+
+    private func restoreProblem(_ g: PmsetSleepGuard) async throws -> String? {
+        try await locked { await g.restoreProblem() }
     }
 
     // MARK: Turning sleep off
@@ -100,7 +124,18 @@ final class ReleaseFlowTests: XCTestCase {
         helper.disableAnswer = .failure(HelperConnectionError(reason: "gone"))
         try await disable(try sleepGuard(helper))
         XCTAssertEqual(helper.calls, ["disableSleep"])
-        XCTAssertEqual(try sudoCalls(), ["-n /usr/bin/pmset -a disablesleep 1"])
+        XCTAssertEqual(try sudoCalls(), ["pgrep -U 0 -f ^/usr/bin/pmset -a disablesleep 1$", "-n /usr/bin/pmset -a disablesleep 1"])
+    }
+
+    /// The helper died after starting pmset: nothing else runs until that
+    /// pmset is gone, so a restore can never land before it.
+    func testTheFallbackWaitsForAPmsetTheHelperLeftRunning() async throws {
+        let helper = FakeHelper(.enabled)
+        helper.disableAnswer = .failure(HelperConnectionError(reason: "interrupted"))
+        try await disable(try sleepGuard(helper, orphanRuns: 3))
+        let calls = try sudoCalls()
+        XCTAssertEqual(calls.filter { $0.hasPrefix("pgrep") }.count, 4, "\(calls)")
+        XCTAssertEqual(calls.last, "-n /usr/bin/pmset -a disablesleep 1", "sudo only after the orphan is gone")
     }
 
     /// pmset ran through the helper and failed: that is the answer, not a
@@ -129,24 +164,24 @@ final class ReleaseFlowTests: XCTestCase {
 
     func testTheRestoreRuleInPlaceIsReady() async throws {
         FileManager.default.createFile(atPath: allowed.path, contents: nil)
-        let problem = await (try sleepGuard(FakeHelper(.unavailable))).restoreProblem()
+        let problem = try await restoreProblem(try sleepGuard(FakeHelper(.unavailable)))
         XCTAssertNil(problem)
         XCTAssertEqual(try sudoCalls(), [
-            "-n -l /usr/bin/pmset -a disablesleep 0",
+            "-n /usr/bin/pmset -a disablesleep 0",
             "-n -l /usr/bin/pmset -b lowpowermode 1",
             "-n -l /usr/bin/pmset -b lowpowermode 0",
-        ])
+        ], "giving sleep back is run for real: only that proves no password is needed")
     }
 
     func testASourceBuildWithoutTheRuleIsToldToRunInstallSh() async throws {
-        let problem = await (try sleepGuard(FakeHelper(.unavailable))).restoreProblem()
+        let problem = try await restoreProblem(try sleepGuard(FakeHelper(.unavailable)))
         XCTAssertTrue(problem?.contains("scripts/install.sh") == true, problem ?? "nil")
     }
 
     func testAReleaseBuildWaitingForApprovalIsToldWhereToApprove() async throws {
         for state in [HelperState.requiresApproval, .notRegistered, .notFound] {
             let helper = FakeHelper(state)
-            let problem = await (try sleepGuard(helper)).restoreProblem()
+            let problem = try await restoreProblem(try sleepGuard(helper))
             XCTAssertTrue(problem?.contains("Login Items") == true, "\(state): \(problem ?? "nil")")
             XCTAssertEqual(helper.calls, [], "\(state)")
         }
@@ -158,7 +193,7 @@ final class ReleaseFlowTests: XCTestCase {
         let helper = FakeHelper(.enabled)
         let flag = allowed
         helper.onRule = { FileManager.default.createFile(atPath: flag.path, contents: nil) }
-        let problem = await (try sleepGuard(helper)).restoreProblem()
+        let problem = try await restoreProblem(try sleepGuard(helper))
         XCTAssertNil(problem)
         XCTAssertEqual(helper.calls, ["installRestoreRule"])
     }
@@ -166,7 +201,7 @@ final class ReleaseFlowTests: XCTestCase {
     func testAnEnabledHelperThatCannotWriteTheRuleBlocksTheStart() async throws {
         let helper = FakeHelper(.enabled)
         helper.ruleAnswer = .success(.init(status: 1, message: "visudo refused"))
-        let problem = await (try sleepGuard(helper)).restoreProblem()
+        let problem = try await restoreProblem(try sleepGuard(helper))
         XCTAssertTrue(problem?.contains("could not write") == true, problem ?? "nil")
     }
 

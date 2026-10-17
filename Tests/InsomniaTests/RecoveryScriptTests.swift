@@ -6527,6 +6527,17 @@ private final class ScriptFixture {
         try fm.createDirectory(at: binroot, withIntermediateDirectories: true)
         let binary = binroot.appendingPathComponent("Ember")
         try TestScripts.write("#!/bin/bash\nexit 0\n", to: binary)
+        // What build-app.sh copies beside the app since the helper and
+        // Sparkle: a helper binary, a framework with the nested code it
+        // signs (the fake codesign signs nothing), and the helper's plist.
+        try TestScripts.write("#!/bin/bash\nexit 0\n", to: binroot.appendingPathComponent("EmberHelper"))
+        let sparkle = binroot.appendingPathComponent("Sparkle.framework/Versions/B", isDirectory: true)
+        for nested in ["XPCServices/Installer.xpc", "XPCServices/Downloader.xpc", "Updater.app"] {
+            try fm.createDirectory(at: sparkle.appendingPathComponent(nested), withIntermediateDirectories: true)
+        }
+        try "autoupdate".write(to: sparkle.appendingPathComponent("Autoupdate"), atomically: true, encoding: .utf8)
+        try fm.copyItem(at: Self.productionScripts.deletingLastPathComponent().appendingPathComponent("Resources/app.chargingpixels.ember.helper.plist"),
+                        to: resources.appendingPathComponent("app.chargingpixels.ember.helper.plist"))
         try fm.createDirectory(at: plist.deletingLastPathComponent(), withIntermediateDirectories: true)
     }
 

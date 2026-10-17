@@ -186,7 +186,6 @@ cat > "$OUT/appcast.xml" <<XML
   </channel>
 </rss>
 XML
-"$PLUTIL" -lint "$INFO" >/dev/null
 echo "wrote $OUT/appcast.xml"
 
 # 7. Publish ------------------------------------------------------------------

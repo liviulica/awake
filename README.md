@@ -35,8 +35,8 @@ setting and cannot be used together.
 1. Download `Ember-<version>.dmg` from the
    [latest release](https://github.com/liviulica/ember/releases/latest).
 2. Open it and drag **Ember** into **Applications**, then open Ember from
-   Applications. It is signed and notarized by Charging Pixels, so macOS opens
-   it without a warning.
+   Applications. It is signed and notarized by Charging Pixels; macOS asks
+   once to confirm opening an app downloaded from the internet.
 3. Lid mode needs one approval: macOS shows "Ember added a background item",
    and Ember's menu says "Lid mode needs your approval". Click **Open Login
    Items…** and turn Ember on. Screen mode works right away.
@@ -54,7 +54,7 @@ Settings → Updates.
   as root once you approve it in Login Items. It answers only Ember (checked
   by code signature) and does two things: turns sleep off for a lid session,
   and writes the sudoers rule below.
-- A **sudoers rule** at `/etc/sudoers.d/ember`, written by the helper. A
+- A **sudoers rule** at `/etc/sudoers.d/ember-<your uid>`, written by the helper. A
   sudoers rule decides who can run what with `sudo`. This one lets your user
   account run only the commands that give sleep back or switch Low Power
   Mode, so the recovery agent can restore the Mac without the app:
@@ -89,8 +89,8 @@ A source build is ad-hoc signed, has no helper and no updates, and goes in
 write `/etc/sudoers.d/ember` with the three lines above plus
 `/usr/bin/pmset -a disablesleep 1`, so lid mode starts without asking. Any
 program running as you can use that fourth line to keep the Mac awake;
-review it before you install. A release removes it once its helper is
-approved, and offers to move the source build in `~/Applications` to the
+review it before you install. A release removes that file once its helper is
+approved and has written its own, and offers to move the source build in `~/Applications` to the
 Trash.
 
 </details>

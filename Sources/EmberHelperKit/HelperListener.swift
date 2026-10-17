@@ -31,7 +31,7 @@ public final class HelperService: NSObject, EmberHelperProtocol, @unchecked Send
             reply(HelperStatus.notRun, "no account for uid \(callerUID)")
             return
         }
-        let r = commands.installRestoreRule(user: user)
+        let r = commands.installRestoreRule(user: user, uid: callerUID)
         log("restore rule for \(user): status \(r.status) \(r.message)")
         reply(r.status, r.message)
     }

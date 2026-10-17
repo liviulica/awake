@@ -22,7 +22,8 @@ bundle with Sparkle 2.10.0 and an SMAppService daemon inside it.
 
 1. **Download** `Ember-<version>.dmg` from the GitHub release (linked from
    chargingpixels.com/ember). Drag Ember into Applications, open it. Signed,
-   notarized and stapled: no Gatekeeper warning.
+   notarized and stapled: macOS only asks the usual "downloaded from the
+   internet" confirmation once.
 2. **One approval.** Ember registers its helper at first launch; macOS asks
    to allow it in System Settings → General → Login Items. Until then the
    menu shows "Lid mode needs your approval" with a button that opens that
@@ -82,12 +83,15 @@ the helper's command logic; shared by app, helper and tests) and
     gets SIGTERM, never SIGKILL. The reply comes only after pmset exited:
     the app's transaction waits for it, as it waits for a sudo that ignores
     SIGTERM today.
-  - `installRestoreRule()`: writes `/etc/sudoers.d/ember` with the three
-    restore-only lines for the calling user (name from the connection's
-    effective uid, never from the message; must match
-    `^[a-z_][a-z0-9_.-]*$`). Unchanged file: nothing is written. Otherwise a
-    temp file, `visudo -cf`, then `install -m 0440 -o root -g wheel`, as
-    install.sh does.
+  - `installRestoreRule()`: writes `/etc/sudoers.d/ember-<uid>` with the
+    three restore-only lines for the calling user (uid from the connection,
+    never from the message; the name must match `^[a-z_][a-z0-9_.-]*$`).
+    One file per account, so a second user never takes the first one's lines
+    away; named by uid because sudo skips file names with a dot. Unchanged
+    file: nothing is written. Otherwise a temp file, `visudo -cf`, then
+    `install -m 0440 -o root -g wheel`, as install.sh does. Then install.sh's
+    `/etc/sudoers.d/ember` is removed when every rule line in it is this
+    user's (review, Codex).
   - `version()`: the helper's CFBundleShortVersionString, for the log.
 - **Lifetime:** launchd starts it on demand; it exits 10 s after its last
   connection closes, so an updated bundle's helper takes over at the next
@@ -122,11 +126,15 @@ turning sleep *off* moves to the helper.
      bundle (after a migration it still points at the old one).
 - **Turning sleep off** (`PmsetSleepGuard.setSleepDisabled(true)`): helper
   first when it is enabled; a connection failure (not a pmset failure) falls
-  back to today's chain (`sudo -n`, then the administrator prompt). A pmset
+  back to today's chain (`sudo -n`, then the administrator prompt), once no
+  root `pmset -a disablesleep 1` is running (the helper may have died after
+  starting one, which then holds this transaction's own lock). A pmset
   failure through the helper throws as today.
 - **Lid start gate:** before the start journals anything,
-  `sleepGuard.restoreProblem()` checks with `sudo -n -l` that the three
-  restore commands are allowed. Helper enabled and rule missing: it asks the
+  `sleepGuard.restoreProblem()` runs `sudo -n pmset -a disablesleep 0` (sleep
+  is on before a start, so it changes nothing; `sudo -l` alone passes for a
+  command that needs a password when any other rule is passwordless) and
+  checks the two Low Power Mode lines with `sudo -n -l`. Helper enabled and rule missing: it asks the
   helper to write it and checks again. Still missing: the start fails with
   "Lid mode needs your approval in System Settings → Login Items: Ember
   can't turn sleep back on without it" (helper builds) or "…run

@@ -9,7 +9,8 @@ import Foundation
     /// held until pmset exits even if the app or the helper dies first.
     /// Replies once pmset has exited.
     func disableSleep(lock: FileHandle, withReply reply: @escaping (Int32, String) -> Void)
-    /// Makes /etc/sudoers.d/ember the restore rule for the calling user.
+    /// Makes /etc/sudoers.d/ember-<uid> the restore rule for the calling
+    /// user, and removes install.sh's /etc/sudoers.d/ember when it is theirs.
     /// Replies 0 when the file is that rule (written now or already).
     func installRestoreRule(withReply reply: @escaping (Int32, String) -> Void)
     /// The helper's CFBundleShortVersionString as built into it.

@@ -19,9 +19,11 @@ registered with `SMAppService` that runs as root once the user approves it
 in Login Items. The helper accepts connections only from code signed by team
 4UA742BB8G with Ember's identifier, and the app talks only to a helper
 signed the same way. It does two fixed things: `pmset -a disablesleep 1`,
-and writing `/etc/sudoers.d/ember` with three restore-only lines for the
-calling user (the name comes from the connection's uid, never from the
-message, and must be a plain account name). Those lines, listed in the README,
+and writing `/etc/sudoers.d/ember-<uid>` with three restore-only lines for
+the calling user (the uid comes from the connection, never from the message,
+and the account name must be a plain one; each account has its own file).
+It then removes install.sh's `/etc/sudoers.d/ember` when every line in it is
+that user's. Those lines, listed in the README,
 let any process running as that user turn sleep back on or switch Low Power
 Mode without a password, which the recovery agent needs; none of them turns
 sleep off. A source build (`scripts/install.sh`) has no helper: its rule has a

@@ -99,6 +99,11 @@ struct PmsetSleepGuard: SleepGuarding {
     let admin: any AdminCommandRunning
     /// The release build's privileged helper (`NoHelper` in a source build).
     let helper: any PrivilegedHelping
+    /// Finds a root `pmset -a disablesleep 1` still running after the helper
+    /// stopped answering (tests pass a fake).
+    let pgrepPath: String
+    /// How often that check runs while one is.
+    let orphanPoll: Duration
 
     init(
         sudo: String = Self.sudo,
@@ -109,7 +114,9 @@ struct PmsetSleepGuard: SleepGuarding {
         settleWait: @escaping @Sendable (TimeInterval) async throws -> Void = { try await Task.sleep(for: .seconds($0)) },
         runner: CancellableCommand = CancellableCommand(),
         admin: any AdminCommandRunning = OsascriptAdminRunner(),
-        helper: any PrivilegedHelping = NoHelper()
+        helper: any PrivilegedHelping = NoHelper(),
+        pgrep: String = "/usr/bin/pgrep",
+        orphanPoll: Duration = .milliseconds(200)
     ) {
         sudoPath = sudo
         pmsetPath = pmset
@@ -120,6 +127,8 @@ struct PmsetSleepGuard: SleepGuarding {
         self.runner = runner
         self.admin = admin
         self.helper = helper
+        pgrepPath = pgrep
+        self.orphanPoll = orphanPoll
     }
 
     /// The read-back after `settle` is `confirmSleepDisabled`, which the
@@ -147,10 +156,14 @@ struct PmsetSleepGuard: SleepGuarding {
                 }
                 return
             } catch let error as HelperConnectionError {
-                // Nothing ran, or pmset ran and holds the lock through its
-                // own descriptor until it exits: a sudo pmset setting the
-                // same value after it is harmless.
+                // Nothing ran, or the helper died after starting pmset. Such
+                // a pmset holds this transaction's own lock description, so
+                // the lock does not keep a restore in this transaction (a
+                // failed fallback ends the start right here) from running
+                // before it lands. Wait for it to be gone first, however
+                // long that takes, as the helper itself would have.
                 Log.error("\(error.localizedDescription); turning sleep off through sudo instead")
+                await waitForOrphanedDisable()
             }
         }
         do {
@@ -177,10 +190,23 @@ struct PmsetSleepGuard: SleepGuarding {
         }
     }
 
+    /// Returns once no root `pmset -a disablesleep 1` is running.
+    func waitForOrphanedDisable() async {
+        var logged = false
+        let started = ContinuousClock.now
+        while let r = try? await runner.run(pgrepPath, ["-U", "0", "-f", "^\(pmsetPath) -a disablesleep 1$"], timeout: commandTimeout), r.status == 0 {
+            if !logged, ContinuousClock.now - started > .seconds(commandTimeout) {
+                Log.error("a root pmset -a disablesleep 1 the helper started is still running; waiting for it before anything else changes sleep")
+                logged = true
+            }
+            try? await Task.sleep(for: orphanPoll)
+        }
+    }
+
     /// Lid mode needs the restore commands in sudoers: the recovery agent
     /// gives sleep back through them when the app is gone. A release build
     /// whose helper is enabled has it (re)write the rule when they are
-    /// missing, then checks again.
+    /// missing, then checks again. Runs inside the start's transaction.
     func restoreProblem() async -> String? {
         if await restoreRuleAllowed() { return nil }
         let state = helper.state
@@ -207,10 +233,20 @@ struct PmsetSleepGuard: SleepGuarding {
         }
     }
 
-    /// `sudo -n -l` for each restore command: checks the rule without
-    /// running pmset.
+    /// `disablesleep 0` is run for real: only running it proves sudo needs
+    /// no password for it, since `sudo -l` also passes for a command that
+    /// needs one when any other rule is passwordless (`listpw=any`). Sleep
+    /// is on before a lid start, so it changes nothing; a bit someone else
+    /// set is given back, as the session's end would. The Low Power Mode
+    /// lines cannot be run without changing the mode, so `sudo -n -l` checks
+    /// them; without them only Low Power Mode would stay as the session left it.
     func restoreRuleAllowed() async -> Bool {
-        for args in RestoreRule.commands {
+        do {
+            try await sudoPmset(["-a", "disablesleep", "0"])
+        } catch {
+            return false
+        }
+        for args in RestoreRule.commands.dropFirst() {
             guard let r = try? await runner.run(sudoPath, ["-n", "-l", pmsetPath] + args, timeout: commandTimeout), r.succeeded else {
                 return false
             }

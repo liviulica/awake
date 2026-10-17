@@ -98,6 +98,8 @@ case "$SCRIPT_DIR" in
   */Ember.app/Contents/Resources) APP="${SCRIPT_DIR%/Contents/Resources}" ;;
 esac
 SUDOERS=/etc/sudoers.d/ember
+# The rule a release's helper writes for this user (one file per uid).
+USER_SUDOERS="$SUDOERS-$(id -u)"
 # The --resume-frozen interface version this checkout's backstop.sh speaks
 # (see step 3).
 RESUME_FROZEN_VERSION=1
@@ -980,9 +982,12 @@ for candidate in "$CANDIDATE_DIR/$LABEL.candidate-"* "$LAUNCH_AGENTS/$LABEL.cand
 done
 if [[ -d "$CANDIDATE_DIR" && ! -L "$CANDIDATE_DIR" ]]; then "$RMDIR" "$CANDIDATE_DIR" 2>/dev/null || true; fi
 
-step "Removing $SUDOERS (requires your password)"
+step "Removing $SUDOERS and $USER_SUDOERS (requires your password)"
 if [[ -e "$SUDOERS" ]] || "$SUDO" test -e "$SUDOERS"; then
   "$SUDO" rm -f "$SUDOERS"
+fi
+if [[ -e "$USER_SUDOERS" ]]; then
+  "$SUDO" rm -f "$USER_SUDOERS"
 fi
 
 # A release build registered its privileged helper with macOS; only the app

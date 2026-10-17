@@ -1,11 +1,18 @@
 import Foundation
 
-/// The sudoers rule the helper keeps at /etc/sudoers.d/ember: only the
-/// commands that give sleep back or switch Low Power Mode, so backstop.sh
-/// can still restore the Mac when the app is gone. Turning sleep off is
-/// the helper's job and has no line here.
+/// The sudoers rule the helper keeps for each user at
+/// /etc/sudoers.d/ember-<uid>: only the commands that give sleep back or
+/// switch Low Power Mode, so backstop.sh can still restore the Mac when the
+/// app is gone. Turning sleep off is the helper's job and has no line here.
+/// One file per user, so a second account approving Ember on the same Mac
+/// never takes the first one's lines away; named by uid because sudo skips
+/// files whose name contains a dot, which a user name may.
 public enum RestoreRule {
-    public static let path = "/etc/sudoers.d/ember"
+    public static let directory = "/etc/sudoers.d"
+    /// The file install.sh writes (four lines, one user).
+    public static let legacyName = "ember"
+
+    public static func fileName(forUID uid: uid_t) -> String { "ember-\(uid)" }
 
     /// The three commands, as backstop.sh and the app run them.
     public static let commands: [[String]] = [

@@ -137,14 +137,17 @@ final class HelperKitTests: XCTestCase {
         printf 'install %s\\n' "${*:1:6}" >> "\(log.path)"
         /bin/cp "$7" "$8"
         """)
-        return HelperCommands(visudo: visudo, install: install, rulePath: dir.appendingPathComponent("ember").path, temporaryDirectory: dir)
+        let sudoers = dir.appendingPathComponent("sudoers.d", isDirectory: true)
+        try FileManager.default.createDirectory(at: sudoers, withIntermediateDirectories: true)
+        return HelperCommands(visudo: visudo, install: install, sudoersDirectory: sudoers.path, temporaryDirectory: dir)
     }
 
     func testTheRuleIsCheckedWithVisudoThenInstalledRootOwned() throws {
         let tools = try ruleTools()
-        let r = tools.installRestoreRule(user: "liviu")
+        let r = tools.installRestoreRule(user: "liviu", uid: 501)
         XCTAssertEqual(r.status, 0, r.message)
-        XCTAssertEqual(try String(contentsOfFile: tools.rulePath, encoding: .utf8), RestoreRule.text(user: "liviu"))
+        XCTAssertEqual(tools.rulePath(forUID: 501), dir.appendingPathComponent("sudoers.d/ember-501").path, "one file per uid, no dot in the name")
+        XCTAssertEqual(try String(contentsOfFile: tools.rulePath(forUID: 501), encoding: .utf8), RestoreRule.text(user: "liviu"))
         let calls = try logged()
         XCTAssertEqual(calls.count, 2)
         XCTAssertTrue(calls[0].hasPrefix("visudo -cf \(dir.path)/ember-sudoers-"), calls[0])
@@ -153,14 +156,14 @@ final class HelperKitTests: XCTestCase {
         XCTAssertEqual(left, [], "the temp file is removed")
     }
 
-    /// The four-line rule of an install.sh install is replaced; the three-line
-    /// one is left alone without running anything.
+    /// A changed rule is replaced; the same rule is left alone without
+    /// running anything.
     func testAnUnchangedRuleIsNotRewritten() throws {
         let tools = try ruleTools()
-        try "four lines\n".write(toFile: tools.rulePath, atomically: true, encoding: .utf8)
-        XCTAssertEqual(tools.installRestoreRule(user: "liviu").status, 0)
+        try "older text\n".write(toFile: tools.rulePath(forUID: 501), atomically: true, encoding: .utf8)
+        XCTAssertEqual(tools.installRestoreRule(user: "liviu", uid: 501).status, 0)
         try FileManager.default.removeItem(at: log)
-        let again = tools.installRestoreRule(user: "liviu")
+        let again = tools.installRestoreRule(user: "liviu", uid: 501)
         XCTAssertEqual(again.status, 0)
         XCTAssertTrue(again.message.contains("already"), again.message)
         XCTAssertEqual(try logged(), [], "no tool ran")
@@ -168,16 +171,49 @@ final class HelperKitTests: XCTestCase {
 
     func testARuleVisudoRefusesIsNeverInstalled() throws {
         let tools = try ruleTools(visudoExit: 1)
-        let r = tools.installRestoreRule(user: "liviu")
+        let r = tools.installRestoreRule(user: "liviu", uid: 501)
         XCTAssertEqual(r.status, 1)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: tools.rulePath))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: tools.rulePath(forUID: 501)))
         XCTAssertEqual(try logged().filter { $0.hasPrefix("install") }, [])
     }
 
     func testAnInvalidUserNameRunsNothing() throws {
         let tools = try ruleTools()
-        XCTAssertEqual(tools.installRestoreRule(user: "a b").status, HelperStatus.notRun)
+        XCTAssertEqual(tools.installRestoreRule(user: "a b", uid: 501).status, HelperStatus.notRun)
         XCTAssertEqual(try logged(), [])
+    }
+
+    /// Two accounts each keep their own lines.
+    func testASecondUserDoesNotReplaceTheFirstUsersRule() throws {
+        let tools = try ruleTools()
+        XCTAssertEqual(tools.installRestoreRule(user: "alice", uid: 501).status, 0)
+        XCTAssertEqual(tools.installRestoreRule(user: "bob", uid: 502).status, 0)
+        XCTAssertEqual(try String(contentsOfFile: tools.rulePath(forUID: 501), encoding: .utf8), RestoreRule.text(user: "alice"))
+        XCTAssertEqual(try String(contentsOfFile: tools.rulePath(forUID: 502), encoding: .utf8), RestoreRule.text(user: "bob"))
+    }
+
+    /// install.sh's file, with its passwordless disablesleep 1 line, goes
+    /// once the user's own rule is in place, but only when it is theirs.
+    func testInstallShsRuleIsRemovedOnlyWhenItIsTheCallersOnly() throws {
+        let tools = try ruleTools()
+        let legacy = "# Installed by Ember install.sh.\nliviu ALL=(root) NOPASSWD: /usr/bin/pmset -a disablesleep 1\nliviu ALL=(root) NOPASSWD: /usr/bin/pmset -a disablesleep 0\n"
+        try legacy.write(toFile: tools.legacyPath, atomically: true, encoding: .utf8)
+        let r = tools.installRestoreRule(user: "liviu", uid: 501)
+        XCTAssertEqual(r.status, 0)
+        XCTAssertTrue(r.message.contains("removed"), r.message)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: tools.legacyPath))
+
+        try (legacy + "other ALL=(root) NOPASSWD: /usr/bin/pmset -a disablesleep 0\n").write(toFile: tools.legacyPath, atomically: true, encoding: .utf8)
+        let kept = tools.installRestoreRule(user: "liviu", uid: 501)
+        XCTAssertEqual(kept.status, 0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: tools.legacyPath), "another account's lines stay")
+    }
+
+    func testAFailedWriteLeavesInstallShsRuleInPlace() throws {
+        let tools = try ruleTools(visudoExit: 1)
+        try "liviu ALL=(root) NOPASSWD: /usr/bin/pmset -a disablesleep 0\n".write(toFile: tools.legacyPath, atomically: true, encoding: .utf8)
+        XCTAssertNotEqual(tools.installRestoreRule(user: "liviu", uid: 501).status, 0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: tools.legacyPath), "the only restore lines there are")
     }
 
     // MARK: Listener
