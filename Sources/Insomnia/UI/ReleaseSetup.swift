@@ -60,15 +60,24 @@ final class ReleaseSetup {
         }
     }
 
-    var updateHeldBack: Bool { updater?.gate.isHolding ?? false }
+    /// The mode an installed update waits for, for the menu; nil when none waits.
+    var updateHeldFor: String? { updater?.gate.heldFor }
 
     /// The launch steps after the location check: offer to trash the old
-    /// copy, register the helper or refresh its rule, start the updater.
+    /// copy, register the helper or refresh its rule, start the updater, and
+    /// start Lid mode again when an update restarted Ember out of it.
     func launch(manager: SessionManager) {
         offerToTrashOldCopy()
         refreshHelper(registerIfNeeded: true)
         updater?.start()
-        Task { await manager.rearmRecoveryAgentIfInstalled() }
+        let resume = ResumeAfterUpdate.take(from: manager.paths.resumeAfterUpdateFile)
+        Task {
+            await manager.rearmRecoveryAgentIfInstalled()
+            if let resume {
+                Log.info("starting Lid mode again after the update with \(Int(resume))s of closed-lid time")
+                await manager.start(duration: resume)
+            }
+        }
     }
 
     /// Reads the helper's state again (the menu calls this when it opens).
@@ -82,7 +91,13 @@ final class ReleaseSetup {
                 try helper.register()
                 Log.info("helper registered; waiting for approval in System Settings > General > Login Items")
             } catch {
-                Log.error("could not register the helper: \(error.localizedDescription)")
+                // register() fails with "Operation not permitted" when the
+                // helper is registered but waits for the person's approval.
+                if helper.state == .requiresApproval {
+                    Log.info("helper registered; waiting for approval in System Settings > General > Login Items")
+                } else {
+                    Log.error("could not register the helper: \(error.localizedDescription)")
+                }
             }
             state = helper.state
         }
@@ -101,9 +116,22 @@ final class ReleaseSetup {
         }
     }
 
+    /// Opens Login Items, then looks again every 2 s for 3 minutes, so the
+    /// approval takes effect without waiting for the menu to open.
     func openApproval() {
         helper.openApprovalSettings()
+        approvalWatch?.cancel()
+        approvalWatch = Task { [weak self] in
+            for _ in 0..<90 {
+                try? await Task.sleep(for: .seconds(2))
+                guard let self, !Task.isCancelled else { return }
+                self.refreshHelper()
+                if self.helperState == .enabled { return }
+            }
+        }
     }
+
+    @ObservationIgnored private var approvalWatch: Task<Void, Never>?
 
     /// True when the app may go on; false after telling the person to move
     /// it (the caller quits).

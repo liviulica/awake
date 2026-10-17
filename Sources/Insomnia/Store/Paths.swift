@@ -35,6 +35,9 @@ struct Paths: Sendable, Equatable {
 
     /// Epoch seconds of the first backstop run that found the app gone.
     var appAbsentMarker: URL { appSupport.appendingPathComponent("app-absent-since") }
+    /// Lid mode to start again after an update restarted Ember with the lid
+    /// open (`ResumeAfterUpdate`).
+    var resumeAfterUpdateFile: URL { appSupport.appendingPathComponent("resume-lid-after-update.json") }
 
     /// Relocated layout rooted at one directory (used for EMBER_HOME).
     init(root: URL) {

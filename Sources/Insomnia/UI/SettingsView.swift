@@ -26,8 +26,10 @@ struct SettingsView: View {
     /// Names of the apps the automatic lid-close scope would freeze right
     /// now (the freeze list excluded); refreshed on appear and toggle.
     @State private var wouldFreeze: [String] = []
-    /// Sparkle's "check automatically" setting, read when the window opens.
+    /// Sparkle's "check automatically" and "download and install
+    /// automatically" settings, read when the window opens.
     @State private var autoChecks = true
+    @State private var autoInstalls = true
 
     var body: some View {
         Form {
@@ -46,6 +48,7 @@ struct SettingsView: View {
         .frame(minHeight: 560, idealHeight: 720)
         .onAppear {
             autoChecks = release?.updater?.automaticallyChecks ?? true
+            autoInstalls = release?.updater?.automaticallyInstalls ?? true
             release?.refreshHelper()
             loadPassword()
             refreshWouldFreeze()
@@ -466,10 +469,18 @@ struct SettingsView: View {
                     autoChecks = on
                 }
             ))
+            Toggle("Install updates automatically", isOn: Binding(
+                get: { autoInstalls },
+                set: { on in
+                    updater.automaticallyInstalls = on
+                    autoInstalls = on
+                }
+            ))
+            .disabled(!autoChecks)
             LabeledContent("Version \(Self.versionText())") {
                 Button("Check Now") { updater.checkForUpdates() }
             }
-            Text("An update never restarts Ember during a lid session or while screen mode is on; it installs when that ends.")
+            Text("An update restarts Ember in about a second. It waits while Screen mode is on or the lid is closed in Lid mode; with the lid open, Lid mode starts again after the restart with the time it had left.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

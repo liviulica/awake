@@ -442,7 +442,7 @@ final class StatusItemController: NSObject {
             lidSimulationBuild: LidSimulationBuild.isCompiledIn,
             helperNeedsApproval: release?.helperNeedsApproval ?? false,
             canCheckForUpdates: release?.updater != nil,
-            updateHeldBack: release?.updateHeldBack ?? false
+            updateHeldFor: release?.updateHeldFor
         )
     }
 

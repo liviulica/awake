@@ -70,7 +70,7 @@ enum StatusMenu {
     static let headerTitle = "Mac"
     static let helperApprovalLine = "Lid mode needs your approval in Login Items"
     static let approveHelperTitle = "Open Login Items\u{2026}"
-    static let updateHeldBackLine = "Update ready: installs when this session ends"
+    static func updateHeldBackLine(_ mode: String) -> String { "Update ready: installs when \(mode) ends" }
     static let checkForUpdatesTitle = "Check for Updates\u{2026}"
 
     static func durationTitle(_ duration: TimeInterval?) -> String {
@@ -108,7 +108,7 @@ enum StatusMenu {
     /// item that opens Login Items, first among the warnings: lid mode
     /// cannot start until it is done. `canCheckForUpdates` (release builds)
     /// adds "Check for Updates…" above Settings, after the line about an
-    /// update waiting for the session to end (`updateHeldBack`).
+    /// update waiting for a mode to end (`updateHeldFor` names the mode).
     static func items(
         mac: [Item] = [],
         sessionActive: Bool,
@@ -123,7 +123,7 @@ enum StatusMenu {
         lidSimulationBuild: Bool = false,
         helperNeedsApproval: Bool = false,
         canCheckForUpdates: Bool = false,
-        updateHeldBack: Bool = false
+        updateHeldFor: String? = nil
     ) -> [Item] {
         var sections: [[Item]] = []
 
@@ -166,7 +166,7 @@ enum StatusMenu {
 
         var last: [Item] = []
         if canCheckForUpdates {
-            if updateHeldBack { last.append(Item(title: updateHeldBackLine, kind: .info, symbol: MenuSymbol.update)) }
+            if let mode = updateHeldFor { last.append(Item(title: updateHeldBackLine(mode), kind: .info, symbol: MenuSymbol.update)) }
             last.append(Item(title: checkForUpdatesTitle, kind: .checkForUpdates, symbol: MenuSymbol.checkUpdates))
         }
         last.append(Item(title: settingsTitle, kind: .settings, symbol: MenuSymbol.settings))

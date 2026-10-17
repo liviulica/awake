@@ -132,7 +132,7 @@ final class ReleaseScriptTests: XCTestCase {
         let r = try run(["0.2.0", "--yes"])
         XCTAssertEqual(r.status, 0, r.output)
         XCTAssertEqual(try recorded().filter { $0.hasPrefix("gh release") }, [
-            "gh release create v0.2.0 \(out.path)/Ember-0.2.0.dmg \(out.path)/appcast.xml --repo liviulica/ember --target 0123456789abcdef0123456789abcdef01234567 --title Ember 0.2.0 --generate-notes",
+            "gh release create v0.2.0 \(out.path)/Ember-0.2.0.dmg \(out.path)/Ember.dmg \(out.path)/appcast.xml --repo liviulica/ember --target 0123456789abcdef0123456789abcdef01234567 --title Ember 0.2.0 --generate-notes",
         ])
     }
 

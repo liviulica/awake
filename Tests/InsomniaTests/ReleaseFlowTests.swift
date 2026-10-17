@@ -225,21 +225,149 @@ final class ReleaseFlowTests: XCTestCase {
 
     // MARK: Updates
 
+    func testWhenAnUpdateMayRestartEmber() {
+        XCTAssertEqual(UpdateMoment.of(screenOn: false, lidActive: false, lidPaused: false, lidRemaining: 0), .now)
+        XCTAssertEqual(UpdateMoment.of(screenOn: true, lidActive: false, lidPaused: false, lidRemaining: 0), .wait(mode: "Screen mode"))
+        XCTAssertEqual(UpdateMoment.of(screenOn: false, lidActive: true, lidPaused: false, lidRemaining: 3600), .wait(mode: "Lid mode"), "the lid is closed: the clock runs")
+        XCTAssertEqual(UpdateMoment.of(screenOn: false, lidActive: true, lidPaused: true, lidRemaining: 3600), .nowRestoringLid(remaining: 3600), "the lid is open: restart and come back")
+    }
+
     @MainActor
-    func testTheRelaunchWaitsForTheSessionAndRunsOnce() {
+    func testTheGateHoldsWhileAModeHoldsAndRunsOnce() {
         let gate = RelaunchGate()
         var installs = 0
-        XCTAssertFalse(gate.shouldPostpone(busy: false) { installs += 1 }, "nothing running: relaunch now")
-        XCTAssertFalse(gate.isHolding)
-        XCTAssertTrue(gate.shouldPostpone(busy: true) { installs += 1 })
-        XCTAssertTrue(gate.isHolding)
-        gate.update(busy: true)
+        XCTAssertFalse(gate.shouldHold(.now) { installs += 1 })
+        XCTAssertFalse(gate.shouldHold(.nowRestoringLid(remaining: 60)) { installs += 1 })
+        XCTAssertTrue(gate.shouldHold(.wait(mode: "Screen mode")) { installs += 1 })
+        XCTAssertEqual(gate.heldFor, "Screen mode")
+        XCTAssertFalse(gate.update(.wait(mode: "Screen mode")))
         XCTAssertEqual(installs, 0)
-        gate.update(busy: false)
+        XCTAssertTrue(gate.update(.now))
         XCTAssertEqual(installs, 1)
-        XCTAssertFalse(gate.isHolding)
-        gate.update(busy: false)
-        XCTAssertEqual(installs, 1, "only once")
+        XCTAssertNil(gate.heldFor)
+        XCTAssertFalse(gate.update(.now), "only once")
+    }
+
+    /// The updater's decisions, driven without Sparkle.
+    @MainActor
+    private final class UpdaterRig {
+        var moment: UpdateMoment = .now
+        var restored: [TimeInterval] = []
+        var asked: [String] = []
+        var answer = false
+        var screenTurnedOff = 0
+        var installs = 0
+        lazy var updater = Updater(
+            moment: { [unowned self] in self.moment },
+            restoreLid: { [unowned self] in self.restored.append($0) },
+            turnOffScreen: { [unowned self] in self.screenTurnedOff += 1; self.moment = .now },
+            askTurnOff: { [unowned self] in self.asked.append($0); return self.answer },
+            startController: false
+        )
+        func install() { installs += 1 }
+    }
+
+    @MainActor
+    func testAnAutomaticUpdateInstallsAtOnceWhenEmberIsOff() {
+        let rig = UpdaterRig()
+        XCTAssertTrue(rig.updater.decideAutomaticInstall(version: "0.2.2", install: rig.install))
+        XCTAssertEqual(rig.installs, 1)
+        XCTAssertEqual(rig.restored, [])
+    }
+
+    @MainActor
+    func testAnAutomaticUpdateWithTheLidOpenRecordsLidModeThenInstalls() {
+        let rig = UpdaterRig()
+        rig.moment = .nowRestoringLid(remaining: 5400)
+        XCTAssertTrue(rig.updater.decideAutomaticInstall(version: "0.2.2", install: rig.install))
+        XCTAssertEqual(rig.restored, [5400])
+        XCTAssertEqual(rig.installs, 1)
+    }
+
+    /// Screen mode, or a closed lid: the update waits, without asking, and
+    /// installs once the mode ends; a paused Lid mode at that point is recorded.
+    @MainActor
+    func testAnAutomaticUpdateWaitsSilentlyAndInstallsWhenTheModeEnds() {
+        let rig = UpdaterRig()
+        rig.moment = .wait(mode: "Lid mode")
+        XCTAssertTrue(rig.updater.decideAutomaticInstall(version: "0.2.2", install: rig.install))
+        XCTAssertEqual(rig.installs, 0)
+        XCTAssertEqual(rig.asked, [])
+        rig.updater.busyChanged()
+        XCTAssertEqual(rig.installs, 0, "still closed")
+        rig.moment = .nowRestoringLid(remaining: 1800)
+        rig.updater.busyChanged()
+        XCTAssertEqual(rig.restored, [1800], "the lid opened: Lid mode comes back after the restart")
+        XCTAssertEqual(rig.installs, 1)
+    }
+
+    @MainActor
+    func testInstallAndRelaunchDuringALidOpenLidModeGoesAheadAndRecordsIt() {
+        let rig = UpdaterRig()
+        rig.moment = .nowRestoringLid(remaining: 7200)
+        XCTAssertFalse(rig.updater.decideRelaunch(version: "0.2.2", install: rig.install), "not held: Sparkle restarts now")
+        XCTAssertEqual(rig.restored, [7200])
+        XCTAssertFalse(rig.updater.gate.isHolding)
+    }
+
+    /// Install and Relaunch with Screen mode on: held, and Ember asks
+    /// whether to turn it off; yes turns it off and installs.
+    @MainActor
+    func testInstallAndRelaunchDuringScreenModeAsksAndTurnsItOff() async throws {
+        let rig = UpdaterRig()
+        rig.moment = .wait(mode: "Screen mode")
+        rig.answer = true
+        XCTAssertTrue(rig.updater.decideRelaunch(version: "0.2.2", install: rig.install))
+        XCTAssertEqual(rig.updater.gate.heldFor, "Screen mode")
+        for _ in 0..<200 where rig.installs == 0 { try await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertEqual(rig.asked, ["Screen mode"])
+        XCTAssertEqual(rig.screenTurnedOff, 1)
+        XCTAssertEqual(rig.installs, 1)
+    }
+
+    @MainActor
+    func testLaterKeepsTheUpdateWaitingForScreenModeToEnd() async throws {
+        let rig = UpdaterRig()
+        rig.moment = .wait(mode: "Screen mode")
+        rig.answer = false
+        XCTAssertTrue(rig.updater.decideRelaunch(version: "0.2.2", install: rig.install))
+        for _ in 0..<200 where rig.asked.isEmpty { try await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertEqual(rig.asked, ["Screen mode"])
+        XCTAssertEqual(rig.installs, 0)
+        XCTAssertTrue(rig.updater.gate.isHolding)
+        rig.moment = .now
+        rig.updater.busyChanged()
+        XCTAssertEqual(rig.installs, 1)
+    }
+
+    /// With the lid closed nobody can answer: held, no question.
+    @MainActor
+    func testInstallAndRelaunchWithTheLidClosedWaitsWithoutAsking() async throws {
+        let rig = UpdaterRig()
+        rig.moment = .wait(mode: "Lid mode")
+        XCTAssertTrue(rig.updater.decideRelaunch(version: "0.2.2", install: rig.install))
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(rig.asked, [])
+        XCTAssertEqual(rig.installs, 0)
+    }
+
+    func testLidModeIsResumedOnlyFromAFreshRecord() throws {
+        let url = dir.appendingPathComponent("resume.json")
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        ResumeAfterUpdate.save(remaining: 3600, at: url, now: now)
+        XCTAssertEqual(ResumeAfterUpdate.take(from: url, now: now.addingTimeInterval(5)), 3600)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path), "read once")
+        XCTAssertNil(ResumeAfterUpdate.take(from: url, now: now))
+
+        ResumeAfterUpdate.save(remaining: 3600, at: url, now: now)
+        XCTAssertNil(ResumeAfterUpdate.take(from: url, now: now.addingTimeInterval(11 * 60)), "a restart that did not happen never starts Lid mode later")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path), "a stale record is removed too")
+
+        ResumeAfterUpdate.save(remaining: 30, at: url, now: now)
+        XCTAssertNil(ResumeAfterUpdate.take(from: url, now: now), "under a minute is not worth starting again")
+
+        ResumeAfterUpdate.save(remaining: 3600, at: url, now: now)
+        XCTAssertNil(ResumeAfterUpdate.take(from: url, now: now.addingTimeInterval(-60)), "a record from the future is not trusted")
     }
 
     @MainActor
@@ -255,6 +383,7 @@ final class ReleaseFlowTests: XCTestCase {
         XCTAssertEqual(info["SUFeedURL"] as? String, "https://chargingpixels.com/ember/appcast.xml")
         XCTAssertEqual(info["SUPublicEDKey"] as? String, "4MBLACdNK/mfQMaTQNHt9YCvc+bLDXFkpI1oSjayeUA=")
         XCTAssertEqual(info["SUEnableAutomaticChecks"] as? Bool, true)
+        XCTAssertEqual(info["SUAutomaticallyUpdate"] as? Bool, true, "updates install on their own (owner, 2026-10-17)")
         let short = try XCTUnwrap(info["CFBundleShortVersionString"] as? String)
         let parts = short.split(separator: ".").compactMap { Int($0) }
         XCTAssertEqual(parts.count, 3)
@@ -276,8 +405,8 @@ final class ReleaseFlowTests: XCTestCase {
     func testCheckForUpdatesSitsAboveSettingsWithTheHeldBackLine() {
         let none = StatusMenu.items(sessionActive: false, sleepHeld: false, throttledBrowsers: [], error: nil)
         XCTAssertFalse(none.contains { $0.kind == .checkForUpdates }, "a source build has no updater")
-        let items = StatusMenu.items(sessionActive: false, sleepHeld: false, throttledBrowsers: [], error: nil, canCheckForUpdates: true, updateHeldBack: true)
-        XCTAssertEqual(items.map(\.title), [StatusMenu.updateHeldBackLine, StatusMenu.checkForUpdatesTitle, StatusMenu.settingsTitle, StatusMenu.quitTitle])
+        let items = StatusMenu.items(sessionActive: false, sleepHeld: false, throttledBrowsers: [], error: nil, canCheckForUpdates: true, updateHeldFor: "Screen mode")
+        XCTAssertEqual(items.map(\.title), ["Update ready: installs when Screen mode ends", StatusMenu.checkForUpdatesTitle, StatusMenu.settingsTitle, StatusMenu.quitTitle])
         let plain = StatusMenu.items(sessionActive: false, sleepHeld: false, throttledBrowsers: [], error: nil, canCheckForUpdates: true)
         XCTAssertEqual(plain.map(\.title), [StatusMenu.checkForUpdatesTitle, StatusMenu.settingsTitle, StatusMenu.quitTitle])
     }

@@ -32,8 +32,8 @@ Requires macOS 26 or later on an Apple Silicon Mac.
 **Insomnia must be uninstalled first.** Both apps control the same macOS sleep
 setting and cannot be used together.
 
-1. Download `Ember-<version>.dmg` from the
-   [latest release](https://github.com/liviulica/ember/releases/latest).
+1. Download [Ember.dmg](https://chargingpixels.com/ember/download), always
+   the latest release.
 2. Open it and drag **Ember** into **Applications**, then open Ember from
    Applications. It is signed and notarized by Charging Pixels; macOS asks
    once to confirm opening an app downloaded from the internet.
@@ -41,10 +41,11 @@ setting and cannot be used together.
    and Ember's menu says "Lid mode needs your approval". Click **Open Login
    Items…** and turn Ember on. Screen mode works right away.
 
-Ember updates itself: it checks once a day, and "Check for Updates…" in the
-menu checks now. An update never restarts Ember during a lid session or while
-screen mode is on; it installs when that ends. Turn automatic checks off in
-Settings → Updates.
+Ember updates itself: it checks once a day, downloads a new version in the
+background and restarts into it in about a second. "Check for Updates…" in the
+menu checks now. An update waits while Screen mode is on or the lid is closed
+in Lid mode; with the lid open, Lid mode starts again after the restart with
+the time it had left. Both switches are in Settings → Updates.
 
 <details>
 <summary><strong>What Ember changes on your Mac</strong></summary>

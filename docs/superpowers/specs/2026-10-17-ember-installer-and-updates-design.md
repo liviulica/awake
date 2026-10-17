@@ -242,3 +242,27 @@ Settings "Uninstall" button; delta updates.
 The app icon changes from the open eye to the lit flame (`FlameGeometry`,
 shared with the menu bar), shipped as the second real update after 0.2.1,
 so the update test has a change anyone can see in the Dock and Finder.
+
+## Revised after the 0.2.1 test (owner, 2026-10-17), shipped in 0.2.2
+
+- **Automatic install:** `SUAutomaticallyUpdate` on, and Settings → Updates
+  has "Install updates automatically". A downloaded update is handled in
+  `updater(_:willInstallUpdateOnQuit:immediateInstallationBlock:)`: a menu
+  bar app may not quit for days, so Ember installs and restarts itself when
+  `UpdateMoment` allows.
+- **`UpdateMoment`:** nothing on → now; Lid mode with the lid open (clock
+  paused) → now, and `ResumeAfterUpdate` records the closed-lid time left so
+  the new version starts Lid mode again (ignored after 10 minutes or under a
+  minute); Screen mode, or Lid mode with the lid closed → wait.
+- **Install and Relaunch during Screen mode:** held, and Ember asks "The
+  update installs when Screen mode ends. Turn it off now and update?" with
+  Turn Off and Update / Later. The 0.2.1 test showed that holding without a
+  word looks like a dead button.
+- **Wording:** "Lid mode" and "Screen mode", never "session", in update
+  messages; the menu line says which mode the update waits for.
+- **Approval:** after Open Login Items…, Ember looks again every 2 s for 3
+  minutes, so the restore rule is written without opening the menu; the
+  "Operation not permitted" that register() returns while approval is
+  pending is logged as waiting, not as an error.
+- **Stable download:** each release also carries `Ember.dmg`;
+  chargingpixels.com/ember/download redirects to the latest one.

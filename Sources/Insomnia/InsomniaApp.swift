@@ -77,7 +77,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Before anything is armed or registered against this path.
             guard ReleaseSetup.checkLocation() else { exit(0) }
             let manager = self.manager, awake = self.awake
-            release = ReleaseSetup(helper: liveHelper, updater: Updater { manager.isActive || awake.state != .off })
+            let updater = Updater(
+                moment: {
+                    let session = manager.session
+                    return UpdateMoment.of(
+                        screenOn: awake.state != .off,
+                        lidActive: session != nil,
+                        lidPaused: session?.isPaused ?? false,
+                        lidRemaining: session?.closedLidRemaining(at: Date()) ?? 0
+                    )
+                },
+                restoreLid: { ResumeAfterUpdate.save(remaining: $0, at: manager.paths.resumeAfterUpdateFile) },
+                turnOffScreen: { awake.turnOff(reason: "update") }
+            )
+            release = ReleaseSetup(helper: liveHelper, updater: updater)
         }
         if LidSimulationBuild.isCompiledIn {
             Log.info(LidSimulationBuild.marker)
