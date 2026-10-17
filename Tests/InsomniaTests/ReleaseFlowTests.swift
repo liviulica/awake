@@ -85,7 +85,8 @@ final class ReleaseFlowTests: XCTestCase {
         n=$(( $(/bin/cat "\(count.path)" 2>/dev/null || echo 0) + 1 ))
         echo "$n" > "\(count.path)"
         printf 'pgrep %s\\n' "$*" >> "\(log.path)"
-        (( n <= \(runs) ))
+        (( n <= \(runs) )) && exit 0
+        exit 1
         """, to: url)
         return url.path
     }
@@ -167,7 +168,7 @@ final class ReleaseFlowTests: XCTestCase {
         let problem = try await restoreProblem(try sleepGuard(FakeHelper(.unavailable)))
         XCTAssertNil(problem)
         XCTAssertEqual(try sudoCalls(), [
-            "-n /usr/bin/pmset -a disablesleep 0",
+            "-k -n /usr/bin/pmset -a disablesleep 0",
             "-n -l /usr/bin/pmset -b lowpowermode 1",
             "-n -l /usr/bin/pmset -b lowpowermode 0",
         ], "giving sleep back is run for real: only that proves no password is needed")
@@ -241,6 +242,7 @@ final class ReleaseFlowTests: XCTestCase {
         XCTAssertEqual(installs, 1, "only once")
     }
 
+    @MainActor
     func testTheVersionReadsShortAndBuild() {
         XCTAssertEqual(SettingsView.versionText(["CFBundleShortVersionString": "0.2.0", "CFBundleVersion": "2000"]), "0.2.0 (2000)")
     }

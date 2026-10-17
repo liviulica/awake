@@ -190,13 +190,15 @@ struct PmsetSleepGuard: SleepGuarding {
         }
     }
 
-    /// Returns once no root `pmset -a disablesleep 1` is running.
+    /// Returns once no root `pmset -a disablesleep 1` is running: pgrep
+    /// exits 1 (no match). A match, or a pgrep that fails or does not
+    /// answer, is not proof of that, so the wait goes on.
     func waitForOrphanedDisable() async {
         var logged = false
         let started = ContinuousClock.now
-        while let r = try? await runner.run(pgrepPath, ["-U", "0", "-f", "^\(pmsetPath) -a disablesleep 1$"], timeout: commandTimeout), r.status == 0 {
+        while (try? await runner.run(pgrepPath, ["-U", "0", "-f", "^\(pmsetPath) -a disablesleep 1$"], timeout: commandTimeout))?.status != 1 {
             if !logged, ContinuousClock.now - started > .seconds(commandTimeout) {
-                Log.error("a root pmset -a disablesleep 1 the helper started is still running; waiting for it before anything else changes sleep")
+                Log.error("a root pmset -a disablesleep 1 the helper started may still be running (pgrep finds it or cannot tell); waiting for it before anything else changes sleep")
                 logged = true
             }
             try? await Task.sleep(for: orphanPoll)
@@ -233,16 +235,24 @@ struct PmsetSleepGuard: SleepGuarding {
         }
     }
 
-    /// `disablesleep 0` is run for real: only running it proves sudo needs
-    /// no password for it, since `sudo -l` also passes for a command that
-    /// needs one when any other rule is passwordless (`listpw=any`). Sleep
-    /// is on before a lid start, so it changes nothing; a bit someone else
-    /// set is given back, as the session's end would. The Low Power Mode
-    /// lines cannot be run without changing the mode, so `sudo -n -l` checks
-    /// them; without them only Low Power Mode would stay as the session left it.
+    /// `disablesleep 0` is run for real, with `-k` so a password typed
+    /// earlier does not count: only running it proves sudo needs no
+    /// password for it, since `sudo -l` also passes for a command that needs
+    /// one when any other rule is passwordless (`listpw=any`). Sleep is on
+    /// before a lid start, so it changes nothing; a bit someone else set is
+    /// given back, as the session's end would. A run that outlives its
+    /// SIGTERM is waited for, with the lock still held, so it cannot land
+    /// after a start that follows. The Low Power Mode lines cannot be run
+    /// without changing the mode, so `sudo -n -l` checks them, which can
+    /// pass without them; then only Low Power Mode would stay as the
+    /// session left it after a crash.
     func restoreRuleAllowed() async -> Bool {
         do {
-            try await sudoPmset(["-a", "disablesleep", "0"])
+            try await sudoPmset(["-a", "disablesleep", "0"], sudoOptions: ["-k"])
+        } catch let still as CommandStillRunningError {
+            Log.error("\(still.localizedDescription); waiting for it to exit before the lid start goes on")
+            await still.command.waitUntilExit()
+            return false
         } catch {
             return false
         }
