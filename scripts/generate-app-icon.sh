@@ -1,8 +1,8 @@
 #!/bin/bash
 # Regenerate Resources/AppIcon-1024.png, Resources/AppIcon.icns and
-# docs/assets/eye-open.svg from the drawing the app carries
-# (Sources/Insomnia/UI/AppIconArtwork.swift over EyeLensGeometry.swift,
-# EyeMarkGeometry.swift and BrandPalette.swift), via
+# docs/assets/app-icon.svg from the drawing the app carries
+# (Sources/Insomnia/UI/AppIconArtwork.swift over FlameGeometry.swift and
+# BrandPalette.swift), via
 # scripts/generate-app-icon.swift. Deterministic: the same sources produce
 # the same bytes. Needs Xcode's swiftc and iconutil.
 #
@@ -32,7 +32,7 @@ PREVIEW_DIR="${1:-}"
 
 PNG="$ROOT/Resources/AppIcon-1024.png"
 ICNS="$ROOT/Resources/AppIcon.icns"
-SVG="$ROOT/docs/assets/eye-open.svg"
+SVG="$ROOT/docs/assets/app-icon.svg"
 ASSETS=("$PNG" "$ICNS" "$SVG")
 # Suffixes of the copies kept beside each asset while it is replaced: the
 # new file, and the asset as it was.
@@ -95,8 +95,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 "$SWIFTC" -O -parse-as-library \
-  "$ROOT/Sources/Insomnia/UI/EyeLensGeometry.swift" \
-  "$ROOT/Sources/Insomnia/UI/EyeMarkGeometry.swift" \
+  "$ROOT/Sources/Insomnia/UI/FlameGeometry.swift" \
   "$ROOT/Sources/Insomnia/UI/BrandPalette.swift" \
   "$ROOT/Sources/Insomnia/UI/AppIconArtwork.swift" \
   "$ROOT/scripts/generate-app-icon.swift" \
@@ -107,14 +106,14 @@ trap 'exit 143' TERM
 "$WORK/generate-app-icon" \
   --png "$WORK/AppIcon-1024.png" \
   --iconset "$WORK/AppIcon.iconset" \
-  --svg "$WORK/eye-open.svg"
+  --svg "$WORK/app-icon.svg"
 "$ICONUTIL" -c icns "$WORK/AppIcon.iconset" -o "$WORK/AppIcon.icns"
 
 # Then the script copies each new file, and a backup of each asset, beside
 # the asset. An unwritable Resources or docs/assets folder fails here, with
 # every asset untouched. Plain cp leaves out the asset's flags, so the
 # backup of a file locked in Finder is not locked.
-NEW=("$WORK/AppIcon-1024.png" "$WORK/AppIcon.icns" "$WORK/eye-open.svg")
+NEW=("$WORK/AppIcon-1024.png" "$WORK/AppIcon.icns" "$WORK/app-icon.svg")
 for i in "${!ASSETS[@]}"; do
   "$CP" "${NEW[$i]}" "${ASSETS[$i]}$STAGED"
   if [[ -e "${ASSETS[$i]}" ]]; then

@@ -18,7 +18,10 @@
 #      and writes appcast.xml: one item, pointing at the DMG on the GitHub
 #      release.
 #   7. Unless --dry-run: asks (or --yes), then `gh release create vX.Y.Z`
-#      with the DMG and appcast.xml. The feed address in Info.plist,
+#      with the DMG, the same DMG as Ember.dmg (so
+#      github.com/liviulica/ember/releases/latest/download/Ember.dmg and
+#      chargingpixels.com/ember/download always give the newest), and
+#      appcast.xml. The feed address in Info.plist,
 #      chargingpixels.com/ember/appcast.xml, redirects to the latest
 #      release's appcast.xml.
 #
@@ -42,6 +45,7 @@ GIT=/usr/bin/git
 GH=/opt/homebrew/bin/gh
 DATE=/bin/date
 RM=/bin/rm
+CP=/bin/cp
 MKDIR=/bin/mkdir
 LN=/bin/ln
 ENV=/usr/bin/env
@@ -215,5 +219,6 @@ if (( ! YES )); then
   [[ "$answer" == y || "$answer" == Y ]] || { echo "not published; the files stay in $OUT"; exit 1; }
 fi
 step "Publishing v$VERSION"
-"$GH" release create "v$VERSION" "$DMG" "$OUT/appcast.xml" --repo "$REPO" --target "$COMMIT" --title "Ember $VERSION" --generate-notes
+"$CP" "$DMG" "$OUT/Ember.dmg"
+"$GH" release create "v$VERSION" "$DMG" "$OUT/Ember.dmg" "$OUT/appcast.xml" --repo "$REPO" --target "$COMMIT" --title "Ember $VERSION" --generate-notes
 echo "published https://github.com/$REPO/releases/tag/v$VERSION"

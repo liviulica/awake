@@ -90,8 +90,11 @@ result, and which you did not run.
 
 ## App icon
 
-The app icon is an open eye on a charcoal tile (the menu bar uses the flame
-icons). [AppIconArtwork](Sources/Insomnia/UI/AppIconArtwork.swift) draws it from
-the [vector geometry](Sources/Insomnia/UI/EyeMarkGeometry.swift). After
-changing the artwork, run `./scripts/generate-app-icon.sh`. It regenerates the
-packaged PNG and ICNS assets offline, with Xcode's swiftc and iconutil.
+The app icon is the lit flame, the menu bar's screen-on icon filled, in
+moon-white on the midnight tile (decided 2026-10-17; the open eye was left
+over from Awake and Insomnia). [AppIconArtwork](Sources/Insomnia/UI/AppIconArtwork.swift)
+draws it from [FlameGeometry](Sources/Insomnia/UI/FlameGeometry.swift), the
+same path `MenuBarIcon` draws, so the two cannot drift. After changing the
+artwork, run `./scripts/generate-app-icon.sh`. It regenerates the packaged PNG
+and ICNS and `docs/assets/app-icon.svg` offline, with Xcode's swiftc and
+iconutil.

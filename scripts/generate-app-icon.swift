@@ -2,10 +2,10 @@ import CoreGraphics
 import Foundation
 import ImageIO
 
-/// Writes the Insomnia app icon files from the drawing the app carries.
+/// Writes the Ember app icon files from the drawing the app carries.
 /// Not part of the SwiftPM targets: scripts/generate-app-icon.sh compiles
 /// this file together with Sources/Insomnia/UI/AppIconArtwork.swift, the
-/// geometry it draws (EyeLensGeometry.swift, EyeMarkGeometry.swift) and
+/// geometry it draws (FlameGeometry.swift) and
 /// BrandPalette.swift, so there is one drawing and no pixel art to keep in
 /// step.
 ///

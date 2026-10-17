@@ -126,7 +126,7 @@ September design notes) stays public as design history.
 | `CONTRIBUTING.md` | Already written for Ember | None |
 | `docs/assets/session-flow.svg`, `docs/assets/lid-actions.svg`, `docs/assets/recovery-flow.svg` | Insomnia's README diagrams: eye icons, "Quit Insomnia", the Docker rule; referenced nowhere | Deleted |
 | `docs/mockups/menubar-ux.html` | Insomnia's menu bar mockup ("Quit Insomnia", eye icon); referenced only by the deleted SVGs | Deleted |
-| `docs/assets/eye-open.svg` | Still the app icon's source (PackagingTests, `scripts/generate-app-icon.sh`) | Kept |
+| `docs/assets/eye-open.svg` | Still the app icon's source (PackagingTests, `scripts/generate-app-icon.sh`) | Kept; renamed `docs/assets/app-icon.svg` when the icon became the flame (2026-10-17) |
 | `docs/spec.md` | Insomnia's original spec, labelled as such, linked from the README | Kept |
 | `.github/dependabot.yml` | Watches the CI workflow's pinned actions | Kept |
 

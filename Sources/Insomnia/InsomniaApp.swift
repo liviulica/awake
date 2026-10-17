@@ -77,7 +77,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Before anything is armed or registered against this path.
             guard ReleaseSetup.checkLocation() else { exit(0) }
             let manager = self.manager, awake = self.awake
-            release = ReleaseSetup(helper: liveHelper, updater: Updater { manager.isActive || awake.state != .off })
+            let updater = Updater(
+                moment: {
+                    let session = manager.session
+                    return UpdateMoment.of(
+                        screenOn: awake.state != .off,
+                        lidActive: session != nil,
+                        lidPaused: session?.isPaused ?? false,
+                        lidRemaining: session?.closedLidRemaining(at: Date()) ?? 0
+                    )
+                },
+                restoreLid: { remaining in
+                    if let remaining {
+                        ResumeAfterUpdate.save(remaining: remaining, at: manager.paths.resumeAfterUpdateFile)
+                    } else {
+                        ResumeAfterUpdate.clear(at: manager.paths.resumeAfterUpdateFile)
+                    }
+                },
+                turnOffScreen: { awake.turnOff(reason: "update") }
+            )
+            release = ReleaseSetup(helper: liveHelper, updater: updater)
         }
         if LidSimulationBuild.isCompiledIn {
             Log.info(LidSimulationBuild.marker)
@@ -223,6 +242,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 sender.reply(toApplicationShouldTerminate: true)
             } else {
                 Log.error("quit deferred: recovery still pending (\(outcome)); staying to retry")
+                // Not restarting after all: an update must not start Lid
+                // mode again on some later launch.
+                ResumeAfterUpdate.clear(at: manager.paths.resumeAfterUpdateFile)
                 terminating = false
                 sender.reply(toApplicationShouldTerminate: false)
             }

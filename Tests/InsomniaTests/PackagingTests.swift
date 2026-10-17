@@ -95,7 +95,7 @@ final class PackagingTests: XCTestCase {
             if l > 0.75 { light += 1 }
         }
         XCTAssertGreaterThan(dark, 200, "charcoal tile should dominate the centre line")
-        XCTAssertGreaterThan(light, 4, "the eye should cross the centre line")
+        XCTAssertGreaterThan(light, 4, "the flame should cross the centre line")
         XCTAssertGreaterThan(px.alpha(160, mid), 0.99, "the tile should start well inside the canvas")
         XCTAssertLessThan(px.luminance(160, mid), 0.3, "the tile edge is charcoal, not white")
         XCTAssertEqual(px.alpha(20, mid), 0, "a margin is left around the tile")
@@ -560,7 +560,7 @@ final class PackagingTests: XCTestCase {
 
     /// The checked-in files are what `AppIconArtwork` draws now, so a
     /// geometry change without `scripts/generate-app-icon.sh` fails here.
-    func testMasterPngIsTheOpenEyeArtworkRenderedAt1024() throws {
+    func testMasterPngIsTheFlameArtworkRenderedAt1024() throws {
         let url = resources.appendingPathComponent("AppIcon-1024.png")
         let source = try XCTUnwrap(CGImageSourceCreateWithURL(url as CFURL, nil))
         let committed = IconPixels(try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil)))
@@ -596,30 +596,28 @@ final class PackagingTests: XCTestCase {
     }
 
     func testReadmeSvgIsTheArtworkWrittenOut() throws {
-        let url = Self.repoRoot.appendingPathComponent("docs/assets/eye-open.svg")
+        let url = Self.repoRoot.appendingPathComponent("docs/assets/app-icon.svg")
         let committed = try String(contentsOf: url, encoding: .utf8)
-        XCTAssertEqual(committed, AppIconArtwork.svg(), "docs/assets/eye-open.svg differs from the artwork; run scripts/generate-app-icon.sh")
-        XCTAssertFalse(FileManager.default.fileExists(atPath: Self.repoRoot.appendingPathComponent("docs/assets/eye-moon.svg").path), "the old eye-and-moon SVG is gone")
+        XCTAssertEqual(committed, AppIconArtwork.svg(), "docs/assets/app-icon.svg differs from the artwork; run scripts/generate-app-icon.sh")
+        for old in ["eye-moon.svg", "eye-open.svg"] {
+            XCTAssertFalse(FileManager.default.fileExists(atPath: Self.repoRoot.appendingPathComponent("docs/assets/\(old)").path), "the old \(old) is gone")
+        }
 
-        // What the README embeds: the tile, then the lens, pupil and lashes on the 24-unit grid, named for what they are.
-        let grid = CGRect(x: 0, y: 0, width: EyeLensGeometry.designSize, height: EyeLensGeometry.designSize)
-        XCTAssertTrue(committed.contains("<title id=\"eo-title\">Insomnia</title>"))
-        XCTAssertTrue(committed.contains("<desc id=\"eo-desc\">The Insomnia mark: an open almond-shaped eye with a round pupil and five lashes above the upper lid"))
-        XCTAssertFalse(committed.lowercased().contains("crescent"))
+        // What the README embeds: the tile, then the flame on its 24-unit grid, named for what it is.
+        XCTAssertTrue(committed.contains("<title id=\"ember-title\">Ember</title>"))
+        XCTAssertTrue(committed.contains("<desc id=\"ember-desc\">The Ember mark: a lit flame"))
+        XCTAssertFalse(committed.lowercased().contains("eye"))
         XCTAssertTrue(committed.contains("<rect x=\"100\" y=\"100\" width=\"824\" height=\"824\" rx=\"184.3288\" fill=\"#303336\"/>"))
-        XCTAssertTrue(committed.contains("d=\"\(AppIconArtwork.pathData(EyeMarkGeometry.lens(in: grid)))\" fill=\"none\" stroke=\"#E6E3DD\" stroke-width=\"1.5\""))
-        XCTAssertTrue(committed.contains("d=\"\(AppIconArtwork.pathData(EyeMarkGeometry.pupil(in: grid)))\" fill=\"#E6E3DD\""))
-        XCTAssertTrue(committed.contains("d=\"\(AppIconArtwork.pathData(EyeMarkGeometry.lashes(in: grid, side: .above)))\" fill=\"none\" stroke=\"#E6E3DD\""))
-        XCTAssertFalse(committed.contains(AppIconArtwork.pathData(EyeMarkGeometry.lashes(in: grid, side: .below))), "no lower lashes: the eye is open")
+        XCTAssertTrue(committed.contains("d=\"\(AppIconArtwork.pathData(FlameGeometry.path))\" fill=\"#E6E3DD\""))
         // The grid is placed where the icon places it.
         let mark = AppIconArtwork.mark
-        let scale = AppIconArtwork.number(mark.width / EyeLensGeometry.designSize)
+        let scale = AppIconArtwork.number(mark.width / FlameGeometry.designSize)
         XCTAssertTrue(committed.contains("transform=\"translate(\(AppIconArtwork.number(mark.minX)) \(AppIconArtwork.number(mark.minY))) scale(\(scale))\""))
         // Path data is moves, lines, cubics and closes with no empty segments.
-        let pupil = AppIconArtwork.pathData(EyeMarkGeometry.pupil(in: grid))
-        XCTAssertTrue(pupil.hasPrefix("M"))
-        XCTAssertTrue(pupil.hasSuffix("Z"))
-        XCTAssertFalse(pupil.contains("L"), "an arc's lead-in line to its own start is dropped")
+        let flame = AppIconArtwork.pathData(FlameGeometry.path)
+        XCTAssertTrue(flame.hasPrefix("M"))
+        XCTAssertTrue(flame.hasSuffix("Z"))
+        XCTAssertFalse(flame.contains("L"), "an arc's lead-in line to its own start is dropped")
         XCTAssertEqual(AppIconArtwork.number(184.32880), "184.3288")
         XCTAssertEqual(AppIconArtwork.number(12), "12")
         XCTAssertEqual(AppIconArtwork.number(-0.00001), "0")
@@ -788,7 +786,7 @@ private struct IconScriptFixture {
     var assets: URL { root.appendingPathComponent("docs/assets", isDirectory: true) }
     var png: URL { resources.appendingPathComponent("AppIcon-1024.png") }
     var icns: URL { resources.appendingPathComponent("AppIcon.icns") }
-    var svg: URL { assets.appendingPathComponent("eye-open.svg") }
+    var svg: URL { assets.appendingPathComponent("app-icon.svg") }
     private var bin: URL { root.appendingPathComponent("bin", isDirectory: true) }
     private var assetFiles: [URL] { [png, icns, svg] }
     private let fm = FileManager.default
